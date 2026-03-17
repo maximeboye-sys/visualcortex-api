@@ -250,7 +250,7 @@ FORMAT JSON STRICT (pas de markdown) :
 IMPORTANT : "template_slide_index" doit être un entier entre 0 et {len(profiles)-1}."""
 
     msg = client.messages.create(
-        model="claude-3-5-sonnet-20241022", max_tokens=6000,
+        model="claude-sonnet-4-6", max_tokens=6000,
         system="Tu es expert en B2B. Réponds uniquement en JSON valide.",
         messages=[{"role": "user", "content": user}],
     )
