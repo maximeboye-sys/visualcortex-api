@@ -1,7 +1,7 @@
 """
-Visual Cortex — PPTX Generator API v4
-Approche : copie fidèle des slides du template + remplacement intelligent du texte.
-Résultat : présentation 100% chartée, visuellement identique au template original.
+Visual Cortex — PPTX Generator API v5
+Approche : copie fidèle des slides du template + injection "bulldozer" du texte.
+Résultat : présentation 100% chartée, visuellement identique au template original, même sans placeholders.
 """
 
 import os
@@ -12,7 +12,6 @@ import time
 import copy
 import re
 from collections import defaultdict
-from lxml import etree
 
 import anthropic
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request
@@ -23,7 +22,7 @@ from pptx.util import Pt
 from pptx.oxml.ns import qn
 import uvicorn
 
-app = FastAPI(title="Visual Cortex API", version="4.0.0")
+app = FastAPI(title="Visual Cortex API", version="5.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,11 +38,10 @@ app.add_middleware(
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 PRO_SECRET_TOKEN  = os.environ.get("PRO_SECRET_TOKEN", "change-me-in-railway")
-FREE_QUOTA_PER_IP = int(os.environ.get("FREE_QUOTA_PER_IP", "50"))
+FREE_QUOTA_PER_IP = int(os.environ.get("FREE_QUOTA_PER_IP", "3")) # Réglé sur 3 par défaut
 
 _usage: dict = defaultdict(list)
 DAY_SECONDS = 86400
-
 
 # ─────────────────────────────────────────────
 # QUOTA
@@ -75,18 +73,12 @@ def _check_and_increment_quota(ip: str) -> tuple[int, int]:
     _usage[ip].append(now)
     return used + 1, FREE_QUOTA_PER_IP
 
-
 # ─────────────────────────────────────────────
 # 1. ANALYSE APPROFONDIE DU TEMPLATE
 # ─────────────────────────────────────────────
 
 def analyze_template_slides(prs: Presentation) -> list[dict]:
-    """
-    Analyse chaque slide du template pour comprendre sa structure et son rôle.
-    Retourne une liste de descripteurs de slides utilisables pour la génération.
-    """
     slide_profiles = []
-
     for i, slide in enumerate(prs.slides):
         profile = {
             "index": i,
@@ -98,7 +90,6 @@ def analyze_template_slides(prs: Presentation) -> list[dict]:
             "text_content": [],
             "guessed_type": "content",
         }
-
         for shape in slide.shapes:
             if shape.has_text_frame:
                 ph_idx = None
@@ -111,15 +102,13 @@ def analyze_template_slides(prs: Presentation) -> list[dict]:
                 if texts:
                     profile["text_placeholders"].append({"ph_idx": ph_idx, "texts": texts})
                     profile["text_content"].extend(texts)
-
-            if shape.shape_type == 13:  # MSO_SHAPE_TYPE.PICTURE
+            if shape.shape_type == 13:
                 profile["has_image"] = True
             if shape.has_table:
                 profile["has_table"] = True
             if shape.has_chart:
                 profile["has_chart"] = True
 
-        # Devine le type de slide
         layout = slide.slide_layout.name.lower()
         full_text = " ".join(profile["text_content"]).lower()
         if i == 0 or "couverture" in layout or "cover" in layout:
@@ -132,19 +121,13 @@ def analyze_template_slides(prs: Presentation) -> list[dict]:
             profile["guessed_type"] = "data"
         else:
             profile["guessed_type"] = "content"
-
         slide_profiles.append(profile)
-
     return slide_profiles
 
-
 def extract_brand_identity(pptx_bytes: bytes) -> dict:
-    """Extrait la charte graphique complète du template."""
     prs = Presentation(io.BytesIO(pptx_bytes))
     fonts, colors, slide_texts = set(), set(), []
-
     slide_profiles = analyze_template_slides(prs)
-
     for slide in prs.slides:
         slide_content = []
         for shape in slide.shapes:
@@ -173,7 +156,6 @@ def extract_brand_identity(pptx_bytes: bytes) -> dict:
         "sample_texts": slide_texts,
     }
 
-
 def _extract_theme_colors(pptx_bytes: bytes) -> list:
     try:
         with zipfile.ZipFile(io.BytesIO(pptx_bytes)) as z:
@@ -186,110 +168,84 @@ def _extract_theme_colors(pptx_bytes: bytes) -> list:
         pass
     return []
 
-
 # ─────────────────────────────────────────────
-# 2. COPIE FIDÈLE D'UNE SLIDE (cœur du système)
+# 2. COPIE FIDÈLE & INJECTION BULLDOZER
 # ─────────────────────────────────────────────
 
 def duplicate_slide_xml(prs: Presentation, source_index: int) -> any:
-    """
-    Duplique une slide du template en copiant fidèlement tout son XML.
-    Préserve : formes, couleurs, images, positions, polices, styles.
-    Retourne la nouvelle slide ajoutée à la présentation.
-    """
     source_slide = prs.slides[source_index]
-
-    # Copie profonde de l'XML de la slide source
     xml_copy = copy.deepcopy(source_slide._element)
-
-    # Ajoute la nouvelle slide en utilisant le même layout
     new_slide = prs.slides.add_slide(source_slide.slide_layout)
-
-    # Remplace l'arbre XML de la nouvelle slide par la copie
-    # (on garde uniquement les relations, on remplace le contenu)
     sp_tree = new_slide.shapes._spTree
-    # Supprime tous les éléments existants sauf les relations de layout
     for child in list(sp_tree):
         sp_tree.remove(child)
-
-    # Copie tous les éléments de la slide source
     source_sp_tree = source_slide.shapes._spTree
     for child in source_sp_tree:
         sp_tree.append(copy.deepcopy(child))
-
     return new_slide
 
+def safe_inject_text(slide, title_text: str, content_lines: list[str]) -> None:
+    """
+    Tente d'injecter du texte. Si les placeholders officiels échouent,
+    utilise le mode 'bulldozer' pour forcer le texte dans les zones libres.
+    """
+    title_injected = False
+    body_injected = False
 
-def replace_text_in_slide(slide, replacements: dict[str, str]) -> None:
-    """
-    Remplace du texte dans une slide en préservant TOUT le formatage.
-    replacements = {"ancien texte": "nouveau texte"}
-    """
-    for shape in slide.shapes:
-        if not shape.has_text_frame:
-            continue
-        for para in shape.text_frame.paragraphs:
-            for run in para.runs:
-                for old_text, new_text in replacements.items():
-                    if old_text and old_text in run.text:
-                        run.text = run.text.replace(old_text, new_text or "")
+    def _apply_text(shape, lines: list[str]) -> bool:
+        if not shape.has_text_frame: return False
+        tf = shape.text_frame
+        if not tf.paragraphs: return False
 
+        # Aspirer le style du premier run
+        ref_run_xml = None
+        if tf.paragraphs[0].runs:
+            ref_run_xml = copy.deepcopy(tf.paragraphs[0].runs[0]._r)
 
-def set_placeholder_text(slide, ph_idx: int, lines: list[str]) -> bool:
-    """
-    Remplace le contenu d'un placeholder par une liste de lignes.
-    Préserve le style du premier run trouvé.
-    Retourne True si le placeholder a été trouvé.
-    """
+        tf.clear()
+        for i, line in enumerate(lines):
+            para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            run = para.add_run()
+            run.text = line
+            # Réappliquer le style
+            if ref_run_xml is not None:
+                try:
+                    rpr_tag = qn("a:rPr")
+                    rpr = ref_run_xml.find(rpr_tag)
+                    if rpr is not None:
+                        existing_rpr = run._r.find(rpr_tag)
+                        if existing_rpr is not None: run._r.remove(existing_rpr)
+                        run._r.insert(0, copy.deepcopy(rpr))
+                except Exception:
+                    pass
+        return True
+
+    # ÉTAPE 1 : Essayer de faire ça proprement via les Placeholders
     for shape in slide.placeholders:
         try:
-            if shape.placeholder_format.idx != ph_idx:
-                continue
-
-            tf = shape.text_frame
-            if not tf.paragraphs:
-                return True
-
-            # Récupère le style du premier run pour le préserver
-            first_para = tf.paragraphs[0]
-            ref_run_xml = None
-            if first_para.runs:
-                ref_run_xml = copy.deepcopy(first_para.runs[0]._r)
-
-            # Vide le text frame
-            tf.clear()
-
-            # Réécrit les lignes en préservant le style
-            for i, line in enumerate(lines):
-                if i == 0:
-                    para = tf.paragraphs[0]
-                else:
-                    para = tf.add_paragraph()
-
-                run = para.add_run()
-                run.text = line
-
-                # Applique le style de référence si disponible
-                if ref_run_xml is not None:
-                    try:
-                        rpr_tag = qn("a:rPr")
-                        rpr = ref_run_xml.find(rpr_tag)
-                        if rpr is not None:
-                            existing_rpr = run._r.find(rpr_tag)
-                            if existing_rpr is not None:
-                                run._r.remove(existing_rpr)
-                            run._r.insert(0, copy.deepcopy(rpr))
-                    except Exception:
-                        pass
-
-            return True
+            if shape.placeholder_format.idx == 0 and title_text and not title_injected:
+                title_injected = _apply_text(shape, [title_text])
+            elif shape.placeholder_format.idx in [1, 2] and content_lines and not body_injected:
+                body_injected = _apply_text(shape, content_lines)
         except Exception:
-            continue
-    return False
+            pass
+
+    # ÉTAPE 2 : Le Bulldozer (si l'étape 1 n'a pas suffi)
+    if not title_injected or not body_injected:
+        text_shapes = [s for s in slide.shapes if s.has_text_frame and not s.is_placeholder]
+        
+        if not title_injected and title_text and len(text_shapes) > 0:
+            title_injected = _apply_text(text_shapes[0], [title_text])
+        
+        if not body_injected and content_lines and len(text_shapes) > 1:
+            body_injected = _apply_text(text_shapes[1], content_lines)
+        elif not body_injected and content_lines and len(text_shapes) > 0 and not title_injected:
+            # Si un seul bloc dispo et titre déjà injecté (ou vide)
+            body_injected = _apply_text(text_shapes[0], content_lines)
 
 
 # ─────────────────────────────────────────────
-# 3. GÉNÉRATION CONTENU CLAUDE
+# 3. GÉNÉRATION CLAUDE (PROMPT B2B)
 # ─────────────────────────────────────────────
 
 def generate_content_with_claude(prompt: str, brand: dict, nb_slides: int) -> dict:
@@ -298,70 +254,49 @@ def generate_content_with_claude(prompt: str, brand: dict, nb_slides: int) -> di
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # Prépare le contexte des slides du template
     profiles = brand.get("slide_profiles", [])
     template_structure = "\n".join([
-        f"  - Slide {p['index']+1} ({p['guessed_type']}) : layout '{p['layout_name']}' | textes : {' | '.join(p['text_content'][:3])}"
+        f"  - Slide {p['index']+1} ({p['guessed_type']}) : textes typiques : {' | '.join(p['text_content'][:3])}"
         for p in profiles
     ])
 
-    system = """Tu es un expert senior en communication d'entreprise, storytelling B2B et design de présentations.
-Tu crées des présentations PowerPoint professionnelles, percutantes et visuellement cohérentes.
-Tu analyses la structure et le ton d'un template existant pour en reproduire l'esprit tout en adaptant le contenu.
-Réponds UNIQUEMENT avec un JSON valide, sans texte avant ou après, sans backticks markdown."""
+    system = """Tu es un expert en conception de présentations B2B et en stratégie. 
+Tu dois structurer un document impactant en t'adaptant parfaitement à la structure du template fourni, même si ce template est très visuel ou atypique.
+Utilise des "Action Titles" (titres qui résument le message clé de la slide).
+Réponds UNIQUEMENT avec un JSON valide."""
 
-    user = f"""Génère une présentation PowerPoint B2B professionnelle et complète.
+    user = f"""Génère une présentation complète de {nb_slides} slides.
 
-DEMANDE DU CLIENT : {prompt}
+SUJET : {prompt}
 
-ANALYSE DU TEMPLATE D'ENTREPRISE :
-Structure des slides originales :
+STRUCTURE DU TEMPLATE ORIGINAL (Analyse-la pour calquer tes types de slides) :
 {template_structure}
 
-Exemples de wording utilisé dans ce template :
-{chr(10).join(brand.get('sample_texts', [])[:4])}
+INSTRUCTIONS :
+1. Génère {nb_slides} slides.
+2. Garde des textes concis (max 3 points par slide de contenu) car les templates visuels manquent souvent de place.
+3. Chaque slide doit avoir un objectif narratif.
 
-Polices de la charte : {', '.join(brand.get('fonts', ['Arial']))}
-Couleurs du thème : {', '.join(brand.get('theme_colors', [])[:6])}
-
-INSTRUCTIONS IMPORTANTES :
-1. Génère exactement {nb_slides} slides
-2. Slide 1 = couverture avec titre accrocheur et sous-titre percutant
-3. Slide {nb_slides} = conclusion avec call-to-action ou message fort
-4. Respecte scrupuleusement le ton et le wording des exemples fournis
-5. Chaque slide doit avoir un objectif narratif clair (pas juste une liste de bullets)
-6. Pour les slides "content" : max 4 points, formulations concises et impactantes
-7. Pour les slides "section" : titre court et accrocheur, sous-titre optionnel
-8. Assure une progression narrative cohérente (problème → solution → bénéfices → action)
-9. Le champ "title" de la présentation doit être une string non vide
-
-MAPPING avec le template (utilise les types existants) :
-Types disponibles : {', '.join(list(dict.fromkeys([p['guessed_type'] for p in profiles])))}
-
-FORMAT JSON STRICT :
+FORMAT JSON STRICT:
 {{
-  "title": "Titre de la présentation",
-  "narrative": "Résumé en 1 phrase du fil conducteur de la présentation",
+  "title": "Titre présentation",
+  "narrative": "L'idée globale en 1 phrase",
   "slides": [
     {{
       "index": 1,
       "type": "cover",
       "template_slide_index": 0,
-      "title": "Titre principal accrocheur",
-      "subtitle": "Sous-titre ou accroche forte",
-      "notes": "Note présentateur : contexte et intention de cette slide"
+      "title": "Titre principal de la couverture",
+      "subtitle": "Sous-titre",
+      "body": []
     }},
     {{
       "index": 2,
       "type": "content",
       "template_slide_index": 1,
-      "title": "Titre de la slide",
-      "body": [
-        "Point clé 1 formulé de façon percutante",
-        "Point clé 2 avec chiffre ou fait concret si pertinent",
-        "Point clé 3 orienté bénéfice"
-      ],
-      "notes": "Note présentateur : comment présenter cette slide"
+      "title": "Action Title : l'idée forte de la slide",
+      "subtitle": "",
+      "body": ["Point 1 impactant", "Point 2 impactant"]
     }}
   ]
 }}
@@ -369,7 +304,7 @@ FORMAT JSON STRICT :
 IMPORTANT : "template_slide_index" doit être un entier entre 0 et {len(profiles)-1} indiquant quelle slide du template copier visuellement."""
 
     msg = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-3-5-sonnet-20241022",
         max_tokens=6000,
         system=system,
         messages=[{"role": "user", "content": user}],
@@ -385,15 +320,10 @@ IMPORTANT : "template_slide_index" doit être un entier entre 0 et {len(profiles
 
 
 # ─────────────────────────────────────────────
-# 4. CONSTRUCTION PPTX FIDÈLE AU TEMPLATE
+# 4. CONSTRUCTION PPTX
 # ─────────────────────────────────────────────
 
 def build_pptx_from_template(pptx_bytes: bytes, content: dict) -> bytes:
-    """
-    Construit le PPTX final en :
-    1. Copiant les slides du template (préserve tout le visuel)
-    2. Remplaçant uniquement le texte avec le contenu généré
-    """
     prs = Presentation(io.BytesIO(pptx_bytes))
     slides_data = content.get("slides", [])
     original_slides = list(prs.slides)
@@ -402,71 +332,45 @@ def build_pptx_from_template(pptx_bytes: bytes, content: dict) -> bytes:
     if nb_orig == 0:
         raise HTTPException(500, "Le template ne contient aucune slide.")
 
-    # Identifie les indices de slides template par type
-    type_to_indices: dict[str, list[int]] = defaultdict(list)
+    type_to_indices = defaultdict(list)
     profiles = analyze_template_slides(prs)
     for p in profiles:
         type_to_indices[p["guessed_type"]].append(p["index"])
 
     def best_template_index(slide_type: str, suggested_index: int | None) -> int:
-        """Choisit le meilleur index de slide template à copier."""
-        # Si Claude a suggéré un index valide, l'utilise en priorité
         if suggested_index is not None and 0 <= suggested_index < nb_orig:
             return suggested_index
-        # Sinon choisit par type
         candidates = type_to_indices.get(slide_type, [])
-        if candidates:
-            return candidates[0]
-        # Fallback : cover = première slide, conclusion = dernière
-        if slide_type == "cover":
-            return 0
-        if slide_type == "conclusion":
-            return nb_orig - 1
-        # Pour le contenu, alterne entre les slides du milieu
+        if candidates: return candidates[0]
+        if slide_type == "cover": return 0
+        if slide_type == "conclusion": return nb_orig - 1
         mid = list(range(1, nb_orig - 1)) if nb_orig > 2 else list(range(nb_orig))
         return mid[0] if mid else 0
 
-    # Supprime les slides existantes de la présentation
     sldIdLst = prs.slides._sldIdLst
     for ref in list(sldIdLst):
         sldIdLst.remove(ref)
 
-    # Reconstruit slide par slide
     for sd in slides_data:
         slide_type = sd.get("type") or "content"
         suggested_idx = sd.get("template_slide_index")
         src_idx = best_template_index(slide_type, suggested_idx)
 
-        # Copie fidèle de la slide template
         try:
             new_slide = duplicate_slide_xml(prs, src_idx)
-        except Exception as e:
-            # Fallback : crée depuis le layout si la copie échoue
+        except Exception:
             layout = prs.slide_layouts[min(src_idx, len(prs.slide_layouts)-1)]
             new_slide = prs.slides.add_slide(layout)
 
-        title_text = sd.get("title") or ""
-        body_lines = sd.get("body") or []
-        subtitle_text = sd.get("subtitle") or ""
+        title_text = sd.get("title", "")
+        body_lines = sd.get("body", [])
+        if not body_lines and sd.get("subtitle"):
+            body_lines = [sd.get("subtitle")]
+
+        # L'INJECTION BULLDOZER
+        safe_inject_text(new_slide, title_text, body_lines)
+
         notes_text = sd.get("notes") or ""
-
-        # Injecte le titre (placeholder idx=0)
-        if title_text:
-            injected = set_placeholder_text(new_slide, 0, [title_text])
-            if not injected:
-                # Fallback via shapes.title
-                try:
-                    if new_slide.shapes.title:
-                        new_slide.shapes.title.text = title_text
-                except Exception:
-                    pass
-
-        # Injecte le corps (placeholder idx=1)
-        content_lines = body_lines if body_lines else ([subtitle_text] if subtitle_text else [])
-        if content_lines:
-            set_placeholder_text(new_slide, 1, content_lines)
-
-        # Injecte les notes présentateur
         if notes_text:
             try:
                 new_slide.notes_slide.notes_text_frame.text = notes_text
@@ -485,17 +389,14 @@ def build_pptx_from_template(pptx_bytes: bytes, content: dict) -> bytes:
 
 @app.get("/")
 def root():
-    return {"status": "ok", "service": "Visual Cortex API 🚀", "version": "4.0.0"}
-
+    return {"status": "ok", "service": "Visual Cortex API 🚀", "version": "5.0.0"}
 
 @app.get("/health")
 def health():
     return {"status": "healthy"}
 
-
 @app.post("/analyze-template")
 async def analyze_template(file: UploadFile = File(...)):
-    """Analyse un template PPTX. Gratuit, sans quota."""
     if not file.filename.endswith(".pptx"):
         raise HTTPException(400, "Le fichier doit être un .pptx")
     try:
@@ -519,9 +420,8 @@ async def analyze_template(file: UploadFile = File(...)):
             }
             for p in profiles
         ],
-        "message": f"{brand['slide_count']} slides analysées • {len(brand['fonts'])} polices • {len(brand['theme_colors'])} couleurs thème"
+        "message": f"{brand['slide_count']} slides analysées"
     }
-
 
 @app.post("/generate-preview")
 async def generate_preview(
@@ -531,7 +431,6 @@ async def generate_preview(
     nb_slides: int = Form(default=8),
     authorization: str = Form(default=None),
 ):
-    """Génère le plan narratif sans créer le fichier."""
     if not template.filename.endswith(".pptx"):
         raise HTTPException(400, "Le template doit être un .pptx")
     if nb_slides < 3 or nb_slides > 30:
@@ -566,7 +465,6 @@ async def generate_preview(
         "quota": quota_info,
     }
 
-
 @app.post("/generate")
 async def generate_presentation(
     request: Request,
@@ -575,7 +473,6 @@ async def generate_presentation(
     nb_slides: int = Form(default=8),
     authorization: str = Form(default=None),
 ):
-    """Génère et retourne le .pptx chartée et fidèle au template."""
     if not template.filename.endswith(".pptx"):
         raise HTTPException(400, "Le template doit être un .pptx")
     if nb_slides < 3 or nb_slides > 30:
@@ -590,17 +487,11 @@ async def generate_presentation(
 
     try:
         content = generate_content_with_claude(prompt, brand, nb_slides)
-    except json.JSONDecodeError as e:
-        raise HTTPException(500, f"Erreur parsing contenu IA : {e}")
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(500, f"Erreur Claude API : {e}")
 
     try:
         pptx_bytes = build_pptx_from_template(template_bytes, content)
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(500, f"Erreur génération PPTX : {e}")
 
@@ -612,7 +503,6 @@ async def generate_presentation(
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
