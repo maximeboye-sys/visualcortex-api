@@ -127,8 +127,8 @@ Format JSON STRICT attendu :
 }}"""
 
     # J'utilise le modèle le plus récent et stable pour éviter l'erreur 404
-    msg = client.messages.create(
-        model="claude-3-5-sonnet-latest", 
+msg = client.messages.create(
+        model="claude-3-haiku-20240307",
         max_tokens=6000,
         system=system,
         messages=[{"role": "user", "content": user}],
