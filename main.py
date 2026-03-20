@@ -1,25 +1,25 @@
 """
-Visual Cortex — PPTX Generator API v10 (Architecture 3 Phases)
-═══════════════════════════════════════════════════════════════
-Phase 1 — COMPRÉHENSION : analyse profonde du template, classification
-           de chaque slide par type, construction d'une bibliothèque de layouts.
-Phase 2 — PLANIFICATION : Claude décide la structure narrative et quel
-           layout utiliser pour chaque slide avant de générer quoi que ce soit.
-Phase 3 — GÉNÉRATION + HYDRATATION : contenu adapté au layout choisi,
-           injection chirurgicale dans le template, zéro corruption XML.
+Visual Cortex — PPTX Generator API v12 (Modèle Cortex — Edition Définitive)
+═════════════════════════════════════════════════════════════════════════════
+Architecture 3 phases :
+  Phase 1 — Compréhension profonde : GROUP shapes, footers, classification,
+             scoring visuel, bibliothèque de layouts enrichie.
+  Phase 2 — Planification narrative : Claude choisit le layout, l'angle,
+             le message clé et les contraintes de densité pour chaque slide.
+  Phase 3 — Génération visuelle-first : règles de densité par type encodées,
+             validation post-génération, hydratation récursive.
 
-Modèle : claude-sonnet-4-6 (qualité maximale, configurable via CLAUDE_MODEL)
+Philosophie Cortex :
+  - Une slide = une idée. Pas un catalogue.
+  - Chaque type de slide a ses propres contraintes de densité.
+  - Le texte est une accroche, pas un rapport.
+  - Le design du template prime — zéro corruption.
+
+Modèle : claude-sonnet-4-6 (configurable via CLAUDE_MODEL)
 """
 
-import os
-import io
-import json
-import time
-import copy
-import re
-import logging
+import os, io, json, time, copy, re, logging
 from collections import defaultdict
-from enum import Enum
 from typing import Optional
 
 import anthropic
@@ -27,184 +27,330 @@ from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
 from pptx.oxml.ns import qn
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 import uvicorn
 
 # ─────────────────────────────────────────────
-# LOGGING
+# LOGGING & APP
 # ─────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("visual-cortex")
 
-# ─────────────────────────────────────────────
-# APP
-# ─────────────────────────────────────────────
-app = FastAPI(title="Visual Cortex API", version="10.0.0")
-
+app = FastAPI(title="Visual Cortex API", version="12.0.0")
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=["*"], allow_credentials=False,
+    allow_methods=["*"], allow_headers=["*"],
 )
 
-
 @app.exception_handler(Exception)
-async def universal_exception_handler(request: Request, exc: Exception):
-    log.error(f"Unhandled exception: {exc}", exc_info=True)
+async def global_error(request: Request, exc: Exception):
+    log.error(f"Exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={"detail": {"message": f"Erreur serveur : {str(exc)}"}},
         headers={"Access-Control-Allow-Origin": "*"},
     )
 
-
 # ─────────────────────────────────────────────
-# CONFIG & QUOTAS
+# CONFIG
 # ─────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-PRO_SECRET_TOKEN  = os.environ.get("PRO_SECRET_TOKEN", "change-me-in-railway")
+PRO_SECRET_TOKEN  = os.environ.get("PRO_SECRET_TOKEN", "change-me")
 FREE_QUOTA_PER_IP = int(os.environ.get("FREE_QUOTA_PER_IP", "3"))
 CLAUDE_MODEL      = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 _usage: dict = defaultdict(list)
-DAY_SECONDS = 86400
+DAY_SEC = 86400
 
+def _ip(r: Request) -> str:
+    fwd = r.headers.get("x-forwarded-for")
+    return fwd.split(",")[0].strip() if fwd else r.client.host
 
-def _get_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    return fwd.split(",")[0].strip() if fwd else request.client.host
+def _is_pro(auth: Optional[str]) -> bool:
+    return bool(auth and auth.replace("Bearer ", "").strip() == PRO_SECRET_TOKEN)
 
-
-def _is_pro(authorization: Optional[str]) -> bool:
-    if not authorization:
-        return False
-    return authorization.replace("Bearer ", "").strip() == PRO_SECRET_TOKEN
-
-
-def _check_and_increment_quota(ip: str) -> tuple:
+def _quota(ip: str) -> tuple:
     now = time.time()
-    _usage[ip] = [t for t in _usage[ip] if now - t < DAY_SECONDS]
-    used = len(_usage[ip])
-    if used >= FREE_QUOTA_PER_IP:
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "message": "Quota gratuit épuisé. Passez en Pro pour un accès illimité."
-            },
-        )
+    _usage[ip] = [t for t in _usage[ip] if now - t < DAY_SEC]
+    if len(_usage[ip]) >= FREE_QUOTA_PER_IP:
+        raise HTTPException(429, {"message": "Quota gratuit épuisé. Passez en Pro."})
     _usage[ip].append(now)
-    return used + 1, FREE_QUOTA_PER_IP
+    return len(_usage[ip]), FREE_QUOTA_PER_IP
 
 
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
+# UTILITAIRES FONDAMENTAUX
+# ══════════════════════════════════════════════════════════════
+
+def _emu(v: int) -> float:
+    return v / 914400.0
+
+def _clean_json(raw: str) -> str:
+    if "```" in raw:
+        parts = raw.split("```")
+        raw = parts[1] if len(parts) > 1 else parts[0]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return raw.strip()
+
+def _safe_name(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", s[:40].lower()).strip("-")
+
+# Patterns de footers placeholder à remplacer automatiquement
+FOOTER_PLACEHOLDERS = [
+    "date - pied de page de votre présentation",
+    "pied de page de votre présentation",
+    "titre de la présentation",
+    "date de la présentation",
+    "[date]",
+    "[footer]",
+    "click to edit",
+]
+
+def _is_footer_placeholder(text: str) -> bool:
+    return any(p in text.lower() for p in FOOTER_PLACEHOLDERS)
+
+
+# ══════════════════════════════════════════════════════════════
+# TRAVERSÉE RÉCURSIVE DES SHAPES (FIX CRITIQUE GROUP SHAPES)
+# ══════════════════════════════════════════════════════════════
+
+def iter_all_shapes(shapes):
+    """
+    Parcourt TOUS les shapes, y compris ceux imbriqués dans des GROUP shapes.
+    FIX CRITIQUE : le bug "contenu fantôme" venait de l'absence de cette traversée.
+    Les GROUP shapes contiennent des sous-shapes avec des text frames
+    qui n'étaient jamais extraits ni remplacés.
+    """
+    for shape in shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from iter_all_shapes(shape.shapes)
+        else:
+            yield shape
+
+
+# ══════════════════════════════════════════════════════════════
 # PHASE 1 — COMPRÉHENSION PROFONDE DU TEMPLATE
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 
-SLIDE_TYPES = {
-    "cover":      "Slide de couverture (titre + sous-titre)",
-    "section":    "Slide de séparation de section",
-    "two_col":    "Deux colonnes de contenu",
-    "kpi":        "Chiffres clés / statistiques",
-    "quote":      "Citation ou accroche forte",
-    "timeline":   "Chronologie / processus étapes",
-    "list":       "Liste à items ou bullet points",
-    "image_text": "Image + texte côte à côte",
-    "full_text":  "Contenu textuel dense",
-    "closing":    "Slide de conclusion / remerciement / CTA",
-    "unknown":    "Non classifiable",
+SLIDE_TYPE_DESC = {
+    "cover":      "Couverture — titre fort + sous-titre clair",
+    "section":    "Ouverture de chapitre — numéro + titre de section",
+    "two_col":    "Deux colonnes — 2 blocs symétriques côte à côte",
+    "kpi":        "Chiffres clés — métriques visuelles impactantes",
+    "quote":      "Citation forte — accroche ou message clé mis en valeur",
+    "timeline":   "Chronologie — étapes ou jalons temporels",
+    "list":       "Liste structurée — items avec labels courts",
+    "image_text": "Image + texte — visuel fort côte à côte",
+    "full_text":  "Contenu développé — argumentaire structuré",
+    "closing":    "Conclusion — remerciement ou call-to-action",
+    "complex":    "Slide graphique — diagramme ou organigramme",
+    "unknown":    "Layout générique",
+}
+
+# ─────────────────────────────────────────────────────────────
+# RÈGLES DE DENSITÉ PAR TYPE DE SLIDE — Cœur du Modèle Cortex
+# ─────────────────────────────────────────────────────────────
+# Chaque type de slide a des contraintes précises sur :
+# - Le nombre maximum d'items (body, list, kpi, timeline…)
+# - La longueur maximum par zone (en mots)
+# - Le style éditorial attendu
+# - Ce qu'il ne faut jamais faire
+
+DENSITY_RULES = {
+    "cover": {
+        "max_title_words":    7,
+        "max_subtitle_words": 12,
+        "style":              "Titre : accroche forte, verbe d'action ou tension. Sous-titre : contexte ou angle en une phrase.",
+        "never":              "Jamais de bullet points. Jamais plus d'un sous-titre.",
+        "example_title":      "TotalEnergies sous pression",
+        "example_subtitle":   "Anatomie des campagnes ONG depuis 2020",
+    },
+    "section": {
+        "max_title_words":    6,
+        "max_label_words":    2,
+        "style":              "Numéro de section (01, 02…) + titre court et percutant. Pas de body.",
+        "never":              "Jamais de body text sur une slide de section. Jamais plus de 2 zones.",
+        "example_title":      "Liens financiers & fiscaux",
+        "example_label":      "01",
+    },
+    "two_col": {
+        "max_title_words":    8,
+        "max_col_title_words": 4,
+        "max_col_body_words": 30,
+        "max_items_per_col":  4,
+        "style":              "Titre général + 2 colonnes symétriques. Chaque colonne : label court + 2-4 items courts.",
+        "never":              "Jamais de paragraphes dans les colonnes. Jamais d'asymétrie (même nombre d'items par colonne).",
+        "example":            "Colonne gauche : 'LIENS FINANCIERS' + 4 items de 10 mots max. Colonne droite : 'LIENS RÉGLEMENTAIRES' + 4 items.",
+    },
+    "kpi": {
+        "max_kpi_count":      6,
+        "max_value_words":    2,
+        "max_label_words":    5,
+        "max_sublabel_words": 12,
+        "style":              "Chiffre ou métrique très visible (ex: '~5,6%') + label court (ex: 'du capital') + sous-label contextuel.",
+        "never":              "Jamais plus de 6 KPIs. Jamais de phrases complètes pour les valeurs. Jamais de KPI sans unité.",
+        "example":            "'600 M€' / 'contribution exceptionnelle' / 'versée en 2022, loi superprofits'",
+    },
+    "quote": {
+        "max_quote_words":    20,
+        "max_author_words":   6,
+        "style":              "Citation courte et percutante, ton affirmatif. Idéalement entre guillemets. Auteur ou source en dessous.",
+        "never":              "Jamais de bullet points. Jamais plus d'une citation par slide. Jamais de citation de plus de 20 mots.",
+        "example":            "'La transition énergétique ne se fera pas sans les majors.' — Analyse stratégique 2025",
+    },
+    "timeline": {
+        "max_steps":          6,
+        "max_step_title_words": 4,
+        "max_step_body_words": 12,
+        "style":              "4 à 6 jalons chronologiques. Chaque étape : date/numéro + titre très court + optionnel: phrase courte.",
+        "never":              "Jamais plus de 6 étapes. Jamais de paragraphes. Jamais sans repère temporel (date ou numéro).",
+        "example":            "1924 / 'Création CFP' / 'Fondation par décret d'État'",
+    },
+    "list": {
+        "max_items":          5,
+        "max_item_title_words": 4,
+        "max_item_body_words": 20,
+        "style":              "3 à 5 items. Chaque item : titre en gras court + phrase de développement concise.",
+        "never":              "Jamais plus de 5 items. Jamais sans titre par item. Jamais d'items sans structure parallèle.",
+        "example":            "'Lobbying institutionnel' / '~2,3 M€ déclarés/an à la HATVP — contacts réguliers Élysée, Bercy.'",
+    },
+    "image_text": {
+        "max_title_words":    8,
+        "max_body_words":     40,
+        "max_body_items":     3,
+        "style":              "Titre + corps structuré en 2-3 points courts. L'image fait le travail visuel, le texte commente.",
+        "never":              "Jamais de mur de texte côté texte. Jamais plus de 3 bullet points. Jamais de corps > 40 mots.",
+    },
+    "full_text": {
+        "max_title_words":    8,
+        "max_body_words":     60,
+        "max_paragraphs":     3,
+        "style":              "Titre + 2-3 paragraphes courts et aérés. Chaque paragraphe = une idée.",
+        "never":              "Jamais de corps > 60 mots au total. Jamais plus de 3 paragraphes. Jamais sans titre fort.",
+    },
+    "closing": {
+        "max_title_words":    5,
+        "max_subtitle_words": 15,
+        "style":              "Message mémorable ou 'Merci !' + sous-titre : sources, contact ou call-to-action.",
+        "never":              "Jamais de bullet points. Jamais de corps long. Simple, élégant, mémorable.",
+        "example_title":      "Merci !",
+        "example_subtitle":   "Sources : Rapport Annuel 2023 · HATVP · Loi de vigilance 2017",
+    },
+    "complex": {
+        "max_label_words":    4,
+        "max_body_words":     15,
+        "style":              "Labels ultra-courts pour les éléments du diagramme. Titres de section concis.",
+        "never":              "Jamais de phrases complètes dans un diagramme. Jamais de body > 15 mots.",
+    },
+    "unknown": {
+        "max_title_words":    8,
+        "max_body_words":     35,
+        "style":              "Titre + corps aéré. Respecter la structure du template.",
+        "never":              "Jamais de surcharge.",
+    },
+}
+
+# Limites de mots par rôle (fallback universel)
+WORD_LIMITS = {
+    "title":       8,
+    "subtitle":   15,
+    "section_num": 2,
+    "label":       5,
+    "kpi_value":   3,
+    "kpi_label":   5,
+    "body":       40,
+    "footer":     10,
+    "page_number": 1,
+    "quote":      20,
+    "list_item":  18,
+    "placeholder": 8,
+    "text":       30,
 }
 
 
-def _emu_to_in(emu: int) -> float:
-    return emu / 914400.0
-
-
 def _classify_slide(slide, idx: int, total: int, w: int, h: int) -> str:
-    """
-    Classifie une slide par type via plusieurs heuristiques combinées :
-    position dans la présentation, nombre de shapes, distribution spatiale,
-    présence d'images, longueur des textes.
-    """
-    shapes      = list(slide.shapes)
-    text_shapes = [s for s in shapes if getattr(s, "has_text_frame", False)]
-    img_shapes  = [
-        s for s in shapes
-        if s.shape_type in (MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.LINKED_PICTURE)
-    ]
+    shapes   = list(iter_all_shapes(slide.shapes))
+    raw_shapes = list(slide.shapes)
+
+    img_shapes   = [s for s in shapes if s.shape_type in (13, 11)]
+    group_shapes = [s for s in raw_shapes if s.shape_type == MSO_SHAPE_TYPE.GROUP]
 
     texts = []
-    for s in text_shapes:
+    for s in shapes:
+        if not getattr(s, "has_text_frame", False):
+            continue
         for para in s.text_frame.paragraphs:
             t = "".join(r.text for r in para.runs).strip()
             if len(t) > 3:
                 texts.append({"text": t, "shape": s})
 
-    total_chars = sum(len(t["text"]) for t in texts)
     n           = len(texts)
+    total_chars = sum(len(t["text"]) for t in texts)
 
-    # Position dans la présentation
+    # Position absolue
     if idx == 0:
         return "cover"
     if idx == total - 1:
         return "closing"
 
+    # Slides avec beaucoup de GROUP shapes = complexes (diagrammes, organigrammes)
+    # Elles restent utilisables mais marquées "complex" pour la sélection
+    if len(group_shapes) >= 5:
+        return "complex"
+
     # Image + texte
     if img_shapes and n >= 2:
         return "image_text"
 
-    # Section : très peu de texte
-    if n <= 2 and total_chars < 80:
+    # Section : peu de texte
+    if n <= 3 and total_chars < 100:
         return "section"
 
-    # KPI : nombreux textes courts distribués horizontalement
+    # KPI : textes courts distribués horizontalement
     if n >= 4:
         short = [t for t in texts if len(t["text"]) < 25]
         if len(short) >= 3:
-            lefts = sorted(
-                [t["shape"].left for t in texts if hasattr(t["shape"], "left")]
-            )
-            if len(lefts) >= 3:
-                spread = _emu_to_in(lefts[-1]) - _emu_to_in(lefts[0])
+            try:
+                lefts = sorted([t["shape"].left for t in texts])
+                spread = _emu(lefts[-1]) - _emu(lefts[0])
                 if spread > 4.0:
                     return "kpi"
+            except Exception:
+                pass
 
-    # Timeline : shapes étalés verticalement
-    if n >= 3:
-        tops = sorted(
-            [t["shape"].top for t in texts if hasattr(t["shape"], "top")]
-        )
-        if len(tops) >= 3:
-            v_spread = _emu_to_in(tops[-1]) - _emu_to_in(tops[0])
-            if v_spread > 2.5 and total_chars < 500:
+    # Timeline : shapes étalés verticalement, textes courts
+    if n >= 3 and total_chars < 500:
+        try:
+            tops = sorted([t["shape"].top for t in texts])
+            if _emu(tops[-1]) - _emu(tops[0]) > 2.5:
                 return "timeline"
+        except Exception:
+            pass
 
-    # Deux colonnes : shapes distribués gauche / droite
+    # Deux colonnes : shapes gauche / droite
     if n >= 4:
-        half = w / 2
-        left_c  = sum(1 for t in texts if hasattr(t["shape"], "left") and t["shape"].left < half)
-        right_c = sum(1 for t in texts if hasattr(t["shape"], "left") and t["shape"].left >= half)
-        if left_c >= 2 and right_c >= 2:
-            return "two_col"
+        try:
+            half = w / 2
+            lc = sum(1 for t in texts if t["shape"].left < half)
+            rc = sum(1 for t in texts if t["shape"].left >= half)
+            if lc >= 2 and rc >= 2:
+                return "two_col"
+        except Exception:
+            pass
 
-    # Citation : 1-2 textes, dont un long
-    long_texts = [t for t in texts if len(t["text"]) > 60]
-    if len(long_texts) == 1 and n <= 3:
+    # Citation : peu de textes, un long
+    if n <= 3 and any(len(t["text"]) > 60 for t in texts):
         return "quote"
 
-    # Liste : textes de longueur similaire
+    # Liste : plusieurs textes de longueur similaire
     if n >= 3:
         lengths = [len(t["text"]) for t in texts]
         avg = sum(lengths) / len(lengths)
-        variance = sum((l - avg) ** 2 for l in lengths) / len(lengths)
-        if variance < 600 and avg < 120:
+        var = sum((l - avg) ** 2 for l in lengths) / len(lengths)
+        if var < 800 and avg < 150:
             return "list"
 
     if total_chars > 200:
@@ -214,17 +360,13 @@ def _classify_slide(slide, idx: int, total: int, w: int, h: int) -> str:
 
 
 def _shape_role(shape, w: int, h: int) -> str:
-    """
-    Détermine le rôle d'une shape via le type placeholder PPTX natif
-    (le plus fiable), puis par heuristique géométrique en fallback.
-    """
-    # Type natif PPTX (vérifier is_placeholder avant d'accéder à placeholder_format)
+    """Détermine le rôle via placeholder natif PPTX, puis géométrie."""
     try:
         if shape.is_placeholder:
             ph = shape.placeholder_format
             ph_map = {
                 0: "title", 1: "body", 2: "subtitle",
-                3: "date",  4: "footer", 5: "page_number",
+                3: "date", 4: "footer", 5: "page_number",
                 13: "title", 15: "subtitle",
             }
             return ph_map.get(ph.idx, "placeholder")
@@ -235,22 +377,21 @@ def _shape_role(shape, w: int, h: int) -> str:
         return "decoration"
 
     try:
-        top_r   = shape.top    / h
-        left_r  = shape.left   / w
-        width_r = shape.width  / w
-        height_r = shape.height / h
+        tr = shape.top    / h
+        wr = shape.width  / w
+        hr = shape.height / h
 
-        if top_r > 0.87 and width_r > 0.15:
+        if tr > 0.87 and wr > 0.15:
             return "footer"
-        if top_r > 0.87 and width_r < 0.10:
+        if tr > 0.87:
             return "page_number"
-        if top_r < 0.28 and width_r > 0.45:
+        if tr < 0.28 and wr > 0.45:
             return "title"
-        if 0.20 < top_r < 0.50 and width_r > 0.35 and height_r < 0.15:
+        if 0.20 < tr < 0.50 and wr > 0.35 and hr < 0.15:
             return "subtitle"
-        if 0.25 < top_r < 0.75 and width_r < 0.40 and height_r < 0.12:
+        if 0.25 < tr < 0.75 and wr < 0.40 and hr < 0.12:
             return "label"
-        if 0.25 < top_r < 0.87:
+        if 0.25 < tr < 0.87:
             return "body"
     except Exception:
         pass
@@ -259,45 +400,34 @@ def _shape_role(shape, w: int, h: int) -> str:
 
 
 def extract_brand(prs: Presentation) -> dict:
-    """
-    Extraction complète de la charte graphique du template :
-    polices, couleurs texte, couleurs de fond, dimensions, layouts disponibles.
-    """
-    fonts  = set()
-    colors = set()
-
+    fonts, colors = set(), set()
     for slide in prs.slides:
-        for shape in slide.shapes:
-            if getattr(shape, "has_text_frame", False):
-                for para in shape.text_frame.paragraphs:
-                    for run in para.runs:
-                        if run.font.name:
-                            fonts.add(run.font.name)
-                        if run.font.color and run.font.color.type is not None:
-                            try:
-                                rgb = run.font.color.rgb
-                                if rgb not in (
-                                    RGBColor(0xFF, 0xFF, 0xFF),
-                                    RGBColor(0x00, 0x00, 0x00),
-                                ):
-                                    colors.add(str(rgb))
-                            except Exception:
-                                pass
+        for shape in iter_all_shapes(slide.shapes):
+            if not getattr(shape, "has_text_frame", False):
+                continue
+            for para in shape.text_frame.paragraphs:
+                for run in para.runs:
+                    if run.font.name:
+                        fonts.add(run.font.name)
+                    if run.font.color and run.font.color.type is not None:
+                        try:
+                            rgb = run.font.color.rgb
+                            if rgb not in (RGBColor(0xFF,0xFF,0xFF), RGBColor(0,0,0)):
+                                colors.add(str(rgb))
+                        except Exception:
+                            pass
 
-    layout_names = [lay.name for lay in prs.slide_layouts]
     w, h = prs.slide_width, prs.slide_height
-
     return {
         "fonts":           list(fonts)[:5],
         "colors":          list(colors)[:8],
         "slide_count":     len(prs.slides),
-        "layouts":         layout_names,
-        "slide_width_in":  round(_emu_to_in(w), 2),
-        "slide_height_in": round(_emu_to_in(h), 2),
-        "aspect_ratio": (
-            "16:9" if abs(w / h - 16 / 9) < 0.05
-            else "4:3" if abs(w / h - 4 / 3) < 0.05
-            else "custom"
+        "layouts":         [l.name for l in prs.slide_layouts],
+        "slide_width_in":  round(_emu(w), 2),
+        "slide_height_in": round(_emu(h), 2),
+        "aspect_ratio":    (
+            "16:9" if abs(w/h - 16/9) < 0.05 else
+            "4:3"  if abs(w/h - 4/3)  < 0.05 else "custom"
         ),
     }
 
@@ -305,19 +435,24 @@ def extract_brand(prs: Presentation) -> dict:
 def build_layout_library(prs: Presentation) -> list:
     """
     Construit la bibliothèque de layouts du template.
-    Pour chaque slide : type détecté, zones texte avec rôle et word_count.
-    C'est la carte que Claude utilise en Phase 2 pour planifier.
+    Inclut maintenant les textes dans les GROUP shapes (traversée récursive).
+    Détecte les footers placeholder pour les remplacer automatiquement.
     """
     library = []
-    total   = len(prs.slides)
-    w, h    = prs.slide_width, prs.slide_height
+    total = len(prs.slides)
+    w, h  = prs.slide_width, prs.slide_height
 
     for idx, slide in enumerate(prs.slides):
         slide_type = _classify_slide(slide, idx, total, w, h)
+
+        # Compter les GROUP shapes de niveau racine (indicateur de complexité)
+        root_groups = sum(1 for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.GROUP)
+        has_images  = any(s.shape_type in (13,11) for s in iter_all_shapes(slide.shapes))
+
         zones = []
         seen  = set()
 
-        for shape in slide.shapes:
+        for shape in iter_all_shapes(slide.shapes):
             if not getattr(shape, "has_text_frame", False):
                 continue
             role = _shape_role(shape, w, h)
@@ -329,253 +464,521 @@ def build_layout_library(prs: Presentation) -> list:
                 if len(text) < 2 or text in seen:
                     continue
                 seen.add(text)
+
+                # Détecter les footers placeholder
+                is_placeholder_footer = _is_footer_placeholder(text)
+
                 zones.append({
-                    "original_text": text,
-                    "role":          role,
-                    "word_count":    len(text.split()),
-                    "char_count":    len(text),
+                    "original_text":          text,
+                    "role":                   "footer" if is_placeholder_footer else role,
+                    "word_count":             len(text.split()),
+                    "word_limit":             WORD_LIMITS.get(
+                        "footer" if is_placeholder_footer else role, 30
+                    ),
+                    "is_placeholder_footer":  is_placeholder_footer,
+                    "char_count":             len(text),
                 })
 
         if zones:
             library.append({
-                "slide_index": idx,
-                "slide_type":  slide_type,
-                "description": SLIDE_TYPES.get(slide_type, ""),
-                "position": (
+                "slide_index":   idx,
+                "slide_type":    slide_type,
+                "description":   SLIDE_TYPE_DESC.get(slide_type, ""),
+                "position":      (
                     "cover"   if idx == 0 else
                     "closing" if idx == total - 1 else
-                    f"{idx + 1}/{total}"
+                    f"{idx+1}/{total}"
                 ),
-                "zones":       zones,
-                "total_words": sum(z["word_count"] for z in zones),
+                "root_groups":   root_groups,
+                "has_images":    has_images,
+                "zones":         zones,
+                "total_words":   sum(z["word_count"] for z in zones),
+                "visual_score":  (
+                    has_images * 3 +
+                    (1 if slide_type in ("kpi","timeline","two_col","image_text","quote") else 0) * 2 +
+                    (1 if slide_type in ("list","full_text") else 0) * 0 +
+                    (1 if root_groups > 0 else 0) * 1
+                ),
             })
 
     return library
 
 
-# ═══════════════════════════════════════════════════════════════
+def select_template_slides(library: list, nb_slides: int) -> list:
+    """
+    Sélectionne intelligemment nb_slides slides du template.
+
+    Règles :
+    1. Slide 0 (cover) toujours en premier.
+    2. Dernière slide (closing) toujours en dernier.
+    3. Pour les slides du milieu : priorité aux layouts visuels,
+       éviter de répéter le même type consécutivement.
+    4. Exclure les slides "complex" en priorité si possible.
+    5. Si nb_slides > template : signaler qu'il faudra dupliquer.
+    """
+    if not library:
+        return []
+
+    cover   = [s for s in library if s["slide_type"] == "cover"]
+    closing = [s for s in library if s["slide_type"] == "closing"]
+    middle  = [s for s in library if s["slide_type"] not in ("cover", "closing")]
+
+    # Slides du milieu triées par visual_score desc, complex en dernier
+    middle_sorted = sorted(
+        middle,
+        key=lambda s: (
+            0 if s["slide_type"] == "complex" else 1,  # complex = dernier recours
+            s["visual_score"],
+            -s["total_words"],  # préférer moins de texte
+        ),
+        reverse=True,
+    )
+
+    # Slots disponibles pour le milieu
+    n_cover   = min(len(cover), 1)
+    n_closing = min(len(closing), 1)
+    n_middle  = nb_slides - n_cover - n_closing
+
+    if n_middle < 0:
+        n_middle = 0
+
+    # Sélection avec anti-répétition de type
+    selected_middle = []
+    last_type = None
+    pool = middle_sorted.copy()
+
+    while len(selected_middle) < n_middle and pool:
+        # Préférer un type différent du précédent
+        for i, s in enumerate(pool):
+            if s["slide_type"] != last_type or i == len(pool) - 1:
+                selected_middle.append(s)
+                last_type = s["slide_type"]
+                pool.pop(i)
+                break
+
+    # Compléter si pas assez de slides uniques → dupliquer les meilleures
+    if len(selected_middle) < n_middle and middle_sorted:
+        cycle = middle_sorted * 10
+        for s in cycle:
+            if len(selected_middle) >= n_middle:
+                break
+            # Créer une copie avec flag "duplicate"
+            dup = {**s, "duplicate": True}
+            selected_middle.append(dup)
+
+    # Assembler : cover + milieu (trié par slide_index) + closing
+    result = (
+        cover[:n_cover] +
+        sorted(selected_middle, key=lambda s: s["slide_index"]) +
+        closing[:n_closing]
+    )
+
+    return result[:nb_slides]
+
+
+# ══════════════════════════════════════════════════════════════
 # PHASE 2 — PLANIFICATION NARRATIVE
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 
 PLANNER_SYSTEM = """Tu es Visual Cortex Planner, architecte narratif de présentations B2B professionnelles.
 
-TON RÔLE : concevoir la structure narrative COMPLÈTE avant toute génération de contenu.
+MISSION : concevoir une structure narrative percutante et cohérente, slide par slide.
 
-PRINCIPES DU PLANNER :
-- Chaque slide doit avoir un angle narratif UNIQUE et une contribution claire à l'histoire.
-- La slide 1 (cover) capte l'attention : titre fort + sous-titre qui donne envie de lire.
-- Les slides intermédiaires progressent logiquement selon des séquences éprouvées :
-  contexte → enjeux → solution → différenciation → preuves → bénéfices → ROI → next steps
-- La dernière slide (closing) laisse une impression forte : CTA clair ou message mémorable.
-- Choisir le type de slide le plus adapté au contenu prévu :
-  données chiffrées → kpi | étapes chronologiques → timeline |
-  comparaison → two_col | élément fort à mettre en valeur → quote |
-  liste d'arguments → list | photo/visuel → image_text
-- Éviter de répéter le même type consécutivement (sauf list/full_text si justifié).
-- Le nombre de slides dans le plan doit être EXACTEMENT égal à nb_slides.
+PRINCIPES NARRATIFS :
+- Cover : accroche forte, crée une tension ou une promesse. Titre ≤ 7 mots.
+- Slides de contenu : progression logique et variée —
+  ne jamais enchaîner deux fois le même type de slide.
+  Séquences éprouvées : contexte → enjeux → solution → preuves → bénéfices → ROI → next steps
+- Closing : message simple et mémorable. CTA clair ou remerciement élégant.
 
-Réponds UNIQUEMENT en JSON valide, sans markdown ni commentaire."""
+AFFECTATION DES TYPES AUX CONTENUS :
+- données chiffrées, métriques, résultats     → kpi
+- étapes, jalons, chronologie, processus       → timeline
+- comparaison, dualité, pour/contre, avant/après → two_col
+- message fort, conviction, prise de position  → quote
+- liste d'acteurs, d'arguments, de features    → list
+- concept visuel, cas d'usage, illustration    → image_text
+- argumentaire développé, analyse, contexte    → full_text
+- séparation de partie                         → section
+
+DENSITÉ PAR TYPE (à indiquer dans visual_hint) :
+- kpi       : 4 à 6 chiffres max, valeur courte + label + sous-label
+- timeline  : 4 à 6 jalons max, date + titre court + phrase optionnelle
+- two_col   : 2 colonnes symétriques, 3-4 items de ≤ 10 mots chacun
+- quote     : 1 citation de ≤ 20 mots, source courte
+- list      : 3 à 5 items structurés (titre gras + corps ≤ 20 mots)
+- section   : numéro (01) + titre ≤ 6 mots, rien d'autre
+- cover     : titre ≤ 7 mots + sous-titre ≤ 12 mots
+- closing   : titre ≤ 5 mots + sous-titre/sources ≤ 15 mots
+
+RÈGLE ABSOLUE : le tableau "slides" doit contenir EXACTEMENT {nb_slides} entrées.
+
+Réponds UNIQUEMENT en JSON valide, sans markdown."""
 
 PLANNER_USER = """SUJET : {prompt}
-NOMBRE DE SLIDES : {nb_slides}
+NB SLIDES SOUHAITÉ : {nb_slides}
 
-LAYOUTS DISPONIBLES DANS LE TEMPLATE :
-{library_json}
+SLIDES DISPONIBLES DANS LE TEMPLATE :
+{selection_json}
 
-CHARTE :
-- Polices : {fonts}
-- Couleurs : {colors}
-- Format : {aspect_ratio} ({w}" × {h}")
+CHARTE : Polices {fonts} | Couleurs {colors} | Format {ratio}
 
-Génère le plan narratif. Le tableau "slides" doit contenir EXACTEMENT {nb_slides} entrées.
+Génère le plan. Le tableau "slides" doit contenir EXACTEMENT {nb_slides} entrées.
 
-FORMAT ATTENDU :
+FORMAT :
 {{
-  "presentation_title": "Titre accrocheur",
-  "narrative_arc": "Logique narrative en 1-2 phrases",
+  "presentation_title": "Titre accrocheur ≤ 7 mots",
+  "narrative_arc": "Logique narrative en 1 phrase",
+  "footer_text": "Entreprise · Contexte · Année  (≤ 8 mots, ex: 'TotalEnergies · Analyse ONG · 2025')",
   "slides": [
     {{
       "plan_index": 0,
       "template_slide_index": 0,
       "slide_type": "cover",
-      "narrative_angle": "Ce que cette slide accomplit dans l'histoire",
-      "key_message": "Le message principal en 1 phrase courte",
-      "content_hints": "Indications concrètes sur le contenu idéal"
+      "narrative_angle": "Ce que cette slide accomplit dans l'histoire (1 phrase)",
+      "key_message": "Le message principal ≤ 10 mots",
+      "visual_hint": "Contrainte de densité et de style pour cette slide (ex: '4 KPIs: valeur chiffrée + label court + sous-label 10 mots max')"
     }}
   ]
-}}"""
+}}\n"""
 
 
-def plan_presentation(prompt: str, nb_slides: int, library: list, brand: dict) -> dict:
-    """
-    Phase 2 : Claude planifie la structure narrative complète.
-    Retourne un plan JSON avec, pour chaque slide, son rôle et le layout à utiliser.
-    """
+def plan_presentation(prompt: str, nb_slides: int, selection: list, brand: dict) -> dict:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # Version allégée de la library pour le planner (sans les textes originaux)
-    lib_light = [
+    sel_light = [
         {
-            "slide_index": s["slide_index"],
-            "slide_type":  s["slide_type"],
-            "description": s["description"],
-            "position":    s["position"],
-            "zone_roles":  [z["role"] for z in s["zones"]],
-            "total_words": s["total_words"],
+            "template_slide_index": s["slide_index"],
+            "slide_type":           s["slide_type"],
+            "description":          s["description"],
+            "zone_roles":           [z["role"] for z in s["zones"]],
+            "has_images":           s["has_images"],
+            "visual_score":         s["visual_score"],
         }
-        for s in library
+        for s in selection
     ]
 
+    # Injecter nb_slides dans le system prompt
+    system = PLANNER_SYSTEM.replace("{nb_slides}", str(nb_slides))
+
     user = PLANNER_USER.format(
-        prompt       = prompt,
-        nb_slides    = nb_slides,
-        library_json = json.dumps(lib_light, ensure_ascii=False, indent=2),
-        fonts        = ", ".join(brand.get("fonts", [])) or "Standard",
-        colors       = ", ".join(f"#{c}" for c in brand.get("colors", [])) or "non détectées",
-        aspect_ratio = brand.get("aspect_ratio", "16:9"),
-        w            = brand.get("slide_width_in", 13.33),
-        h            = brand.get("slide_height_in", 7.5),
+        prompt         = prompt,
+        nb_slides      = nb_slides,
+        selection_json = json.dumps(sel_light, ensure_ascii=False, indent=2),
+        fonts          = ", ".join(brand.get("fonts", [])) or "Standard",
+        colors         = ", ".join(f"#{c}" for c in brand.get("colors", [])) or "non détectées",
+        ratio          = brand.get("aspect_ratio", "16:9"),
     )
 
     msg = client.messages.create(
-        model      = CLAUDE_MODEL,
-        max_tokens = 4000,
-        system     = PLANNER_SYSTEM,
-        messages   = [{"role": "user", "content": user}],
+        model=CLAUDE_MODEL, max_tokens=4000,
+        system=system,
+        messages=[{"role": "user", "content": user}],
     )
-
     plan = json.loads(_clean_json(msg.content[0].text.strip()))
-    log.info(
-        f"Plan : {len(plan.get('slides', []))} slides — {plan.get('narrative_arc', '')[:80]}"
-    )
+    log.info(f"Plan: {len(plan.get('slides',[]))} slides — {plan.get('narrative_arc','')[:80]}")
     return plan
 
 
-def _pad_plan(plan: dict, nb_slides: int, library: list) -> dict:
-    """
-    S'assure que le plan contient exactement nb_slides entrées.
-    Complète si Claude en a retourné moins, tronque si plus.
-    """
-    slides = plan.get("slides", [])
-    while len(slides) < nb_slides:
-        fallback_idx = min(len(library) - 2, max(1, len(slides) - 1))
-        slides.append({
-            "plan_index":           len(slides),
-            "template_slide_index": library[fallback_idx]["slide_index"] if library else 1,
-            "slide_type":           "list",
-            "narrative_angle":      "Développement complémentaire",
-            "key_message":          "Argument additionnel",
-            "content_hints":        "",
-        })
-    plan["slides"] = slides[:nb_slides]
-    return plan
+# ══════════════════════════════════════════════════════════════
+# PHASE 3 — GÉNÉRATION DU CONTENU (visuel-first)
+# ══════════════════════════════════════════════════════════════
 
+CORTEX_SYSTEM = """Tu es Visual Cortex, expert en présentations B2B professionnelles et visuelles.
+Philosophie : une slide = une idée. Le texte est une accroche, pas un rapport.
 
-# ═══════════════════════════════════════════════════════════════
-# PHASE 3 — GÉNÉRATION DU CONTENU
-# ═══════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════
+RÈGLES UNIVERSELLES (s'appliquent à toutes les slides)
+═══════════════════════════════════════════════════
+1. LIMITES PAR RÔLE — ne jamais dépasser :
+   title       → ≤ 8 mots   (percutant, mémorable, verbe ou tension)
+   subtitle    → ≤ 12 mots  (précis, complémentaire, pas redondant)
+   label       → ≤ 5 mots   (factuel, souvent sans verbe)
+   kpi_value   → ≤ 3 mots   (chiffre + unité : "600 M€", "~5,6%", "1er")
+   kpi_label   → ≤ 5 mots   (contexte court : "du capital", "de contribution")
+   body        → ≤ 40 mots  (jamais de mur de texte)
+   list_item   → ≤ 18 mots  (titre en gras + corps concis)
+   quote       → ≤ 20 mots  (fort, affirmatif, entre guillemets)
+   footer      → ≤ 8 mots   (entreprise · contexte · date)
+   page_number → NE PAS MODIFIER
+   section_num → 1-2 chars  (01, 02, A, B…)
 
-CORTEX_SYSTEM = """Tu es Visual Cortex, expert en création de présentations B2B professionnelles.
-Tu appliques le Modèle Cortex — principes de qualité graphique et éditoriale :
+2. COHÉRENCE : footer identique (ou quasi) sur toutes les slides de contenu.
+3. B2B : vocabulaire du secteur, ton direct, orienté valeur, zéro formule creuse.
+4. PROGRESSION : chaque slide fait avancer l'histoire selon son narrative_angle.
+5. ZÉRO invention de données, chiffres ou noms non fournis dans le prompt.
+6. FOOTERS PLACEHOLDER : zones "is_placeholder_footer: true" → remplacer par le footer_text.
 
-RÈGLES ABSOLUES :
-1. Longueur stricte : respecte le "word_count" de chaque zone (±20% maximum).
-   Un titre de 3 mots → 3 mots. Un body de 20 mots → 18 à 24 mots.
-2. Cohérence systématique : footer identique (ou quasi) sur toutes les slides de contenu.
-3. Respiration visuelle : les zones courtes restent courtes. Jamais de surcharge.
-4. Qualité B2B : langage professionnel, direct, orienté valeur. Zéro formule creuse.
-5. Wording sectoriel : adapter au vocabulaire du secteur et de l'entreprise.
-6. Progression narrative : chaque slide avance l'histoire selon le "narrative_angle" fourni.
-7. Rôles respectés :
-   - title       → percutant, court, mémorable (respecter word_count)
-   - subtitle    → précise et complète le titre
-   - body        → développe l'argument, structuré, lisible
-   - label       → court, factuel, 2-4 mots de préférence
-   - footer      → conserver quasi identique au template (nom entreprise, date, etc.)
-   - page_number → NE PAS MODIFIER
-   - kpi_value   → chiffre ou métrique impactante, format court
-   - kpi_label   → 2-4 mots maximum
-   - quote       → citation forte, ton affirmatif
-8. Zéro invention de chiffres ou données non fournis dans le prompt.
+═══════════════════════════════════════════════════
+RÈGLES PAR TYPE DE SLIDE (density rules)
+═══════════════════════════════════════════════════
+
+[cover]
+  Titre ≤ 7 mots — accroche forte, verbe d'action ou tension.
+  Sous-titre ≤ 12 mots — angle ou contexte.
+  JAMAIS de bullet points. JAMAIS plus de 2 zones texte.
+
+[section]
+  Numéro (01, 02…) + titre ≤ 6 mots. RIEN D'AUTRE.
+  JAMAIS de body text sur une slide de section.
+
+[kpi]
+  4 à 6 KPIs MAXIMUM.
+  Chaque KPI : valeur courte (≤3 mots) + label (≤5 mots) + sous-label contextuel (≤12 mots).
+  JAMAIS de phrases complètes pour les valeurs.
+  JAMAIS de KPI sans unité ou repère (%, M€, rang, année…).
+
+[timeline]
+  4 à 6 jalons MAXIMUM.
+  Chaque jalon : repère temporel (date, année, "Étape N") + titre ≤ 4 mots + phrase optionnelle ≤ 12 mots.
+  JAMAIS de paragraphes. JAMAIS plus de 6 jalons. JAMAIS sans repère temporel.
+
+[two_col]
+  2 colonnes SYMÉTRIQUES — même nombre d'items dans chaque colonne (max 4 items/colonne).
+  Label de colonne ≤ 4 mots + chaque item ≤ 18 mots.
+  JAMAIS d'asymétrie. JAMAIS de body long dans une colonne.
+
+[quote]
+  1 SEULE citation ≤ 20 mots — fort, affirmatif, entre guillemets.
+  Source/auteur optionnel ≤ 6 mots en dessous.
+  JAMAIS de bullet points. JAMAIS plus d'une citation.
+
+[list]
+  3 à 5 items MAXIMUM.
+  Chaque item : titre/label ≤ 5 mots (gras) + corps ≤ 20 mots.
+  Structure parallèle : tous les items ont la même structure.
+  JAMAIS plus de 5 items. JAMAIS d'items sans titre.
+
+[image_text]
+  Titre ≤ 8 mots + corps structuré en 2-3 points ≤ 40 mots total.
+  L'image porte le message visuel — le texte commente et précise.
+  JAMAIS de mur de texte côté texte.
+
+[full_text]
+  Titre ≤ 8 mots + 2-3 paragraphes courts = une idée par paragraphe.
+  Total body ≤ 60 mots.
+  JAMAIS plus de 3 paragraphes. JAMAIS sans structure claire.
+
+[closing]
+  Titre simple ≤ 5 mots ("Merci !", "Passons à l'action", "Construisons ensemble").
+  Sous-titre ≤ 15 mots (sources, contact, CTA, ou mots de conclusion).
+  JAMAIS de bullet points. Simple, élégant, mémorable.
+
+[complex]
+  Labels ultra-courts pour les nœuds du diagramme ≤ 4 mots.
+  Titres de section ≤ 5 mots.
+  JAMAIS de phrases complètes dans un diagramme.
 
 Réponds UNIQUEMENT en JSON valide, sans commentaire ni markdown."""
 
 CORTEX_USER = """PRÉSENTATION : {title}
 ARC NARRATIF : {arc}
-SUJET DÉTAILLÉ : {prompt}
+FOOTER : "{footer}"
+SUJET COMPLET : {prompt}
+CHARTE : Polices {fonts} | Couleurs {colors}
 
-CHARTE :
-- Polices : {fonts}
-- Couleurs : {colors}
-
-SLIDES À GÉNÉRER ({n} slides) :
+═══════════════════════════════
+SLIDES À GÉNÉRER — {n} slides
+═══════════════════════════════
 {slides_json}
 
-Pour chaque slide, génère un texte de remplacement par zone.
-Clés du JSON de sortie = "template_slide_index" de chaque slide du plan.
+INSTRUCTIONS DE GÉNÉRATION :
+Pour chaque slide :
+1. Lis le "slide_type" → applique les density rules correspondantes (voir system prompt).
+2. Lis le "narrative_angle" et "key_message" → génère du contenu qui sert cet angle.
+3. Lis le "visual_hint" → c'est la contrainte de densité précise voulue par le planner.
+4. Pour chaque zone : génère un texte respectant le "word_limit" ET le type de slide.
+5. Zones "is_placeholder_footer: true" → utilise EXACTEMENT le FOOTER ci-dessus.
+6. Page numbers → ne pas modifier.
 
-FORMAT ATTENDU :
+FORMAT DE SORTIE (clés = template_slide_index) :
 {{
-  "0": {{"Texte original": "Nouveau texte"}},
-  "1": {{"Texte original": "Nouveau texte"}},
+  "0": {{"Texte original exact": "Nouveau texte généré"}},
+  "1": {{"Texte original exact": "Nouveau texte généré"}},
   ...
-}}"""
+}}
+
+Attention : les clés doivent être les template_slide_index (nombres en string), pas plan_index."""
 
 
-def generate_content(prompt: str, plan: dict, library: list, brand: dict) -> dict:
-    """
-    Phase 3 : génère le contenu de toutes les slides en une seule requête Claude,
-    guidée par le plan narratif et les zones du template.
-    """
+def generate_content(prompt: str, plan: dict, selection: list, brand: dict) -> dict:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    lib_by_idx = {s["slide_index"]: s for s in library}
+    sel_by_idx  = {s["slide_index"]: s for s in selection}
+    footer_text = plan.get("footer_text", "")
 
     slides_payload = []
     for sp in plan.get("slides", []):
-        tmpl_idx  = sp.get("template_slide_index", 0)
-        tmpl_data = lib_by_idx.get(tmpl_idx, {})
+        tidx       = sp.get("template_slide_index", 0)
+        tmpl       = sel_by_idx.get(tidx, {})
+        slide_type = sp.get("slide_type", "unknown")
+
+        # Injecter les density rules du type dans chaque slide
+        density = DENSITY_RULES.get(slide_type, DENSITY_RULES["unknown"])
 
         slides_payload.append({
-            "template_slide_index": tmpl_idx,
-            "slide_type":           sp.get("slide_type"),
+            "template_slide_index": tidx,
+            "slide_type":           slide_type,
             "narrative_angle":      sp.get("narrative_angle"),
             "key_message":          sp.get("key_message"),
-            "content_hints":        sp.get("content_hints", ""),
+            "visual_hint":          sp.get("visual_hint", ""),
+            "density_rules": {
+                "style":  density.get("style", ""),
+                "never":  density.get("never", ""),
+                "limits": {
+                    k: v for k, v in density.items()
+                    if k not in ("style", "never", "example", "example_title",
+                                 "example_subtitle", "example_label")
+                },
+            },
             "zones": [
                 {
-                    "original_text": z["original_text"],
-                    "role":          z["role"],
-                    "word_count":    z["word_count"],
+                    "original_text":         z["original_text"],
+                    "role":                  z["role"],
+                    "word_limit":            z["word_limit"],
+                    "char_count":            z.get("char_count", 0),
+                    "is_placeholder_footer": z.get("is_placeholder_footer", False),
                 }
-                for z in tmpl_data.get("zones", [])
+                for z in tmpl.get("zones", [])
             ],
         })
 
     user = CORTEX_USER.format(
-        title      = plan.get("presentation_title", prompt[:60]),
-        arc        = plan.get("narrative_arc", ""),
-        prompt     = prompt,
-        fonts      = ", ".join(brand.get("fonts", [])) or "Standard",
-        colors     = ", ".join(f"#{c}" for c in brand.get("colors", [])) or "non détectées",
-        n          = len(slides_payload),
+        title       = plan.get("presentation_title", prompt[:60]),
+        arc         = plan.get("narrative_arc", ""),
+        footer      = footer_text,
+        prompt      = prompt,
+        fonts       = ", ".join(brand.get("fonts", [])) or "Standard",
+        colors      = ", ".join(f"#{c}" for c in brand.get("colors", [])) or "non détectées",
+        n           = len(slides_payload),
         slides_json = json.dumps(slides_payload, ensure_ascii=False, indent=2),
     )
 
     msg = client.messages.create(
-        model      = CLAUDE_MODEL,
-        max_tokens = 8000,
-        system     = CORTEX_SYSTEM,
-        messages   = [{"role": "user", "content": user}],
+        model=CLAUDE_MODEL, max_tokens=8000,
+        system=CORTEX_SYSTEM,
+        messages=[{"role": "user", "content": user}],
     )
 
-    mapping = json.loads(_clean_json(msg.content[0].text.strip()))
-    log.info(f"Contenu généré : {len(mapping)} slides mappées.")
+    raw     = _clean_json(msg.content[0].text.strip())
+    mapping = json.loads(raw)
+
+    # Post-validation : tronquer les textes qui dépassent les limites
+    mapping = _validate_and_trim(mapping, slides_payload)
+
+    log.info(f"Contenu généré et validé : {len(mapping)} slides.")
     return mapping
 
 
-# ═══════════════════════════════════════════════════════════════
-# HYDRATATION — Injection chirurgicale dans le template
-# ═══════════════════════════════════════════════════════════════
+def _validate_and_trim(mapping: dict, slides_payload: list) -> dict:
+    """
+    Validation post-génération : s'assure qu'aucun texte ne dépasse
+    la word_limit de sa zone. Tronque intelligemment si nécessaire.
+    Protège les page_numbers (jamais modifiés).
+    """
+    # Index zones par original_text pour lookup rapide
+    zone_limits: dict = {}
+    for sp in slides_payload:
+        tidx = str(sp["template_slide_index"])
+        for z in sp.get("zones", []):
+            key = (tidx, z["original_text"])
+            zone_limits[key] = {
+                "word_limit": z["word_limit"],
+                "role":       z["role"],
+            }
+
+    validated = {}
+    for slide_key, replacements in mapping.items():
+        validated[slide_key] = {}
+        for orig, new_text in replacements.items():
+            if not new_text:
+                validated[slide_key][orig] = new_text
+                continue
+
+            # Trouver la limite pour cette zone
+            zone_info = zone_limits.get((str(slide_key), orig), {})
+            role      = zone_info.get("role", "text")
+            limit     = zone_info.get("word_limit", WORD_LIMITS.get(role, 40))
+
+            # Ne jamais toucher aux numéros de page
+            if role == "page_number":
+                validated[slide_key][orig] = orig
+                continue
+
+            words = new_text.split()
+            if len(words) > limit:
+                # Tronquer à la limite en coupant à la dernière phrase complète
+                trimmed = " ".join(words[:limit])
+                # Si on coupe au milieu d'une phrase, remonter au dernier point/virgule
+                for punct in [".", ",", ";", ":", "—", "–"]:
+                    last = trimmed.rfind(punct)
+                    if last > len(trimmed) * 0.6:  # Garder au moins 60% du texte
+                        trimmed = trimmed[:last + 1].strip()
+                        break
+                log.debug(
+                    f"Trim slide {slide_key} role={role}: "
+                    f"{len(words)}→{len(trimmed.split())} mots"
+                )
+                validated[slide_key][orig] = trimmed
+            else:
+                validated[slide_key][orig] = new_text
+
+    return validated
+
+
+# ══════════════════════════════════════════════════════════════
+# HYDRATATION — Injection avec traversée récursive
+# ══════════════════════════════════════════════════════════════
+
+def _replace_text_in_para(para, replacements: dict):
+    """
+    Remplace le texte d'un paragraphe en préservant le style XML.
+    Normalise la comparaison pour les apostrophes typographiques.
+    """
+    para_text = "".join(r.text for r in para.runs).strip()
+    if not para_text:
+        return
+
+    # Cherche une correspondance exacte ou normalisée
+    new_text = replacements.get(para_text)
+    if new_text is None:
+        # Normalisation : apostrophes typographiques → droites
+        normalized = para_text.replace("\u2019", "'").replace("\u2018", "'")
+        for k, v in replacements.items():
+            k_norm = k.replace("\u2019", "'").replace("\u2018", "'")
+            if k_norm == normalized:
+                new_text = v
+                break
+
+    if not new_text:
+        return
+
+    # Sauvegarder le style du premier run
+    rpr_xml = None
+    if para.runs:
+        rpr_el = para.runs[0]._r.find(qn("a:rPr"))
+        if rpr_el is not None:
+            rpr_xml = copy.deepcopy(rpr_el)
+
+    para.text = new_text
+
+    if rpr_xml is not None:
+        for run in para.runs:
+            ex = run._r.find(qn("a:rPr"))
+            if ex is not None:
+                run._r.remove(ex)
+            run._r.insert(0, copy.deepcopy(rpr_xml))
+
+
+def _hydrate_slide(slide, replacements: dict):
+    """
+    Hydrate une slide en traversant TOUS les shapes (y compris GROUP shapes).
+    """
+    for shape in iter_all_shapes(slide.shapes):
+        if not getattr(shape, "has_text_frame", False):
+            continue
+        for para in shape.text_frame.paragraphs:
+            _replace_text_in_para(para, replacements)
+
 
 def hydrate_presentation(
     pptx_bytes: bytes,
@@ -584,71 +987,19 @@ def hydrate_presentation(
     nb_slides: int,
 ) -> bytes:
     """
-    Injecte les textes générés dans le template PPTX en préservant
-    intégralement le style XML (polices, couleurs, tailles).
-
-    Gestion du nombre de slides :
-    - Trop peu dans le template → duplique des slides de contenu
-    - Trop beaucoup → supprime depuis la fin (méthode sécurisée)
+    Reconstruit le fichier PPTX :
+    1. Sélectionne les slides du template correspondant au plan
+    2. Hydrate chaque slide avec le contenu généré
+    3. Retourne le fichier final avec exactement nb_slides slides
     """
     prs = Presentation(io.BytesIO(pptx_bytes))
 
-    # Duplication si nécessaire
-    _ensure_slide_count(prs, plan_slides, nb_slides)
+    # Construire l'ordre des slides selon le plan
+    template_indices = [s.get("template_slide_index", 0) for s in plan_slides]
 
-    # Remplacement texte par texte
-    for slide_key, replacements in mapping.items():
-        try:
-            slide_idx = int(str(slide_key).replace("slide_", ""))
-            if slide_idx >= len(prs.slides):
-                continue
-            slide = prs.slides[slide_idx]
-
-            for shape in slide.shapes:
-                if not getattr(shape, "has_text_frame", False):
-                    continue
-                for para in shape.text_frame.paragraphs:
-                    para_text = "".join(r.text for r in para.runs).strip()
-                    if not para_text or para_text not in replacements:
-                        continue
-
-                    new_text = replacements[para_text]
-                    if not new_text:
-                        continue
-
-                    # Sauvegarder le style du premier run
-                    rpr_xml = None
-                    if para.runs:
-                        rpr_el = para.runs[0]._r.find(qn("a:rPr"))
-                        if rpr_el is not None:
-                            rpr_xml = copy.deepcopy(rpr_el)
-
-                    para.text = new_text
-
-                    # Ré-appliquer le style
-                    if rpr_xml is not None:
-                        for run in para.runs:
-                            existing = run._r.find(qn("a:rPr"))
-                            if existing is not None:
-                                run._r.remove(existing)
-                            run._r.insert(0, copy.deepcopy(rpr_xml))
-
-        except Exception as e:
-            log.warning(f"Hydratation slide {slide_key} ignorée : {e}")
-            continue
-
-    # Suppression des slides en trop
-    current = len(prs.slides)
-    if nb_slides < current:
-        xml_slides = prs.slides._sldIdLst
-        for sld in reversed(list(xml_slides)[nb_slides:]):
-            rId = sld.get(qn("r:id"))
-            if rId:
-                try:
-                    prs.part.drop_rel(rId)
-                except Exception:
-                    pass
-            xml_slides.remove(sld)
+    # Créer la nouvelle liste de slides dans le bon ordre
+    # en utilisant les slides du template
+    _reorder_and_hydrate(prs, template_indices, mapping, nb_slides)
 
     out = io.BytesIO()
     prs.save(out)
@@ -656,149 +1007,180 @@ def hydrate_presentation(
     return out.read()
 
 
-def _ensure_slide_count(prs: Presentation, plan_slides: list, nb_slides: int):
+def _reorder_and_hydrate(prs: Presentation, template_indices: list, mapping: dict, nb_slides: int):
     """
-    Duplique des slides de contenu si le plan demande plus de slides
-    que le template n'en contient.
+    Réorganise les slides selon le plan et les hydrate.
+    Approche : hydrate les slides existantes en place, puis supprime les inutiles.
     """
-    current = len(prs.slides)
-    if nb_slides <= current:
-        return
+    total_tmpl = len(prs.slides)
 
-    content_types = {"list", "full_text", "two_col", "image_text", "kpi", "unknown"}
-    content_indices = [
-        s["template_slide_index"]
-        for s in plan_slides
-        if s.get("slide_type") in content_types
-        and s.get("template_slide_index", 0) < current
-    ]
-    if not content_indices:
-        content_indices = [max(1, current // 2)]
+    # Hydrater chaque slide du template référencée dans le mapping
+    for slide_key, replacements in mapping.items():
+        try:
+            idx = int(str(slide_key).replace("slide_", ""))
+            if idx < total_tmpl:
+                _hydrate_slide(prs.slides[idx], replacements)
+        except Exception as e:
+            log.warning(f"Hydratation slide {slide_key}: {e}")
 
-    to_add = nb_slides - current
-    cycle  = content_indices * (to_add // len(content_indices) + 1)
+    # Construire la nouvelle séquence de sldId
+    xml_slides = prs.slides._sldIdLst
+    all_sld_ids = list(xml_slides)
 
-    for i in range(to_add):
-        _duplicate_slide(prs, cycle[i % len(cycle)])
+    # Sélectionner les sldId correspondant aux template_indices du plan
+    new_order = []
+    for tidx in template_indices:
+        if 0 <= tidx < len(all_sld_ids):
+            new_order.append(all_sld_ids[tidx])
 
-    log.info(f"Slides dupliquées : {current} → {len(prs.slides)}")
+    # Dédupliquer si un même index apparaît plusieurs fois (slides dupliquées)
+    # Pour les doublons, on duplique réellement le slide XML
+    seen_ids = set()
+    final_order = []
+    for sld_el in new_order:
+        sld_id = sld_el.get("id")
+        if sld_id not in seen_ids:
+            seen_ids.add(sld_id)
+            final_order.append(sld_el)
+        else:
+            # Dupliquer la slide (copie XML)
+            dup = _duplicate_slide_element(prs, sld_el)
+            if dup is not None:
+                final_order.append(dup)
+
+    # Limiter au nb_slides souhaité
+    final_order = final_order[:nb_slides]
+
+    # Reconstruire sldIdLst
+    for sld in list(xml_slides):
+        xml_slides.remove(sld)
+    for sld in final_order:
+        xml_slides.append(sld)
+
+    # Supprimer les slides orphelines (plus dans sldIdLst)
+    _cleanup_orphan_slides(prs, final_order)
 
 
-def _duplicate_slide(prs: Presentation, src_idx: int):
-    """Duplique une slide existante à la fin de la présentation."""
+def _duplicate_slide_element(prs: Presentation, src_sld_el):
+    """Duplique un élément slide en fin de présentation."""
     try:
-        src        = prs.slides[src_idx]
-        layout     = prs.slide_layouts[-1]
-        new_slide  = prs.slides.add_slide(layout)
+        src_rId = src_sld_el.get(qn("r:id"))
+        src_part = prs.part.related_parts.get(src_rId)
+        if src_part is None:
+            return None
 
-        for elem in src.shapes._spTree:
-            new_slide.shapes._spTree.append(copy.deepcopy(elem))
+        # Ajouter via un nouveau slide avec le layout blank
+        blank_layout = prs.slide_layouts[-1]
+        new_slide = prs.slides.add_slide(blank_layout)
 
-        for rel in src.part.rels.values():
-            if "image" in rel.reltype:
-                try:
-                    new_slide.part.add_relationship(rel.reltype, rel._target)
-                except Exception:
-                    pass
+        # Copier le XML de la slide source
+        import lxml.etree as etree
+        src_xml = copy.deepcopy(src_part._element)
+        new_slide._element.getparent().replace(new_slide._element, src_xml)
+
+        # Retourner le dernier élément ajouté dans sldIdLst
+        return list(prs.slides._sldIdLst)[-1]
     except Exception as e:
-        log.warning(f"Duplication slide {src_idx} échouée : {e}")
+        log.warning(f"Duplication slide: {e}")
+        return None
 
 
-# ═══════════════════════════════════════════════════════════════
-# UTILITAIRES
-# ═══════════════════════════════════════════════════════════════
-
-def _clean_json(raw: str) -> str:
-    """Supprime les balises markdown éventuelles autour du JSON."""
-    if "```" in raw:
-        parts = raw.split("```")
-        raw = parts[1] if len(parts) > 1 else parts[0]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return raw.strip()
-
-
-def _safe_filename(prompt: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", prompt[:40].lower()).strip("-")
+def _cleanup_orphan_slides(prs: Presentation, kept_sld_els: list):
+    """Supprime les relations de slides qui ne sont plus dans sldIdLst."""
+    kept_rids = {el.get(qn("r:id")) for el in kept_sld_els}
+    all_slide_rels = [
+        (rId, rel) for rId, rel in prs.part.rels.items()
+        if "slide" in rel.reltype and "slideLayout" not in rel.reltype
+        and "slideMaster" not in rel.reltype
+    ]
+    for rId, rel in all_slide_rels:
+        if rId not in kept_rids:
+            try:
+                prs.part.drop_rel(rId)
+            except Exception:
+                pass
 
 
-# ═══════════════════════════════════════════════════════════════
-# PIPELINE COMPLET (3 phases enchaînées)
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
+# PIPELINE COMPLET
+# ══════════════════════════════════════════════════════════════
 
 def run_pipeline(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
     """
-    Exécute les 3 phases en séquence.
-    Retourne : (bytes du .pptx final, plan narratif, charte extraite)
+    3 phases :
+    Phase 1 → Compréhension du template + sélection intelligente des slides
+    Phase 2 → Planification narrative
+    Phase 3 → Génération du contenu + hydratation
     """
+    if not ANTHROPIC_API_KEY:
+        raise ValueError("Clé API Claude manquante.")
+
     prs = Presentation(io.BytesIO(pptx_bytes))
+    nb_slides = max(2, min(nb_slides, 30))
 
-    # Phase 1 — Compréhension
-    log.info("Phase 1 : analyse profonde du template...")
-    brand   = extract_brand(prs)
-    library = build_layout_library(prs)
+    # Phase 1
+    log.info("Phase 1 : analyse du template...")
+    brand     = extract_brand(prs)
+    library   = build_layout_library(prs)
+    selection = select_template_slides(library, nb_slides)
     log.info(
-        f"Template : {len(library)} slides analysées, "
-        f"{len(brand['fonts'])} polices, "
-        f"{len(brand['colors'])} couleurs, "
-        f"format {brand['aspect_ratio']}"
+        f"Template : {len(library)} slides analysées → "
+        f"{len(selection)} sélectionnées pour {nb_slides} slides demandées"
     )
 
-    nb_slides = max(1, min(nb_slides, 30))
-
-    # Phase 2 — Planification
+    # Phase 2
     log.info("Phase 2 : planification narrative...")
-    plan = plan_presentation(prompt, nb_slides, library, brand)
-    plan = _pad_plan(plan, nb_slides, library)
+    plan = plan_presentation(prompt, nb_slides, selection, brand)
 
-    # Phase 3 — Génération + Hydratation
+    # S'assurer que le plan a exactement nb_slides slides
+    plan_slides = plan.get("slides", [])
+    while len(plan_slides) < nb_slides:
+        fallback = selection[min(len(plan_slides), len(selection)-2)]
+        plan_slides.append({
+            "plan_index":           len(plan_slides),
+            "template_slide_index": fallback["slide_index"],
+            "slide_type":           fallback["slide_type"],
+            "narrative_angle":      "Développement complémentaire",
+            "key_message":          "Argument additionnel",
+            "visual_hint":          "",
+        })
+    plan["slides"] = plan_slides[:nb_slides]
+
+    # Phase 3
     log.info("Phase 3 : génération du contenu...")
-    mapping = generate_content(prompt, plan, library, brand)
+    mapping = generate_content(prompt, plan, selection, brand)
 
-    log.info("Hydratation du fichier PPTX...")
-    final_bytes = hydrate_presentation(
-        pptx_bytes,
-        mapping,
-        plan["slides"],
-        nb_slides,
-    )
+    log.info("Hydratation PPTX...")
+    final_bytes = hydrate_presentation(pptx_bytes, mapping, plan["slides"], nb_slides)
 
     return final_bytes, plan, brand
 
 
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 # ROUTES API
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 
 @app.get("/")
 def root():
-    return {
-        "status":  "ok",
-        "version": "10.0.0 - Architecture 3 Phases",
-        "model":   CLAUDE_MODEL,
-    }
+    return {"status": "ok", "version": "12.0.0 - Modèle Cortex Edition Définitive", "model": CLAUDE_MODEL}
 
 
 @app.post("/analyze-template")
 async def analyze_template(file: UploadFile = File(...)):
-    """
-    Analyse le template : charte graphique + classification des slides.
-    Permet à l'UI d'afficher les infos détectées avant la génération.
-    """
     pptx_bytes = await file.read()
-    prs     = Presentation(io.BytesIO(pptx_bytes))
-    brand   = extract_brand(prs)
-    library = build_layout_library(prs)
+    prs   = Presentation(io.BytesIO(pptx_bytes))
+    brand = extract_brand(prs)
+    lib   = build_layout_library(prs)
 
     type_counts: dict = defaultdict(int)
-    for s in library:
+    for s in lib:
         type_counts[s["slide_type"]] += 1
 
     fonts_display = ", ".join(brand["fonts"]) if brand["fonts"] else "Standard"
 
     return {
-        "success": True,
-        "message": (
+        "success":     True,
+        "message":     (
             f"Charte détectée : {fonts_display} • "
             f"{len(brand['colors'])} couleurs • "
             f"{brand['slide_count']} slides • "
@@ -817,27 +1199,19 @@ async def generate_preview(
     nb_slides:     int        = Form(default=8),
     authorization: str        = Form(default=None),
 ):
-    """
-    Phase 1 + Phase 2 : retourne le plan narratif sans générer le fichier.
-    L'utilisateur peut valider la structure avant de lancer la génération complète.
-    """
     pro = _is_pro(authorization)
     quota_info = (
-        {"plan": "pro"}
-        if pro
-        else {
-            "used":  _check_and_increment_quota(_get_ip(request))[0],
-            "total": FREE_QUOTA_PER_IP,
-            "plan":  "free",
-        }
+        {"plan": "pro"} if pro
+        else {"used": _quota(_ip(request))[0], "total": FREE_QUOTA_PER_IP, "plan": "free"}
     )
 
-    template_bytes = await template.read()
-    prs     = Presentation(io.BytesIO(template_bytes))
-    brand   = extract_brand(prs)
-    library = build_layout_library(prs)
-    plan    = plan_presentation(prompt, nb_slides, library, brand)
-    plan    = _pad_plan(plan, nb_slides, library)
+    nb_slides = max(2, min(nb_slides, 30))
+    pptx_bytes = await template.read()
+    prs   = Presentation(io.BytesIO(pptx_bytes))
+    brand = extract_brand(prs)
+    lib   = build_layout_library(prs)
+    sel   = select_template_slides(lib, nb_slides)
+    plan  = plan_presentation(prompt, nb_slides, sel, brand)
 
     return {
         "success":            True,
@@ -865,15 +1239,13 @@ async def generate_presentation(
     nb_slides:     int        = Form(default=8),
     authorization: str        = Form(default=None),
 ):
-    """Pipeline complet 3 phases → retourne le fichier .pptx final."""
     if not _is_pro(authorization):
-        _check_and_increment_quota(_get_ip(request))
+        _quota(_ip(request))
 
-    template_bytes = await template.read()
-    final_bytes, plan, _brand = run_pipeline(template_bytes, prompt, nb_slides)
+    pptx_bytes = await template.read()
+    final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, nb_slides)
 
-    filename = f"visualcortex-{_safe_filename(prompt)}.pptx"
-
+    filename = f"visualcortex-{_safe_name(prompt)}.pptx"
     return StreamingResponse(
         io.BytesIO(final_bytes),
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -882,9 +1254,4 @@ async def generate_presentation(
 
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host   = "0.0.0.0",
-        port   = int(os.environ.get("PORT", 8000)),
-        reload = False,
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), reload=False)
