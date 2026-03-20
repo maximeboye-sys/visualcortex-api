@@ -1,5 +1,5 @@
 """
-Visual Cortex — PPTX Generator API v8 (Modèle Cortex Edition)
+Visual Cortex — PPTX Generator API v9 (Modèle Cortex Edition)
 Approche : Hydratation in-situ. Zéro duplication XML.
 Résultat : 0 fichier corrompu, préservation absolue du design.
 Modèle Cortex : qualité de contenu B2B, cohérence, respiration visuelle.
@@ -22,7 +22,7 @@ from pptx.oxml.ns import qn
 from pptx.dml.color import RGBColor
 import uvicorn
 
-app = FastAPI(title="Visual Cortex API", version="8.0.0")
+app = FastAPI(title="Visual Cortex API", version="9.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,14 +78,12 @@ def extract_brand(prs: Presentation) -> dict:
     """
     Extrait la charte graphique du template :
     polices, couleurs dominantes, nombre de slides.
-    Utilisé pour l'affichage dans l'UI Lovable.
     """
     fonts = set()
     colors = set()
 
     for slide in prs.slides:
         for shape in slide.shapes:
-            # Polices
             if getattr(shape, "has_text_frame", False):
                 for para in shape.text_frame.paragraphs:
                     for run in para.runs:
@@ -94,13 +92,11 @@ def extract_brand(prs: Presentation) -> dict:
                         if run.font.color and run.font.color.type is not None:
                             try:
                                 rgb = run.font.color.rgb
-                                # Exclure blanc et noir purs (trop communs)
-                                if rgb not in (RGBColor(0xFF,0xFF,0xFF), RGBColor(0,0,0)):
+                                if rgb not in (RGBColor(0xFF, 0xFF, 0xFF), RGBColor(0, 0, 0)):
                                     colors.add(str(rgb))
                             except Exception:
                                 pass
 
-    # Limiter aux couleurs les plus distinctives
     color_list = list(colors)[:6]
 
     return {
@@ -112,38 +108,78 @@ def extract_brand(prs: Presentation) -> dict:
 
 
 # ─────────────────────────────────────────────
-# 2. EXTRACTION DES TEXTES
+# 2. EXTRACTION DES TEXTES AVEC RÔLE
 # ─────────────────────────────────────────────
+def _detect_shape_role(shape, slide_width_emu, slide_height_emu) -> str:
+    """
+    Détermine le rôle probable d'une forme selon sa position et taille :
+    title, subtitle, body, footer, label.
+    Permet à Claude de comprendre la hiérarchie de chaque texte.
+    """
+    try:
+        top_ratio    = shape.top    / slide_height_emu if slide_height_emu else 0
+        left_ratio   = shape.left   / slide_width_emu  if slide_width_emu  else 0
+        width_ratio  = shape.width  / slide_width_emu  if slide_width_emu  else 0
+        height_ratio = shape.height / slide_height_emu if slide_height_emu else 0
+
+        # Footer : en bas de la slide (>85%) et large
+        if top_ratio > 0.85 and width_ratio > 0.3:
+            return "footer"
+
+        # Titre : dans le tiers supérieur, assez large
+        if top_ratio < 0.30 and width_ratio > 0.4:
+            return "title"
+
+        # Sous-titre : sous le titre, taille modérée
+        if top_ratio < 0.50 and width_ratio > 0.3 and height_ratio < 0.15:
+            return "subtitle"
+
+        # Corps : zone centrale
+        if 0.25 < top_ratio < 0.85:
+            return "body"
+
+        return "label"
+    except Exception:
+        return "label"
+
+
 def extract_texts_for_ai(prs: Presentation, nb_slides: int) -> dict:
     """
-    Extrait le texte brut de chaque slide avec métadonnées de position.
-    On extrait aussi des infos sur la slide (titre probable, type) pour
-    permettre à Claude de générer un contenu adapté à la structure.
+    Extrait le texte brut de chaque slide avec le rôle de chaque zone.
+    Claude reçoit ainsi la hiérarchie complète (titre, sous-titre, body, footer).
     """
+    slide_width_emu  = prs.slide_width
+    slide_height_emu = prs.slide_height
     extracted = {}
     limit = min(nb_slides, len(prs.slides))
 
     for i in range(limit):
         slide = prs.slides[i]
-        texts = []
-        title_candidate = None
+        texts_with_roles = []
 
         for shape in slide.shapes:
             if not getattr(shape, "has_text_frame", False):
                 continue
+            role = _detect_shape_role(shape, slide_width_emu, slide_height_emu)
             for para in shape.text_frame.paragraphs:
                 full_text = "".join(run.text for run in para.runs).strip()
                 if len(full_text) > 2:
-                    texts.append(full_text)
-                    # Le premier texte long est probablement le titre
-                    if title_candidate is None and len(full_text) > 5:
-                        title_candidate = full_text
+                    texts_with_roles.append({
+                        "text": full_text,
+                        "role": role,
+                        "word_count": len(full_text.split()),
+                    })
 
-        if texts:
-            extracted[f"slide_{i}"] = {
-                "texts": list(dict.fromkeys(texts)),  # dédupliqué, ordre préservé
-                "title_candidate": title_candidate or texts[0],
-            }
+        # Dédupliqué, ordre préservé
+        seen = set()
+        unique = []
+        for item in texts_with_roles:
+            if item["text"] not in seen:
+                seen.add(item["text"])
+                unique.append(item)
+
+        if unique:
+            extracted[f"slide_{i}"] = unique
 
     return extracted
 
@@ -151,6 +187,34 @@ def extract_texts_for_ai(prs: Presentation, nb_slides: int) -> dict:
 # ─────────────────────────────────────────────
 # 3. IA : GÉNÉRATION DU CONTENU (Modèle Cortex)
 # ─────────────────────────────────────────────
+
+# Prompt système complet — Modèle Cortex (Partie 6 des instructions)
+CORTEX_SYSTEM_PROMPT = """Tu es Visual Cortex, expert en création de présentations B2B professionnelles.
+Tu appliques le Modèle Cortex — principes de qualité graphique et éditoriale :
+
+RÈGLES ABSOLUES :
+1. Longueur stricte : même nombre de mots que l'original (±20%).
+   Un titre de 3 mots → 3 mots. Un paragraphe de 25 mots → 25 mots.
+   Le champ "word_count" dans le JSON d'entrée t'indique exactement la longueur cible.
+2. Cohérence systématique : si un élément est présent dans le template,
+   il doit l'être dans toutes les slides concernées, sans exception.
+3. Respiration visuelle : les textes courts restent courts.
+   Ne jamais surcharger une zone conçue pour peu de texte.
+4. Qualité B2B : langage professionnel, direct, orienté valeur.
+   Pas de formules creuses. Chaque mot compte.
+5. Wording de l'entreprise : utiliser le vocabulaire propre au secteur
+   et à l'entreprise cible détectée dans le prompt.
+6. Structure narrative : la première slide accroche, les slides
+   intermédiaires développent avec un angle différent chacune, la dernière conclut.
+7. Rôles des zones : respecte la hiérarchie (title > subtitle > body > label > footer).
+   Un "footer" ne change jamais de longueur. Un "title" reste percutant et court.
+   Un "body" développe l'argument principal de la slide.
+8. ZÉRO couleur inventée : utilise uniquement le vocabulaire graphique de l'entreprise.
+   Ne pas inventer de noms de produits ou de chiffres non fournis dans le prompt.
+
+Réponds UNIQUEMENT en JSON valide, sans commentaire ni markdown."""
+
+
 def generate_text_mapping_with_claude(
     prompt: str,
     extracted_texts: dict,
@@ -159,54 +223,53 @@ def generate_text_mapping_with_claude(
     """
     Génère le mapping texte original → nouveau texte en appliquant
     les principes du Modèle Cortex : cohérence, qualité B2B, respiration.
+    Utilise claude-sonnet pour une qualité maximale.
     """
     if not ANTHROPIC_API_KEY:
         raise ValueError("Clé API Claude manquante.")
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
+    # Contexte de marque enrichi (polices + couleurs)
     brand_context = ""
     if brand_info:
-        fonts_str = ", ".join(brand_info.get("fonts", [])) or "non détectées"
-        brand_context = f"\nCharte détectée : polices {fonts_str}, {brand_info.get('slide_count', '?')} slides."
+        fonts_str  = ", ".join(brand_info.get("fonts", [])) or "non détectées"
+        colors_str = ", ".join(f"#{c}" for c in brand_info.get("colors", [])) or "non détectées"
+        brand_context = (
+            f"\n\nCHARTE GRAPHIQUE DÉTECTÉE :"
+            f"\n- Polices : {fonts_str}"
+            f"\n- Couleurs de la marque : {colors_str}"
+            f"\n- Nombre de slides dans le template : {brand_info.get('slide_count', '?')}"
+            f"\n\nRègle : utilise uniquement ces polices et ces couleurs. Aucune invention."
+        )
 
-    system = """Tu es Visual Cortex, expert en création de présentations B2B professionnelles.
-Tu appliques le Modèle Cortex — principes de qualité graphique et éditoriale :
+    user = f"""SUJET DE LA PRÉSENTATION : {prompt}{brand_context}
 
-RÈGLES ABSOLUES :
-1. Longueur stricte : même nombre de mots que l'original (±20%). Un titre de 3 mots → 3 mots. Un paragraphe de 25 mots → 25 mots.
-2. Cohérence systématique : si un élément (sous-titre, accroche, call-to-action) est présent dans le template, il doit l'être dans toutes les slides concernées.
-3. Respiration visuelle : les textes courts restent courts. Ne jamais surcharger une zone conçue pour peu de texte.
-4. Qualité B2B : langage professionnel, direct, orienté valeur. Pas de formules creuses.
-5. Wording de l'entreprise : utiliser le vocabulaire propre au secteur et à l'entreprise cible.
-6. Structure narrative : la première slide accroche, les slides intermédiaires développent, la dernière conclut.
+TEXTES DU TEMPLATE (à remplacer slide par slide) :
+Chaque texte est accompagné de son rôle (title/subtitle/body/footer/label) et du nombre de mots cible.
+{json.dumps(extracted_texts, ensure_ascii=False, indent=2)}
 
-Réponds UNIQUEMENT en JSON valide, sans aucun commentaire ni markdown."""
+INSTRUCTIONS DE GÉNÉRATION :
+- Génère un texte de remplacement pour chaque "text" dans chaque slide.
+- Respecte STRICTEMENT le "word_count" de chaque texte (±20% maximum).
+- Respecte le "role" : les titres sont percutants, les body développent, les footers ne changent pas.
+- Les footers (numéros de page, titres de présentation répétés) peuvent rester identiques ou être légèrement adaptés.
+- Assure une progression narrative cohérente entre les slides.
 
-    # Simplifier la structure pour le prompt (juste les textes, pas les métadonnées)
-    simplified = {
-        k: v["texts"] for k, v in extracted_texts.items()
-    }
-
-    user = f"""Nouveau sujet cible : {prompt}{brand_context}
-
-Textes extraits du template (par slide) :
-{json.dumps(simplified, ensure_ascii=False, indent=2)}
-
-Génère les textes de remplacement en respectant STRICTEMENT la longueur de chaque texte.
-
-Format JSON attendu :
+FORMAT JSON ATTENDU :
 {{
   "slide_0": {{
     "Texte original exact": "Nouveau texte de longueur équivalente"
   }},
   "slide_1": {{ ... }}
-}}"""
+}}
+
+Réponds UNIQUEMENT avec ce JSON, sans explication ni markdown."""
 
     msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-sonnet-4-6",
         max_tokens=8000,
-        system=system,
+        system=CORTEX_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user}],
     )
 
@@ -270,15 +333,12 @@ def hydrate_presentation(pptx_bytes: bytes, mapping: dict, nb_slides: int) -> by
                             run._r.insert(0, copy.deepcopy(rpr_xml))
 
         except Exception:
-            # Une slide qui plante ne doit jamais bloquer les autres
             continue
 
     # ── Étape 2 : Suppression sécurisée des slides en trop ───────────────
-    # Méthode sécurisée : on retire depuis la fin pour éviter les décalages d'index
     current_count = len(prs.slides)
     if nb_slides < current_count:
         xml_slides = prs.slides._sldIdLst
-        # Supprimer de la fin vers le début — plus sûr que de supprimer depuis le début
         for sld in reversed(list(xml_slides)[nb_slides:]):
             rId = sld.get(qn("r:id"))
             if rId:
@@ -299,7 +359,7 @@ def hydrate_presentation(pptx_bytes: bytes, mapping: dict, nb_slides: int) -> by
 # ─────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"status": "ok", "version": "8.0.0 - Modèle Cortex"}
+    return {"status": "ok", "version": "9.0.0 - Modèle Cortex"}
 
 
 @app.post("/analyze-template")
@@ -312,8 +372,8 @@ async def analyze_template(file: UploadFile = File(...)):
     prs = Presentation(io.BytesIO(pptx_bytes))
     brand = extract_brand(prs)
 
-    fonts_display = ", ".join(brand["fonts"]) if brand["fonts"] else "Standard"
-    colors_count = len(brand["colors"])
+    fonts_display  = ", ".join(brand["fonts"]) if brand["fonts"] else "Standard"
+    colors_count   = len(brand["colors"])
 
     return {
         "success": True,
@@ -385,7 +445,7 @@ async def generate_presentation(
 
     # Nom de fichier propre basé sur le prompt
     safe_name = re.sub(r"[^a-z0-9]+", "-", prompt[:40].lower()).strip("-")
-    filename = f"visualcortex-{safe_name}.pptx"
+    filename  = f"visualcortex-{safe_name}.pptx"
 
     return StreamingResponse(
         io.BytesIO(pptx_bytes),
