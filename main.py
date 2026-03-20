@@ -218,15 +218,18 @@ def _shape_role(shape, w: int, h: int) -> str:
     Détermine le rôle d'une shape via le type placeholder PPTX natif
     (le plus fiable), puis par heuristique géométrique en fallback.
     """
-    # Type natif PPTX
-    ph = shape.placeholder_format
-    if ph is not None:
-        mapping = {
-            0: "title", 1: "body", 2: "subtitle",
-            3: "date",  4: "footer", 5: "page_number",
-            13: "title", 15: "subtitle",
-        }
-        return mapping.get(ph.idx, "placeholder")
+    # Type natif PPTX (vérifier is_placeholder avant d'accéder à placeholder_format)
+    try:
+        if shape.is_placeholder:
+            ph = shape.placeholder_format
+            ph_map = {
+                0: "title", 1: "body", 2: "subtitle",
+                3: "date",  4: "footer", 5: "page_number",
+                13: "title", 15: "subtitle",
+            }
+            return ph_map.get(ph.idx, "placeholder")
+    except Exception:
+        pass
 
     if not getattr(shape, "has_text_frame", False):
         return "decoration"
