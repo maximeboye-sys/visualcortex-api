@@ -1,13 +1,14 @@
 """
-Visual Cortex — PPTX Generator API v12 (Modèle Cortex — Edition Définitive)
+Visual Cortex — PPTX Generator API v13 (Modèle Cortex — Edition Définitive)
 ═════════════════════════════════════════════════════════════════════════════
-Architecture 3 phases :
-  Phase 1 — Compréhension profonde : GROUP shapes, footers, classification,
-             scoring visuel, bibliothèque de layouts enrichie.
-  Phase 2 — Planification narrative : Claude choisit le layout, l'angle,
-             le message clé et les contraintes de densité pour chaque slide.
-  Phase 3 — Génération visuelle-first : règles de densité par type encodées,
-             validation post-génération, hydratation récursive.
+Nouveautés v13 :
+  - Normalisation robuste des textes (apostrophes, tirets, espaces insécables,
+    sauts de ligne, guillemets typographiques) — fix bug "texte ancien persiste"
+  - Correspondance partielle sur textes fragmentés entre plusieurs runs XML
+  - Zone emptying : Claude peut retourner "" pour vider une zone excédentaire
+    → respiration visuelle sans modifier le design
+  - _validate_and_trim préserve les "" intentionnels
+  - Couverture totale obligatoire : chaque zone doit être mappée
 
 Philosophie Cortex :
   - Une slide = une idée. Pas un catalogue.
@@ -38,7 +39,7 @@ import uvicorn
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("visual-cortex")
 
-app = FastAPI(title="Visual Cortex API", version="12.0.0")
+app = FastAPI(title="Visual Cortex API", version="13.0.0")
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=False,
     allow_methods=["*"], allow_headers=["*"],
@@ -707,7 +708,19 @@ RÈGLES UNIVERSELLES (s'appliquent à toutes les slides)
 3. B2B : vocabulaire du secteur, ton direct, orienté valeur, zéro formule creuse.
 4. PROGRESSION : chaque slide fait avancer l'histoire selon son narrative_angle.
 5. ZÉRO invention de données, chiffres ou noms non fournis dans le prompt.
-6. FOOTERS PLACEHOLDER : zones "is_placeholder_footer: true" → remplacer par le footer_text.
+6. ZONES VIDES — levier de respiration visuelle :
+   Si une slide a plus de zones que ce que la density rule autorise,
+   tu DOIS vider les zones excédentaires en retournant "" comme valeur.
+   Exemples :
+   - Slide list avec 5 items dans le template mais density rule dit max 3 → vider les 2 derniers items
+   - Slide kpi avec 6 blocs mais le sujet n'a que 4 KPIs pertinents → vider les 2 derniers blocs
+   - Slide two_col avec 4 items/col mais le contenu n'en justifie que 3 → vider le 4e item de chaque col
+   RÈGLE : mieux vaut une zone vide et une slide aérée qu'une zone remplie avec du contenu artificiel.
+
+7. COUVERTURE TOTALE : chaque zone listée dans "zones" DOIT avoir une clé dans ta réponse JSON.
+   Si tu ne veux pas remplacer une zone (page_number, logo), retourne la valeur originale.
+   Si tu veux vider une zone, retourne "".
+   Ne jamais omettre une zone — sinon l'ancien texte du template persistera.
 
 ═══════════════════════════════════════════════════
 RÈGLES PAR TYPE DE SLIDE (density rules)
@@ -786,19 +799,24 @@ INSTRUCTIONS DE GÉNÉRATION :
 Pour chaque slide :
 1. Lis le "slide_type" → applique les density rules correspondantes (voir system prompt).
 2. Lis le "narrative_angle" et "key_message" → génère du contenu qui sert cet angle.
-3. Lis le "visual_hint" → c'est la contrainte de densité précise voulue par le planner.
-4. Pour chaque zone : génère un texte respectant le "word_limit" ET le type de slide.
-5. Zones "is_placeholder_footer: true" → utilise EXACTEMENT le FOOTER ci-dessus.
-6. Page numbers → ne pas modifier.
+3. Lis le "visual_hint" → contrainte de densité précise voulue par le planner.
+4. Pour chaque zone dans "zones" :
+   - role "page_number" → retourne le texte original tel quel
+   - role "footer" ou "is_placeholder_footer: true" → retourne le FOOTER ci-dessus
+   - zones excédentaires (density rules dépassées) → retourne ""
+   - sinon → génère un texte respectant le "word_limit"
+5. OBLIGATION : chaque "original_text" de chaque zone DOIT être une clé dans ta réponse.
+   Aucune omission tolérée — un texte non mappé = ancien contenu du template qui reste.
 
-FORMAT DE SORTIE (clés = template_slide_index) :
+RAPPEL ZONES VIDES : retourner "" pour vider une zone est un choix éditorial fort.
+Utilise-le quand le contenu ne justifie pas de remplir toutes les zones disponibles.
+
+FORMAT DE SORTIE (clés = template_slide_index en string) :
 {{
-  "0": {{"Texte original exact": "Nouveau texte généré"}},
-  "1": {{"Texte original exact": "Nouveau texte généré"}},
+  "0": {{"Texte original exact": "Nouveau texte ou vide"}},
+  "1": {{"Texte original exact": ""}},
   ...
-}}
-
-Attention : les clés doivent être les template_slide_index (nombres en string), pas plan_index."""
+}}"""
 
 
 def generate_content(prompt: str, plan: dict, selection: list, brand: dict) -> dict:
@@ -871,17 +889,16 @@ def generate_content(prompt: str, plan: dict, selection: list, brand: dict) -> d
 
 def _validate_and_trim(mapping: dict, slides_payload: list) -> dict:
     """
-    Validation post-génération : s'assure qu'aucun texte ne dépasse
-    la word_limit de sa zone. Tronque intelligemment si nécessaire.
-    Protège les page_numbers (jamais modifiés).
+    Validation post-génération :
+    - Préserve les zones vides intentionnelles ("" → vider la zone)
+    - Tronque intelligemment les textes qui dépassent leur word_limit
+    - Protège les page_numbers (remet le texte original)
     """
-    # Index zones par original_text pour lookup rapide
     zone_limits: dict = {}
     for sp in slides_payload:
         tidx = str(sp["template_slide_index"])
         for z in sp.get("zones", []):
-            key = (tidx, z["original_text"])
-            zone_limits[key] = {
+            zone_limits[(tidx, z["original_text"])] = {
                 "word_limit": z["word_limit"],
                 "role":       z["role"],
             }
@@ -890,34 +907,31 @@ def _validate_and_trim(mapping: dict, slides_payload: list) -> dict:
     for slide_key, replacements in mapping.items():
         validated[slide_key] = {}
         for orig, new_text in replacements.items():
-            if not new_text:
-                validated[slide_key][orig] = new_text
-                continue
 
-            # Trouver la limite pour cette zone
             zone_info = zone_limits.get((str(slide_key), orig), {})
             role      = zone_info.get("role", "text")
-            limit     = zone_info.get("word_limit", WORD_LIMITS.get(role, 40))
 
-            # Ne jamais toucher aux numéros de page
+            # page_number : remettre le texte original sans exception
             if role == "page_number":
                 validated[slide_key][orig] = orig
                 continue
 
+            # Zone vide intentionnelle : préserver tel quel
+            if new_text == "" or new_text is None:
+                validated[slide_key][orig] = ""
+                continue
+
+            # Tronquer si dépassement
+            limit = zone_info.get("word_limit", WORD_LIMITS.get(role, 40))
             words = new_text.split()
             if len(words) > limit:
-                # Tronquer à la limite en coupant à la dernière phrase complète
                 trimmed = " ".join(words[:limit])
-                # Si on coupe au milieu d'une phrase, remonter au dernier point/virgule
-                for punct in [".", ",", ";", ":", "—", "–"]:
+                for punct in [".", ";", ":", "—", "–", ","]:
                     last = trimmed.rfind(punct)
-                    if last > len(trimmed) * 0.6:  # Garder au moins 60% du texte
+                    if last > len(trimmed) * 0.6:
                         trimmed = trimmed[:last + 1].strip()
                         break
-                log.debug(
-                    f"Trim slide {slide_key} role={role}: "
-                    f"{len(words)}→{len(trimmed.split())} mots"
-                )
+                log.debug(f"Trim {slide_key}/{role}: {len(words)}→{len(trimmed.split())} mots")
                 validated[slide_key][orig] = trimmed
             else:
                 validated[slide_key][orig] = new_text
@@ -929,38 +943,82 @@ def _validate_and_trim(mapping: dict, slides_payload: list) -> dict:
 # HYDRATATION — Injection avec traversée récursive
 # ══════════════════════════════════════════════════════════════
 
+_NORM_TABLE = str.maketrans({
+    "\u2019": "'",  "\u2018": "'",  "\u2032": "'",
+    "\u201c": '"',  "\u201d": '"',  "\u201e": '"',
+    "\u2013": "-",  "\u2014": "-",  "\u2015": "-",
+    "\u00a0": " ",  "\u200b": "",   "\u200c": "",
+    "\u000b": " ",  "\u000c": " ",  "\r":     "",
+})
+
+def _normalize(text: str) -> str:
+    """Normalise un texte pour comparaison robuste."""
+    t = text.translate(_NORM_TABLE)
+    t = re.sub(r"\s+", " ", t)
+    return t.strip()
+
+
+_SENTINEL_EMPTY = "__EMPTY__"   # Valeur sentinelle : Claude veut vider cette zone
+
+
 def _replace_text_in_para(para, replacements: dict):
     """
     Remplace le texte d'un paragraphe en préservant le style XML.
-    Normalise la comparaison pour les apostrophes typographiques.
+
+    Logique de recherche :
+    1. Correspondance exacte
+    2. Correspondance normalisée (apostrophes, tirets, espaces…)
+
+    Logique de remplacement :
+    - new_text == _SENTINEL_EMPTY ou "" → vider le paragraphe (clear_text)
+    - new_text == None (non dans le mapping) → NE PAS TOUCHER
+    - sinon → remplacer en préservant le style XML
     """
-    para_text = "".join(r.text for r in para.runs).strip()
+    # Reconstituer le texte brut du paragraphe
+    raw_parts = [r.text for r in para.runs]
+    para_text = "".join(raw_parts).strip()
     if not para_text:
         return
 
-    # Cherche une correspondance exacte ou normalisée
+    # 1. Correspondance exacte
     new_text = replacements.get(para_text)
+
+    # 2. Correspondance normalisée
     if new_text is None:
-        # Normalisation : apostrophes typographiques → droites
-        normalized = para_text.replace("\u2019", "'").replace("\u2018", "'")
+        para_norm = _normalize(para_text)
         for k, v in replacements.items():
-            k_norm = k.replace("\u2019", "'").replace("\u2018", "'")
-            if k_norm == normalized:
+            if _normalize(k) == para_norm:
                 new_text = v
                 break
 
-    if not new_text:
+    # 3. Correspondance partielle sur texte long fragmenté
+    #    (cas : le texte du template a été coupé par des runs de style différent)
+    if new_text is None and len(para_text) > 10:
+        for k, v in replacements.items():
+            if len(k) > 10 and _normalize(k) in _normalize(para_text):
+                new_text = v
+                break
+
+    # Clé non trouvée → ne pas toucher
+    if new_text is None:
         return
 
-    # Sauvegarder le style du premier run
+    # Sauvegarder le style du premier run avant toute modification
     rpr_xml = None
     if para.runs:
         rpr_el = para.runs[0]._r.find(qn("a:rPr"))
         if rpr_el is not None:
             rpr_xml = copy.deepcopy(rpr_el)
 
-    para.text = new_text
+    # Vider la zone (Claude a retourné "" ou _SENTINEL_EMPTY)
+    if new_text in ("", _SENTINEL_EMPTY):
+        # Supprimer tous les runs du paragraphe — la zone devient invisible
+        for run in list(para.runs):
+            run._r.getparent().remove(run._r)
+        return
 
+    # Remplacer le texte en préservant le style
+    para.text = new_text
     if rpr_xml is not None:
         for run in para.runs:
             ex = run._r.find(qn("a:rPr"))
@@ -1162,7 +1220,7 @@ def run_pipeline(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
 
 @app.get("/")
 def root():
-    return {"status": "ok", "version": "12.0.0 - Modèle Cortex Edition Définitive", "model": CLAUDE_MODEL}
+    return {"status": "ok", "version": "13.0.0 - Modèle Cortex Edition Définitive", "model": CLAUDE_MODEL}
 
 
 @app.post("/analyze-template")
