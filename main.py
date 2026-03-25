@@ -93,12 +93,78 @@ def _emu(v: int) -> float:
     return v / 914400.0
 
 def _clean_json(raw: str) -> str:
-    if "```" in raw:
-        parts = raw.split("```")
-        raw = parts[1] if len(parts) > 1 else parts[0]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return raw.strip()
+    """
+    Extrait un bloc JSON propre depuis la réponse de Claude.
+    Gère : markdown fences, préambules textuels, JSON tronqué.
+    """
+    s = raw.strip()
+
+    # Cas 1 : bloc ```json ... ``` ou ``` ... ```
+    if "```" in s:
+        parts = s.split("```")
+        for part in parts[1::2]:          # parties entre backticks
+            candidate = part.strip()
+            if candidate.startswith("json"):
+                candidate = candidate[4:].strip()
+            if candidate.startswith("{") or candidate.startswith("["):
+                s = candidate
+                break
+
+    # Cas 2 : extraire depuis le premier { ou [ jusqu'au dernier } ou ]
+    start_brace  = s.find("{")
+    start_bracket = s.find("[")
+    if start_brace == -1 and start_bracket == -1:
+        return s  # on laisse planter json.loads avec un message clair
+
+    if start_bracket == -1 or (start_brace != -1 and start_brace < start_bracket):
+        start = start_brace
+        end   = s.rfind("}")
+    else:
+        start = start_bracket
+        end   = s.rfind("]")
+
+    if start != -1 and end != -1 and end > start:
+        s = s[start:end + 1]
+
+    return s.strip()
+
+
+def _parse_json_robust(raw: str, context: str = "") -> dict:
+    """
+    Parse JSON avec fallback sur réparation basique.
+    Si le JSON est tronqué (max_tokens atteint), tente de le compléter.
+    """
+    cleaned = _clean_json(raw)
+
+    # Tentative 1 : parse direct
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        log.warning(f"JSON parse error [{context}]: {e} — tentative de réparation")
+
+    # Tentative 2 : supprimer trailing comma avant } ou ]
+    fixed = re.sub(r",\s*([}\]])", r"\1", cleaned)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    # Tentative 3 : JSON tronqué — essayer de fermer les accolades manquantes
+    attempt = fixed
+    open_braces   = attempt.count("{") - attempt.count("}")
+    open_brackets = attempt.count("[") - attempt.count("]")
+    # Supprimer la dernière entrée potentiellement incomplète
+    last_comma = attempt.rfind(",")
+    last_brace  = attempt.rfind("}")
+    if last_comma > last_brace:
+        attempt = attempt[:last_comma]
+    attempt += "]" * open_brackets + "}" * open_braces
+    try:
+        result = json.loads(attempt)
+        log.warning(f"JSON réparé (tronqué) [{context}] : {open_braces} accolades + {open_brackets} crochets ajoutés")
+        return result
+    except json.JSONDecodeError as e:
+        raise ValueError(f"JSON irrécupérable [{context}] : {e}\nDébut : {cleaned[:200]}") from e
 
 def _safe_name(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s[:40].lower()).strip("-")
@@ -613,16 +679,23 @@ def plan_presentation(prompt: str, nb_slides: int, selection: list, brand: dict)
     )
 
     # max_tokens adaptatif : ~120 tokens/slide suffisent pour le plan JSON
-    planner_tokens = max(1200, nb_slides * 130)
+    planner_tokens = max(2000, nb_slides * 180)
 
-    msg = client.messages.create(
-        model=CLAUDE_MODEL, max_tokens=planner_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
-    plan = json.loads(_clean_json(msg.content[0].text.strip()))
-    log.info(f"Plan: {len(plan.get('slides', []))} slides — {plan.get('narrative_arc', '')[:80]}")
-    return plan
+    for attempt in range(3):
+        msg = client.messages.create(
+            model=CLAUDE_MODEL, max_tokens=planner_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        try:
+            plan = _parse_json_robust(msg.content[0].text.strip(), context="plan")
+            log.info(f"Plan: {len(plan.get('slides', []))} slides — {plan.get('narrative_arc', '')[:80]}")
+            return plan
+        except (ValueError, KeyError) as e:
+            log.warning(f"plan_presentation attempt {attempt+1}/3 échoué : {e}")
+            if attempt == 2:
+                raise
+    raise RuntimeError("plan_presentation : 3 tentatives échouées")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -734,7 +807,7 @@ def generate_content(prompt: str, plan: dict, selection: list, brand: dict) -> d
     )
 
     # max_tokens adaptatif : ~220 tokens/slide (JSON + textes courts)
-    content_tokens = max(2000, len(slides_payload) * 220)
+    content_tokens = max(3000, len(slides_payload) * 320)
 
     msg = client.messages.create(
         model=CLAUDE_MODEL, max_tokens=content_tokens,
@@ -742,8 +815,11 @@ def generate_content(prompt: str, plan: dict, selection: list, brand: dict) -> d
         messages=[{"role": "user", "content": user}],
     )
 
-    raw     = _clean_json(msg.content[0].text.strip())
-    mapping = json.loads(raw)
+    try:
+        mapping = _parse_json_robust(msg.content[0].text.strip(), context="content")
+    except ValueError as e:
+        log.error(f"generate_content JSON irrécupérable : {e}")
+        raise
     mapping = _validate_and_trim(mapping, slides_payload)
 
     log.info(f"Contenu généré et validé : {len(mapping)} slides.")
@@ -1801,7 +1877,7 @@ def generate_codes_v2(
     )
 
     # max_tokens adaptatif : ~450 tokens/slide (code python-pptx plus verbeux)
-    code_tokens = max(3000, len(slides_payload) * 450)
+    code_tokens = max(4000, len(slides_payload) * 600)
 
     msg = client.messages.create(
         model=CLAUDE_MODEL, max_tokens=code_tokens,
@@ -1809,10 +1885,24 @@ def generate_codes_v2(
         messages=[{"role": "user", "content": user}],
     )
 
-    raw      = _clean_json(msg.content[0].text.strip())
-    code_map = json.loads(raw)
-    log.info(f"[V2] Code généré pour {len(code_map)} slides.")
-    return code_map
+    for attempt in range(3):
+        if attempt > 0:
+            log.info(f"[V2] Retry génération code ({attempt+1}/3)...")
+            msg = client.messages.create(
+                model=CLAUDE_MODEL, max_tokens=code_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+        try:
+            code_map = _parse_json_robust(msg.content[0].text.strip(), context="codes_v2")
+            log.info(f"[V2] Code généré pour {len(code_map)} slides.")
+            return code_map
+        except (ValueError, KeyError) as e:
+            log.warning(f"[V2] generate_codes_v2 attempt {attempt+1}/3 échoué : {e}")
+            if attempt == 2:
+                log.warning("[V2] 3 tentatives échouées → retour dict vide (fallback L1 sera déclenché)")
+                return {}
+    return {}
 
 
 # ─────────────────────────────────────────────────────────────
