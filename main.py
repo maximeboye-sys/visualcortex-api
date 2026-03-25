@@ -612,8 +612,11 @@ def plan_presentation(prompt: str, nb_slides: int, selection: list, brand: dict)
         ratio          = brand.get("aspect_ratio", "16:9"),
     )
 
+    # max_tokens adaptatif : ~120 tokens/slide suffisent pour le plan JSON
+    planner_tokens = max(1200, nb_slides * 130)
+
     msg = client.messages.create(
-        model=CLAUDE_MODEL, max_tokens=4000,
+        model=CLAUDE_MODEL, max_tokens=planner_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
@@ -730,8 +733,11 @@ def generate_content(prompt: str, plan: dict, selection: list, brand: dict) -> d
         slides_json = json.dumps(slides_payload, ensure_ascii=False, indent=2),
     )
 
+    # max_tokens adaptatif : ~220 tokens/slide (JSON + textes courts)
+    content_tokens = max(2000, len(slides_payload) * 220)
+
     msg = client.messages.create(
-        model=CLAUDE_MODEL, max_tokens=8000,
+        model=CLAUDE_MODEL, max_tokens=content_tokens,
         system=CORTEX_SYSTEM,
         messages=[{"role": "user", "content": user}],
     )
@@ -910,18 +916,9 @@ def _duplicate_slide_element(prs: Presentation, src_sld_el):
 
 
 def _cleanup_orphan_slides(prs: Presentation, kept_sld_els: list):
-    kept_rids = {el.get(qn("r:id")) for el in kept_sld_els}
-    all_slide_rels = [
-        (rId, rel) for rId, rel in prs.part.rels.items()
-        if "slide" in rel.reltype and "slideLayout" not in rel.reltype
-        and "slideMaster" not in rel.reltype
-    ]
-    for rId, rel in all_slide_rels:
-        if rId not in kept_rids:
-            try:
-                prs.part.drop_rel(rId)
-            except Exception:
-                pass
+    # drop_rel est instable selon les versions python-pptx — la sldIdLst
+    # controle les slides affichees, les rels orphelins sont ignores par PowerPoint.
+    pass
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1060,7 +1057,117 @@ async def generate_presentation(
     return StreamingResponse(
         io.BytesIO(final_bytes),
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Length":      str(len(final_bytes)),
+        },
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# GÉNÉRATION AVEC PROGRESSION SSE
+# Affiche la progression en temps réel côté frontend.
+# Protocole : POST multipart, réponse text/event-stream
+# Chaque event : { step, label, progress (0-100) }
+# Event final "done" : + file_b64 (base64), filename
+# ─────────────────────────────────────────────────────────────
+
+_PROGRESS_LABELS = {
+    "start":     ("Analyse du template…",           5),
+    "planned":   ("Structure narrative créée…",     35),
+    "generated": ("Contenu généré…",                70),
+    "hydrating": ("Assemblage de la présentation…", 90),
+    "done":      ("Prêt !",                         100),
+    "error":     ("Erreur…",                         0),
+}
+
+def _sse(event: str, data: dict) -> str:
+    label, pct = _PROGRESS_LABELS.get(event, (event, 50))
+    payload = json.dumps({"step": event, "label": label, "progress": pct, **data},
+                         ensure_ascii=False)
+    return f"data: {payload}\n\n"
+
+
+@app.post("/generate-stream")
+async def generate_stream(
+    request:       Request,
+    template:      UploadFile = File(...),
+    prompt:        str        = Form(...),
+    nb_slides:     int        = Form(default=8),
+    authorization: str        = Form(default=None),
+):
+    """
+    Génération avec progression SSE.
+    Event final "done" contient le fichier PPTX encodé en base64.
+    """
+    if not _is_pro(authorization):
+        _quota(_ip(request))
+
+    pptx_bytes = await template.read()
+
+    async def _stream():
+        import asyncio, base64
+        loop = asyncio.get_event_loop()
+
+        try:
+            yield _sse("start", {"nb_slides": nb_slides})
+
+            prs       = Presentation(io.BytesIO(pptx_bytes))
+            brand     = extract_brand(prs)
+            library   = build_layout_library(prs)
+            selection = select_template_slides(library, nb_slides)
+
+            # Appel Claude 1 — planning (exécuté dans un thread pour ne pas bloquer)
+            plan = await loop.run_in_executor(
+                None,
+                lambda: plan_presentation(prompt, nb_slides, selection, brand)
+            )
+            yield _sse("planned", {"title": plan.get("presentation_title", "")})
+
+            # Compléter le plan si insuffisant
+            plan_slides = plan.get("slides", [])
+            while len(plan_slides) < nb_slides:
+                fb = selection[min(len(plan_slides), len(selection) - 2)]
+                plan_slides.append({
+                    "plan_index":           len(plan_slides),
+                    "template_slide_index": fb["slide_index"],
+                    "slide_type":           fb["slide_type"],
+                    "narrative_angle":      "Développement complémentaire",
+                    "key_message":          "Argument additionnel",
+                    "visual_hint":          "",
+                })
+            plan["slides"] = plan_slides[:nb_slides]
+
+            # Appel Claude 2 — génération contenu
+            mapping = await loop.run_in_executor(
+                None,
+                lambda: generate_content(prompt, plan, selection, brand)
+            )
+            yield _sse("generated", {})
+
+            # Hydratation PPTX
+            yield _sse("hydrating", {})
+            final_bytes = hydrate_presentation(
+                pptx_bytes, mapping, plan["slides"], nb_slides
+            )
+
+            # Envoi du fichier en base64 dans l'event final
+            b64      = base64.b64encode(final_bytes).decode()
+            filename = f"visualcortex-{_safe_name(prompt)}.pptx"
+            yield _sse("done", {"file_b64": b64, "filename": filename})
+
+        except Exception as e:
+            log.error(f"[stream] Erreur : {e}", exc_info=True)
+            yield _sse("error", {"message": str(e)})
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":               "no-cache",
+            "X-Accel-Buffering":           "no",
+            "Access-Control-Allow-Origin": "*",
+        },
     )
 
 
@@ -1693,8 +1800,11 @@ def generate_codes_v2(
         slides_json = json.dumps(slides_payload, ensure_ascii=False, indent=2),
     )
 
+    # max_tokens adaptatif : ~450 tokens/slide (code python-pptx plus verbeux)
+    code_tokens = max(3000, len(slides_payload) * 450)
+
     msg = client.messages.create(
-        model=CLAUDE_MODEL, max_tokens=8000,
+        model=CLAUDE_MODEL, max_tokens=code_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
@@ -1874,19 +1984,8 @@ def _remove_original_slides_v2(prs: Presentation, n_original: int):
     for sld in new_sld_ids:
         xml_slides.append(sld)
 
-    # Nettoyer les rels orphelins
-    all_slide_rels = [
-        (rId, rel) for rId, rel in prs.part.rels.items()
-        if "slide" in rel.reltype
-        and "slideLayout" not in rel.reltype
-        and "slideMaster" not in rel.reltype
-    ]
-    for rId, rel in all_slide_rels:
-        if rId not in kept_rids:
-            try:
-                prs.part.drop_rel(rId)
-            except Exception:
-                pass
+    # Note : nettoyage des rels orphelins supprime (instable avec python-pptx).
+    # PowerPoint ignore les rels non references dans sldIdLst.
 
 
 # ─────────────────────────────────────────────────────────────
@@ -2013,7 +2112,10 @@ async def generate_presentation_v2(
     return StreamingResponse(
         io.BytesIO(final_bytes),
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Length": str(len(final_bytes)),
+        },
     )
 
 
