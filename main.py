@@ -61,6 +61,11 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 PRO_SECRET_TOKEN  = os.environ.get("PRO_SECRET_TOKEN", "change-me")
 FREE_QUOTA_PER_IP = int(os.environ.get("FREE_QUOTA_PER_IP", "3"))
 CLAUDE_MODEL      = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+PLANNER_MODEL     = os.environ.get("PLANNER_MODEL", "claude-haiku-4-5-20251001")
+
+# Nombre maximum de zones envoyées à Claude par slide.
+# Au-delà, les zones excédentaires sont vidées automatiquement (respiration visuelle).
+MAX_ZONES_PER_SLIDE = 12
 
 _usage: dict = defaultdict(list)
 DAY_SEC = 86400
@@ -509,47 +514,47 @@ def select_template_slides(library: list, nb_slides: int) -> list:
     """
     Sélectionne intelligemment nb_slides slides du template.
 
-    Règles :
-    1. Slide 0 (cover) toujours en premier.
-    2. Dernière slide (closing) toujours en dernier.
-    3. Pour les slides du milieu : priorité aux layouts visuels,
-       éviter de répéter le même type consécutivement.
-    4. Exclure les slides "complex" en priorité si possible.
-    5. Si nb_slides > template : signaler qu'il faudra dupliquer.
+    Règles de sélection :
+    1. cover toujours en premier, closing toujours en dernier.
+    2. Les slides "complex" (diagrammes avec 5+ GROUP shapes) sont
+       EXCLUES sauf si le template n'offre aucune autre option.
+    3. Priorité aux layouts visuels (kpi, timeline, two_col, image_text, quote).
+    4. Anti-répétition de type entre slides consécutives.
+    5. Si nb_slides > slides disponibles → dupliquer les meilleures.
+
+    Post-sélection : les zones excédentaires (> MAX_ZONES_PER_SLIDE) sont
+    marquées pour être vidées automatiquement, sans passer par Claude.
     """
     if not library:
         return []
 
     cover   = [s for s in library if s["slide_type"] == "cover"]
     closing = [s for s in library if s["slide_type"] == "closing"]
-    middle  = [s for s in library if s["slide_type"] not in ("cover", "closing")]
 
-    # Slides du milieu triées par visual_score desc, complex en dernier
+    # Exclure les slides complex en priorité
+    non_complex = [s for s in library if s["slide_type"] not in ("cover", "closing", "complex")]
+    complex_mid = [s for s in library if s["slide_type"] == "complex"]
+
+    # Utiliser les complex seulement si pas assez d'autres slides
+    middle = non_complex if non_complex else complex_mid
+
+    # Trier par visual_score desc
     middle_sorted = sorted(
         middle,
-        key=lambda s: (
-            0 if s["slide_type"] == "complex" else 1,  # complex = dernier recours
-            s["visual_score"],
-            -s["total_words"],  # préférer moins de texte
-        ),
+        key=lambda s: (s["visual_score"], -s["total_words"]),
         reverse=True,
     )
 
-    # Slots disponibles pour le milieu
     n_cover   = min(len(cover), 1)
     n_closing = min(len(closing), 1)
-    n_middle  = nb_slides - n_cover - n_closing
-
-    if n_middle < 0:
-        n_middle = 0
+    n_middle  = max(0, nb_slides - n_cover - n_closing)
 
     # Sélection avec anti-répétition de type
     selected_middle = []
-    last_type = None
-    pool = middle_sorted.copy()
+    last_type       = None
+    pool            = middle_sorted.copy()
 
     while len(selected_middle) < n_middle and pool:
-        # Préférer un type différent du précédent
         for i, s in enumerate(pool):
             if s["slide_type"] != last_type or i == len(pool) - 1:
                 selected_middle.append(s)
@@ -557,24 +562,41 @@ def select_template_slides(library: list, nb_slides: int) -> list:
                 pool.pop(i)
                 break
 
-    # Compléter si pas assez de slides uniques → dupliquer les meilleures
-    if len(selected_middle) < n_middle and middle_sorted:
-        cycle = middle_sorted * 10
-        for s in cycle:
+    # Compléter si pas assez → dupliquer les meilleures non-complex
+    if len(selected_middle) < n_middle:
+        fallback_pool = (non_complex or complex_mid) * 20
+        fallback_pool = sorted(fallback_pool, key=lambda s: s["visual_score"], reverse=True)
+        for s in fallback_pool:
             if len(selected_middle) >= n_middle:
                 break
-            # Créer une copie avec flag "duplicate"
-            dup = {**s, "duplicate": True}
-            selected_middle.append(dup)
+            selected_middle.append({**s, "duplicate": True})
 
-    # Assembler : cover + milieu (trié par slide_index) + closing
     result = (
         cover[:n_cover] +
         sorted(selected_middle, key=lambda s: s["slide_index"]) +
         closing[:n_closing]
     )
 
-    return result[:nb_slides]
+    # ── Cap de zones : limiter à MAX_ZONES_PER_SLIDE par slide ───
+    # Les zones au-delà du cap sont marquées "to_clear" → vidées sans passer par Claude
+    capped = []
+    for s in result:
+        zones        = s.get("zones", [])
+        # Toujours garder les footers, page_numbers et titres en premier
+        priority_roles = {"title", "subtitle", "footer", "page_number", "section_num"}
+        priority = [z for z in zones if z["role"] in priority_roles]
+        rest     = [z for z in zones if z["role"] not in priority_roles]
+
+        kept   = priority + rest[:max(0, MAX_ZONES_PER_SLIDE - len(priority))]
+        to_clear = [z for z in rest if z not in kept]
+
+        # Marquer les zones excédentaires
+        for z in to_clear:
+            z["to_clear"] = True
+
+        capped.append({**s, "zones": kept + to_clear})
+
+    return capped[:nb_slides]
 
 
 # ══════════════════════════════════════════════════════════════
@@ -686,7 +708,7 @@ async def plan_presentation(prompt: str, nb_slides: int, selection: list, brand:
     )
 
     msg = await client.messages.create(
-        model=CLAUDE_MODEL, max_tokens=4000,
+        model=PLANNER_MODEL, max_tokens=4000,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
@@ -834,18 +856,33 @@ FORMAT DE SORTIE (clés = template_slide_index en string) :
 
 
 async def generate_content(prompt: str, plan: dict, selection: list, brand: dict) -> dict:
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    client      = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     sel_by_idx  = {s["slide_index"]: s for s in selection}
     footer_text = plan.get("footer_text", "")
+
+    # Pré-remplir le mapping avec les zones à vider automatiquement
+    # Ces zones ne sont PAS envoyées à Claude (réduction de la taille du prompt)
+    pre_cleared: dict = {}
 
     slides_payload = []
     for sp in plan.get("slides", []):
         tidx       = sp.get("template_slide_index", 0)
         tmpl       = sel_by_idx.get(tidx, {})
         slide_type = sp.get("slide_type", "unknown")
+        density    = DENSITY_RULES.get(slide_type, DENSITY_RULES["unknown"])
 
-        # Injecter les density rules du type dans chaque slide
-        density = DENSITY_RULES.get(slide_type, DENSITY_RULES["unknown"])
+        all_zones  = tmpl.get("zones", [])
+        kept_zones = [z for z in all_zones if not z.get("to_clear", False)]
+        clear_zones = [z for z in all_zones if z.get("to_clear", False)]
+
+        # Pré-vider les zones excédentaires dans le mapping
+        key = str(tidx)
+        if clear_zones:
+            if key not in pre_cleared:
+                pre_cleared[key] = {}
+            for z in clear_zones:
+                pre_cleared[key][z["original_text"]] = ""
+            log.info(f"Slide {tidx}: {len(clear_zones)} zones pré-vidées (cap {MAX_ZONES_PER_SLIDE})")
 
         slides_payload.append({
             "template_slide_index": tidx,
@@ -862,6 +899,7 @@ async def generate_content(prompt: str, plan: dict, selection: list, brand: dict
                                  "example_subtitle", "example_label")
                 },
             },
+            # Seulement les zones retenues (≤ MAX_ZONES_PER_SLIDE)
             "zones": [
                 {
                     "original_text":         z["original_text"],
@@ -870,7 +908,7 @@ async def generate_content(prompt: str, plan: dict, selection: list, brand: dict
                     "char_count":            z.get("char_count", 0),
                     "is_placeholder_footer": z.get("is_placeholder_footer", False),
                 }
-                for z in tmpl.get("zones", [])
+                for z in kept_zones
             ],
         })
 
@@ -894,7 +932,13 @@ async def generate_content(prompt: str, plan: dict, selection: list, brand: dict
     raw     = _clean_json(msg.content[0].text.strip())
     mapping = json.loads(raw)
 
-    # Post-validation : tronquer les textes qui dépassent les limites
+    # Fusionner le mapping Claude avec les zones pré-vidées
+    for slide_key, clears in pre_cleared.items():
+        if slide_key not in mapping:
+            mapping[slide_key] = {}
+        mapping[slide_key].update(clears)
+
+    # Post-validation
     mapping = _validate_and_trim(mapping, slides_payload)
 
     log.info(f"Contenu généré et validé : {len(mapping)} slides.")
