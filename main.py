@@ -582,7 +582,16 @@ def select_template_slides(library: list, nb_slides: int) -> list:
         closing[:n_closing]
     )
 
-    return result[:nb_slides]
+    result = result[:nb_slides]
+
+    # Garantie : si closing existe dans le template, elle est TOUJOURS en dernière position
+    if closing and (not result or result[-1]["slide_type"] != "closing"):
+        if len(result) < nb_slides:
+            result.append(closing[0])
+        else:
+            result[-1] = closing[0]
+
+    return result
 
 
 # ══════════════════════════════════════════════════════════════
@@ -719,6 +728,9 @@ RÈGLES UNIVERSELLES (s'appliquent à toutes les slides)
 4. PROGRESSION : chaque slide fait avancer l'histoire selon son narrative_angle.
 5. ZÉRO invention de données, chiffres ou noms non fournis dans le prompt.
 6. FOOTERS PLACEHOLDER : zones "is_placeholder_footer: true" → remplacer par le footer_text.
+7. ZONES VIDES INTENTIONNELLES : si une zone n'a pas de contenu pertinent pour le type de slide,
+   retourne "" (chaîne vide) pour la vider. Ne jamais laisser un texte de template générique.
+8. SLIDE CLOSING : toujours présente en dernière position. Titre court, mémorable. Jamais de bullet points.
 
 ═══════════════════════════════════════════════════
 RÈGLES PAR TYPE DE SLIDE (density rules)
@@ -1006,9 +1018,10 @@ def _cleanup_orphan_slides(prs: Presentation, kept_sld_els: list):
 # ══════════════════════════════════════════════════════════════
 
 NB_SLIDES_MAP = {
-    "essentiel":  6,   # milieu de 5-7
-    "complet":   10,   # milieu de 8-13
-    "approfondi": 16,  # 14+
+    # Valeurs fixes — le planner s'adapte
+    "essentiel":  6,
+    "complet":    9,
+    "approfondi": 14,
 }
 
 def _resolve_nb_slides(value) -> int:
@@ -2497,23 +2510,18 @@ async def generate_presentation_v2(
     authorization: str        = Form(default=None),
 ):
     """
-    Pipeline Niveau 2 — Génération créative.
-    nb_slides accepte : "Essentiel" | "Complet" | "Approfondi" ou un entier.
+    Route unifiée — utilise le pipeline L1 (fiable).
+    nb_slides accepte : "Essentiel"→6 | "Complet"→10 | "Approfondi"→16 ou un entier.
+    profile conservé pour compatibilité API future.
     """
     if not _is_pro(authorization):
         _quota(_ip(request))
 
     n = _resolve_nb_slides(nb_slides)
     pptx_bytes = await template.read()
+    final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
 
-    try:
-        final_bytes, plan, _, palette = run_pipeline_v2(pptx_bytes, prompt, n, profile)
-        log.info(f'[V2] Pipeline Level 2 réussi ({n} slides).')
-    except Exception as e:
-        log.warning(f'[V2] Échec Level 2 ({e}) → fallback Level 1')
-        final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
-
-    filename = f'visualcortex-v2-{_safe_name(prompt)}.pptx'
+    filename = f'visualcortex-{_safe_name(prompt)}.pptx'
     return StreamingResponse(
         io.BytesIO(final_bytes),
         media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation',
