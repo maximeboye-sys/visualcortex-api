@@ -36,6 +36,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.text import PP_ALIGN
 import uvicorn
+from layouts import LAYOUT_REGISTRY, LAYOUT_DESCRIPTIONS
 
 # ─────────────────────────────────────────────
 # LOGGING & APP
@@ -2488,6 +2489,181 @@ def run_pipeline_v2(
 
 
 # ══════════════════════════════════════════════════════════════
+# PIPELINE V3 — Layouts pré-testés
+# ══════════════════════════════════════════════════════════════
+
+_V3_PLANNER_SYSTEM = """\
+Tu es un consultant PowerPoint expert. Tu planifies des présentations professionnelles
+visuellement distinctes, avec une idée forte par slide.
+Retourne UNIQUEMENT du JSON valide, sans markdown ni commentaire.\
+"""
+
+_V3_PLANNER_USER = """\
+Planifie une présentation sur : {prompt}
+Nombre de slides : {nb_slides}
+
+Charte graphique :
+- Couleur primaire : #{primary}
+- Couleur accent   : #{accent}
+- Police           : {font}
+
+Layouts disponibles :
+{layouts_block}
+
+Retourne UNIQUEMENT ce JSON :
+{{
+  "presentation_title": "...",
+  "footer_text": "...",
+  "slides": [
+    {{
+      "layout": "<nom_layout>",
+      "content": {{ ... }}
+    }}
+  ]
+}}
+
+Règles impératives :
+- Commence TOUJOURS par cover_dark ou cover_split
+- Termine TOUJOURS par closing_dark ou closing_split
+- Varie les layouts : jamais deux fois le même layout consécutivement
+- Pour kpi_grid : 4 à 6 KPIs, valeurs ≤ 3 mots
+- Pour kpi_row  : 3 à 4 KPIs, valeurs ≤ 3 mots
+- Pour list_*   : 3 à 5 items maximum
+- Pour timeline_h : 4 à 5 jalons maximum
+- footer_text identique sur toutes les slides de contenu
+- Titre de slide ≤ 8 mots, items ≤ 18 mots, body ≤ 40 mots
+\
+"""
+
+
+def plan_presentation_v3(prompt: str, nb_slides: int, palette: dict) -> dict:
+    """
+    Planifie une présentation via layouts pré-testés.
+    Claude retourne uniquement du JSON : [{layout, content}, ...].
+    """
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    layouts_block = '\n'.join(
+        f'- {name}: {desc}'
+        for name, desc in LAYOUT_DESCRIPTIONS.items()
+    )
+
+    user = _V3_PLANNER_USER.format(
+        prompt        = prompt,
+        nb_slides     = nb_slides,
+        primary       = palette.get('primary', '1A3A6B'),
+        accent        = palette.get('accent',  'F0A500'),
+        font          = palette.get('font',    'Calibri'),
+        layouts_block = layouts_block,
+    )
+
+    max_tokens = max(2500, nb_slides * 220)
+
+    for attempt in range(3):
+        msg = client.messages.create(
+            model      = CLAUDE_MODEL,
+            max_tokens = max_tokens,
+            system     = _V3_PLANNER_SYSTEM,
+            messages   = [{'role': 'user', 'content': user}],
+        )
+        try:
+            plan = _parse_json_robust(msg.content[0].text.strip(), context='plan_v3')
+            slides = plan.get('slides', [])
+            log.info(f'[V3] Plan: {len(slides)} slides, title="{plan.get("presentation_title","")[:60]}"')
+            return plan
+        except (ValueError, KeyError) as e:
+            log.warning(f'plan_presentation_v3 attempt {attempt+1}/3 failed: {e}')
+            if attempt == 2:
+                raise
+    raise RuntimeError('plan_presentation_v3 : 3 tentatives échouées')
+
+
+def run_pipeline_v3(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
+    """
+    Pipeline V3 — layouts pré-testés, zéro génération de code.
+
+    Phase 1 : extraction charte + palette
+    Phase 2 : planification narrative par Claude (JSON layouts)
+    Phase 3 : application des fonctions de layout pré-testées
+    Phase 4 : suppression des slides originales du template
+    """
+    if not ANTHROPIC_API_KEY:
+        raise ValueError('Clé API Claude manquante.')
+
+    nb_slides = max(2, min(nb_slides, 30))
+
+    prs        = Presentation(io.BytesIO(pptx_bytes))
+    n_original = len(prs.slides)
+
+    # ── Phase 1 ───────────────────────────────────────────────
+    log.info(f'[V3] Phase 1 : extraction charte ({nb_slides} slides)...')
+    brand   = extract_brand(prs)
+    palette = _h2_extract_palette(brand)
+    log.info(f'[V3] Palette : primary=#{palette["primary"]} accent=#{palette["accent"]} font={palette["font"]}')
+
+    # ── Phase 2 ───────────────────────────────────────────────
+    log.info('[V3] Phase 2 : planification narrative...')
+    plan = plan_presentation_v3(prompt, nb_slides, palette)
+
+    slides_plan = plan.get('slides', [])
+
+    # Compléter si Claude en a généré moins que demandé
+    fallback_layouts = ['full_text', 'list_numbered', 'two_col', 'kpi_row']
+    while len(slides_plan) < nb_slides:
+        fb_name = fallback_layouts[len(slides_plan) % len(fallback_layouts)]
+        slides_plan.append({
+            'layout':  fb_name,
+            'content': {
+                'title':      'Développement complémentaire',
+                'paragraphs': ['Contenu additionnel à personnaliser.'],
+                'footer':     plan.get('footer_text', ''),
+            },
+        })
+    slides_plan = slides_plan[:nb_slides]
+
+    # ── Phase 3 ───────────────────────────────────────────────
+    log.info('[V3] Phase 3 : application des layouts...')
+    success = 0
+    for sp in slides_plan:
+        layout_name = sp.get('layout', 'full_text')
+        content     = sp.get('content', {})
+
+        # Injecter footer_text global si absent du content
+        if not content.get('footer') and plan.get('footer_text'):
+            content['footer'] = plan['footer_text']
+
+        layout_fn = LAYOUT_REGISTRY.get(layout_name) or LAYOUT_REGISTRY['full_text']
+        try:
+            layout_fn(prs, content, palette)
+            success += 1
+        except Exception as e:
+            log.warning(f'[V3] Layout {layout_name!r} échoué : {e} — fallback full_text')
+            try:
+                LAYOUT_REGISTRY['full_text'](prs, {
+                    'title':      content.get('title', ''),
+                    'paragraphs': [],
+                    'footer':     content.get('footer', ''),
+                }, palette)
+                success += 1
+            except Exception:
+                pass
+
+    log.info(f'[V3] {success}/{nb_slides} slides générées.')
+
+    # ── Phase 4 ───────────────────────────────────────────────
+    log.info('[V3] Phase 4 : suppression des slides originales du template...')
+    xml_slides = prs.slides._sldIdLst
+    to_remove  = list(prs.slides._sldIdLst)[:n_original]
+    for sld_id in to_remove:
+        xml_slides.remove(sld_id)
+
+    out = io.BytesIO()
+    prs.save(out)
+    out.seek(0)
+    return out.read(), plan, brand, palette
+
+
+# ══════════════════════════════════════════════════════════════
 # ROUTES NIVEAU 2
 # ══════════════════════════════════════════════════════════════
 
@@ -2510,7 +2686,7 @@ async def generate_presentation_v2(
     authorization: str        = Form(default=None),
 ):
     """
-    Route unifiée — utilise le pipeline L1 (fiable).
+    Route V3 — pipeline layouts pré-testés (fiable, zéro génération de code).
     nb_slides accepte : "Essentiel"→6 | "Complet"→10 | "Approfondi"→16 ou un entier.
     profile conservé pour compatibilité API future.
     """
@@ -2519,7 +2695,12 @@ async def generate_presentation_v2(
 
     n = _resolve_nb_slides(nb_slides)
     pptx_bytes = await template.read()
-    final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
+
+    try:
+        final_bytes, plan, brand, palette = run_pipeline_v3(pptx_bytes, prompt, n)
+    except Exception as e:
+        log.error(f'[V3] Erreur pipeline : {e}', exc_info=True)
+        raise HTTPException(500, f'Erreur génération V3 : {e}')
 
     filename = f'visualcortex-{_safe_name(prompt)}.pptx'
     return StreamingResponse(
