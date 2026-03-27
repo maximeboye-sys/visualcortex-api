@@ -2784,6 +2784,7 @@ def run_pipeline_v3(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
     # ── Phase 2 ───────────────────────────────────────────────
     log.info('[V3] Phase 2 : planification narrative...')
     plan = plan_presentation_v3(prompt, nb_slides, palette)
+    log.info(f'[V3] Plan reçu : {json.dumps(plan, ensure_ascii=False)[:1000]}')
 
     slides_plan = plan.get('slides', [])
 
@@ -2800,10 +2801,12 @@ def run_pipeline_v3(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
             },
         })
     slides_plan = slides_plan[:nb_slides]
+    log.info(f'[V3] {len(slides_plan)} slides à générer : {[s.get("layout") for s in slides_plan]}')
 
     # ── Phase 3 ───────────────────────────────────────────────
     log.info('[V3] Phase 3 : application des layouts...')
     success = 0
+    slides_before = len(prs.slides)
     for sp in slides_plan:
         layout_name = sp.get('layout', 'full_text')
         content     = sp.get('content', {})
@@ -2813,11 +2816,13 @@ def run_pipeline_v3(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
             content['footer'] = plan['footer_text']
 
         layout_fn = LAYOUT_REGISTRY.get(layout_name) or LAYOUT_REGISTRY['full_text']
+        log.info(f'[V3] → layout "{layout_name}" (total slides avant: {len(prs.slides)})')
         try:
             layout_fn(prs, content, palette)
             success += 1
+            log.info(f'[V3] ✓ "{layout_name}" OK — total slides: {len(prs.slides)}')
         except Exception as e:
-            log.warning(f'[V3] Layout {layout_name!r} échoué : {e} — fallback full_text')
+            log.error(f'[V3] ✗ "{layout_name}" ÉCHOUÉ : {repr(e)}', exc_info=True)
             try:
                 LAYOUT_REGISTRY['full_text'](prs, {
                     'title':      content.get('title', ''),
@@ -2825,17 +2830,29 @@ def run_pipeline_v3(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
                     'footer':     content.get('footer', ''),
                 }, palette)
                 success += 1
-            except Exception:
-                pass
+                log.info(f'[V3] ✓ fallback full_text OK — total slides: {len(prs.slides)}')
+            except Exception as e2:
+                log.error(f'[V3] ✗ fallback full_text AUSSI ÉCHOUÉ : {repr(e2)}', exc_info=True)
 
-    log.info(f'[V3] {success}/{nb_slides} slides générées.')
+    log.info(f'[V3] Phase 3 terminée : {success}/{nb_slides} OK — '
+             f'{len(prs.slides) - slides_before} slides ajoutées au total')
 
     # ── Phase 4 ───────────────────────────────────────────────
-    log.info('[V3] Phase 4 : suppression des slides originales du template...')
+    slides_added = len(prs.slides) - n_original
+    log.info(f'[V3] Phase 4 : {len(prs.slides)} slides totales '
+             f'({n_original} originales + {slides_added} nouvelles)')
+
+    if slides_added == 0:
+        raise RuntimeError(
+            f'[V3] Aucune slide créée (success={success}) — fallback L1 déclenché'
+        )
+
     xml_slides = prs.slides._sldIdLst
     to_remove  = list(prs.slides._sldIdLst)[:n_original]
     for sld_id in to_remove:
         xml_slides.remove(sld_id)
+    log.info(f'[V3] {n_original} slides originales supprimées — '
+             f'{len(prs.slides)} slides finales')
 
     out = io.BytesIO()
     prs.save(out)
