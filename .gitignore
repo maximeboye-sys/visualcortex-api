@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pyo
+test_output*.pptx
+*.pptx.tmp
+.env
