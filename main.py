@@ -438,27 +438,120 @@ def _shape_role(shape, w: int, h: int) -> str:
 
 
 def extract_brand(prs: Presentation) -> dict:
-    fonts, colors = set(), set()
-    for slide in prs.slides:
-        for shape in iter_all_shapes(slide.shapes):
-            if not getattr(shape, "has_text_frame", False):
+    """
+    Extraire la charte depuis n'importe quel template PPTX.
+    Sources par priorité décroissante :
+      1. Couleurs du thème XML (accent1-6, dk2) — source la plus fiable
+      2. Couleurs du thème XML font (majorFont / minorFont)
+      3. Couleurs de remplissage des shapes du slide master
+      4. Couleurs et polices des textes dans les slides (fallback)
+    """
+    _NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    _SKIP = {'FFFFFF', 'FFFFFE', '000000', 'FEFEFE', 'F2F2F2', 'EEEEEE'}
+
+    theme_colors  = []
+    master_colors = []
+    text_colors   = []
+    fonts         = []
+
+    # ── Source 1 & 2 : Thème XML du slide master ──────────────
+    try:
+        master = prs.slide_masters[0]
+        for rel in master.part.rels.values():
+            if 'theme' not in rel.reltype:
                 continue
-            for para in shape.text_frame.paragraphs:
-                for run in para.runs:
-                    if run.font.name:
-                        fonts.add(run.font.name)
-                    if run.font.color and run.font.color.type is not None:
-                        try:
-                            rgb = run.font.color.rgb
-                            if rgb not in (RGBColor(0xFF, 0xFF, 0xFF), RGBColor(0, 0, 0)):
-                                colors.add(str(rgb))
-                        except Exception:
-                            pass
+            theme_el = rel._target._element
+
+            # Couleurs : accent1-6 en priorité, puis dk2
+            clr_scheme = theme_el.find(f'.//{{{_NS}}}clrScheme')
+            if clr_scheme is not None:
+                order = ['accent1','accent2','accent3','accent4',
+                         'accent5','accent6','dk2','dk1','lt2']
+                slot_map = {}
+                for child in clr_scheme:
+                    tag = child.tag.split('}')[-1]
+                    for el_name, attr in [('srgbClr','val'), ('sysClr','lastClr')]:
+                        el = child.find(f'{{{_NS}}}{el_name}')
+                        if el is not None:
+                            val = el.get(attr, '').upper().lstrip('#')
+                            if len(val) == 6:
+                                slot_map[tag] = val
+                for slot in order:
+                    v = slot_map.get(slot, '')
+                    if v and v not in _SKIP and v not in theme_colors:
+                        theme_colors.append(v)
+
+            # Polices : minorFont (corps) en premier, puis majorFont (titres)
+            font_scheme = theme_el.find(f'.//{{{_NS}}}fontScheme')
+            if font_scheme is not None:
+                for node_name in ['minorFont', 'majorFont']:
+                    node = font_scheme.find(f'{{{_NS}}}{node_name}')
+                    if node is not None:
+                        latin = node.find(f'{{{_NS}}}latin')
+                        if latin is not None:
+                            tf = latin.get('typeface', '')
+                            if tf and tf not in ('+mj-lt', '+mn-lt', '') and tf not in fonts:
+                                fonts.append(tf)
+            break
+    except Exception:
+        pass
+
+    # ── Source 3 : Shapes du slide master ─────────────────────
+    try:
+        for shape in iter_all_shapes(prs.slide_masters[0].shapes):
+            # Fill color
+            try:
+                fill = shape.fill
+                if fill.type is not None:
+                    rgb = fill.fore_color.rgb
+                    hx = str(rgb).upper()
+                    if hx not in _SKIP and hx not in master_colors:
+                        master_colors.append(hx)
+            except Exception:
+                pass
+            # Font
+            if getattr(shape, 'has_text_frame', False):
+                for para in shape.text_frame.paragraphs:
+                    for run in para.runs:
+                        if run.font.name and run.font.name not in fonts:
+                            fonts.append(run.font.name)
+    except Exception:
+        pass
+
+    # ── Source 4 : Textes des slides (fallback) ───────────────
+    try:
+        for slide in prs.slides:
+            for shape in iter_all_shapes(slide.shapes):
+                if not getattr(shape, 'has_text_frame', False):
+                    continue
+                for para in shape.text_frame.paragraphs:
+                    for run in para.runs:
+                        if run.font.name and run.font.name not in fonts:
+                            fonts.append(run.font.name)
+                        if run.font.color and run.font.color.type is not None:
+                            try:
+                                hx = str(run.font.color.rgb).upper()
+                                if hx not in _SKIP and hx not in text_colors:
+                                    text_colors.append(hx)
+                            except Exception:
+                                pass
+    except Exception:
+        pass
+
+    # ── Fusion : thème > master > textes ──────────────────────
+    all_colors = []
+    seen = set()
+    for c in theme_colors + master_colors + text_colors:
+        if c not in seen and len(c) == 6:
+            seen.add(c)
+            all_colors.append(c)
 
     w, h = prs.slide_width, prs.slide_height
+    log.info(f'[brand] fonts={fonts[:3]} theme_colors={theme_colors[:4]} '
+             f'master_colors={master_colors[:2]} text_colors={text_colors[:2]}')
     return {
-        "fonts":           list(fonts)[:5],
-        "colors":          list(colors)[:8],
+        "fonts":           fonts[:5],
+        "colors":          all_colors[:8],
         "slide_count":     len(prs.slides),
         "layouts":         [l.name for l in prs.slide_layouts],
         "slide_width_in":  round(_emu(w), 2),
@@ -1171,7 +1264,13 @@ async def generate_presentation(
 
     n = _resolve_nb_slides(nb_slides)
     pptx_bytes = await template.read()
-    final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
+
+    try:
+        final_bytes, plan, _, _pal = run_pipeline_v3(pptx_bytes, prompt, n)
+        log.info("[/generate] Pipeline V3 OK")
+    except Exception as e:
+        log.warning(f"[/generate] V3 échoué ({e}) → fallback L1")
+        final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
 
     filename = f"visualcortex-{_safe_name(prompt)}.pptx"
     return StreamingResponse(
@@ -1226,53 +1325,40 @@ async def generate_stream(
     pptx_bytes = await template.read()
 
     async def _stream():
-        import asyncio, base64
+        import asyncio, base64 as _b64
         loop = asyncio.get_event_loop()
 
         try:
             yield _sse("start", {"nb_slides": nb_slides})
 
-            prs       = Presentation(io.BytesIO(pptx_bytes))
-            brand     = extract_brand(prs)
-            library   = build_layout_library(prs)
-            selection = select_template_slides(library, nb_slides)
-
-            # Appel Claude 1 — planning (exécuté dans un thread pour ne pas bloquer)
-            plan = await loop.run_in_executor(
+            # Phase 1+2 : brand + planning V3
+            prs_tmp = Presentation(io.BytesIO(pptx_bytes))
+            brand   = extract_brand(prs_tmp)
+            palette = _h2_extract_palette(brand)
+            plan    = await loop.run_in_executor(
                 None,
-                lambda: plan_presentation(prompt, nb_slides, selection, brand)
+                lambda: plan_presentation_v3(prompt, nb_slides, palette)
             )
             yield _sse("planned", {"title": plan.get("presentation_title", "")})
 
-            # Compléter le plan si insuffisant
-            plan_slides = plan.get("slides", [])
-            while len(plan_slides) < nb_slides:
-                fb = selection[min(len(plan_slides), len(selection) - 2)]
-                plan_slides.append({
-                    "plan_index":           len(plan_slides),
-                    "template_slide_index": fb["slide_index"],
-                    "slide_type":           fb["slide_type"],
-                    "narrative_angle":      "Développement complémentaire",
-                    "key_message":          "Argument additionnel",
-                    "visual_hint":          "",
-                })
-            plan["slides"] = plan_slides[:nb_slides]
-
-            # Appel Claude 2 — génération contenu
-            mapping = await loop.run_in_executor(
-                None,
-                lambda: generate_content(prompt, plan, selection, brand)
-            )
+            # Phase 3 : application layouts (dans un thread)
             yield _sse("generated", {})
-
-            # Hydratation PPTX
             yield _sse("hydrating", {})
-            final_bytes = hydrate_presentation(
-                pptx_bytes, mapping, plan["slides"], nb_slides
-            )
 
-            # Envoi du fichier en base64 dans l'event final
-            b64      = base64.b64encode(final_bytes).decode()
+            try:
+                final_bytes, _plan, _brand, _pal = await loop.run_in_executor(
+                    None,
+                    lambda: run_pipeline_v3(pptx_bytes, prompt, nb_slides)
+                )
+                log.info("[/generate-stream] Pipeline V3 OK")
+            except Exception as e_v3:
+                log.warning(f"[/generate-stream] V3 échoué ({e_v3}) → fallback L1")
+                final_bytes, _plan, _ = await loop.run_in_executor(
+                    None,
+                    lambda: run_pipeline(pptx_bytes, prompt, nb_slides)
+                )
+
+            b64      = _b64.b64encode(final_bytes).decode()
             filename = f"visualcortex-{_safe_name(prompt)}.pptx"
             yield _sse("done", {"file_b64": b64, "filename": filename})
 
@@ -1445,8 +1531,55 @@ def _make_palette_swatch(palette: dict) -> dict | None:
 def _h2_extract_palette(brand: dict) -> dict:
     """
     Construit la palette de rôles (primary, secondary, accent, light, text, font)
-    depuis la charte extraite du template. Fallback bleu corporate sobre.
+    depuis la charte extraite du template.
+
+    Sélection intelligente :
+    - primary   → couleur la plus sombre et saturée (fond cover, sections)
+    - secondary → 2e couleur sombre (accents structurels)
+    - accent    → couleur la plus vive/saturée, différente de primary
+    - light     → version très claire du primary (fonds contenu)
+    - text      → version très foncée du primary (texte sur fond clair)
+    - font      → police du template
     """
+
+    def _lum(h: str) -> float:
+        try:
+            h = h.lstrip('#').strip()
+            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            return 0.299*r + 0.587*g + 0.114*b
+        except Exception:
+            return 128.0
+
+    def _sat(h: str) -> float:
+        """Saturation HSV (0–1)."""
+        try:
+            h = h.lstrip('#').strip()
+            r, g, b = int(h[0:2],16)/255, int(h[2:4],16)/255, int(h[4:6],16)/255
+            mx, mn = max(r, g, b), min(r, g, b)
+            return 0.0 if mx == 0 else (mx - mn) / mx
+        except Exception:
+            return 0.0
+
+    def _light(h: str, mix: float = 0.88) -> str:
+        try:
+            h = h.lstrip('#').strip()
+            r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
+            return (f"{int(r*(1-mix)+255*mix):02X}"
+                    f"{int(g*(1-mix)+255*mix):02X}"
+                    f"{int(b*(1-mix)+255*mix):02X}")
+        except Exception:
+            return 'EEF3FA'
+
+    def _darken(h: str, factor: float = 0.30) -> str:
+        try:
+            h = h.lstrip('#').strip()
+            r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
+            return (f"{max(0,int(r*factor)):02X}"
+                    f"{max(0,int(g*factor)):02X}"
+                    f"{max(0,int(b*factor)):02X}")
+        except Exception:
+            return '1A1A2E'
+
     palette = {
         'primary':   '1A3A6B',
         'secondary': '2E6DA4',
@@ -1455,33 +1588,52 @@ def _h2_extract_palette(brand: dict) -> dict:
         'text':      '1A1A2E',
         'font':      'Calibri',
     }
+
     fonts  = brand.get('fonts', [])
-    colors = brand.get('colors', [])
+    colors = [c.lstrip('#').strip() for c in brand.get('colors', []) if len(c.lstrip('#').strip()) == 6]
+
     if fonts:
         palette['font'] = fonts[0]
-    if len(colors) >= 1:
-        palette['primary']   = colors[0].lstrip('#')
-    if len(colors) >= 2:
-        palette['secondary'] = colors[1].lstrip('#')
-    if len(colors) >= 3:
-        palette['accent']    = colors[2].lstrip('#')
 
-    # Calcul automatique de 'light' (primary éclaircit à 88%)
-    try:
-        p  = palette['primary'].lstrip('#')
-        r, g, b = int(p[0:2], 16), int(p[2:4], 16), int(p[4:6], 16)
-        palette['light'] = f"{int(r*0.12+255*0.88):02X}{int(g*0.12+255*0.88):02X}{int(b*0.12+255*0.88):02X}"
-    except Exception:
-        pass
+    if not colors:
+        # Pas de couleurs extraites → fallback bleu corporate
+        palette['light'] = _light(palette['primary'])
+        palette['text']  = _darken(palette['primary'])
+        return palette
 
-    # Calcul de 'text' (primary très foncé)
-    try:
-        p  = palette['primary'].lstrip('#')
-        r, g, b = int(p[0:2], 16), int(p[2:4], 16), int(p[4:6], 16)
-        palette['text'] = f"{max(0,int(r*0.3)):02X}{max(0,int(g*0.3)):02X}{max(0,int(b*0.3)):02X}"
-    except Exception:
-        pass
+    # ── Primary : couleur la plus sombre (lum < 140) et saturée ──
+    dark = sorted([c for c in colors if _lum(c) < 140], key=lambda c: _lum(c))
+    if dark:
+        palette['primary'] = dark[0]
+    else:
+        # Pas de couleur sombre → prendre la plus saturée
+        palette['primary'] = max(colors, key=_sat)
 
+    # ── Secondary : 2e couleur sombre différente de primary ───────
+    remaining = [c for c in colors if c != palette['primary']]
+    dark2 = sorted([c for c in remaining if _lum(c) < 160], key=lambda c: _lum(c))
+    if dark2:
+        palette['secondary'] = dark2[0]
+    elif remaining:
+        palette['secondary'] = remaining[0]
+
+    # ── Accent : couleur la plus vive (saturée) et visible ────────
+    # Critères : saturation > 0.25, luminance entre 50 et 230, ≠ primary
+    candidates = sorted(
+        [c for c in colors if c != palette['primary'] and _sat(c) > 0.25 and 50 < _lum(c) < 230],
+        key=_sat, reverse=True
+    )
+    if candidates:
+        palette['accent'] = candidates[0]
+    elif len(colors) >= 3:
+        palette['accent'] = colors[2]
+
+    # ── Light et Text calculés depuis primary ─────────────────────
+    palette['light'] = _light(palette['primary'], mix=0.88)
+    palette['text']  = _darken(palette['primary'], factor=0.30)
+
+    log.info(f"[palette] primary=#{palette['primary']} secondary=#{palette['secondary']} "
+             f"accent=#{palette['accent']} font={palette['font']}")
     return palette
 
 
