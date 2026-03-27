@@ -1229,22 +1229,20 @@ async def generate_preview(
     pptx_bytes = await template.read()
     prs        = Presentation(io.BytesIO(pptx_bytes))
     brand      = extract_brand(prs)
-    lib        = build_layout_library(prs)
-    sel        = select_template_slides(lib, n)
-    plan       = plan_presentation(prompt, n, sel, brand)
+    palette    = _h2_extract_palette(brand)
+    plan       = plan_presentation_v3(prompt, n, palette)
 
     return {
         "success":            True,
         "presentation_title": plan.get("presentation_title", prompt[:60]),
-        "narrative_arc":      plan.get("narrative_arc", ""),
+        "footer_text":        plan.get("footer_text", ""),
         "slides": [
             {
-                "index":           s.get("plan_index"),
-                "type":            s.get("slide_type"),
-                "narrative_angle": s.get("narrative_angle"),
-                "key_message":     s.get("key_message"),
+                "index":  i,
+                "layout": s.get("layout"),
+                "title":  s.get("content", {}).get("title", ""),
             }
-            for s in plan.get("slides", [])
+            for i, s in enumerate(plan.get("slides", []))
         ],
         "brand": brand,
         "quota": quota_info,
@@ -2645,13 +2643,21 @@ def run_pipeline_v2(
 # ══════════════════════════════════════════════════════════════
 
 _V3_PLANNER_SYSTEM = """\
-Tu es un consultant PowerPoint expert. Tu planifies des présentations professionnelles
-visuellement distinctes, avec une idée forte par slide.
-Retourne UNIQUEMENT du JSON valide, sans markdown ni commentaire.\
+Tu es un consultant senior spécialisé en communication visuelle et stratégie.
+Tu crées des présentations PowerPoint de niveau agence — niveau Gamma.app ou McKinsey.
+
+PRINCIPES ÉDITORIAUX (non négociables) :
+1. Une seule idée forte par slide. Jamais deux messages.
+2. Les titres sont des assertions, pas des thèmes. Pas "Contexte marché" mais "Le marché a doublé en 3 ans".
+3. Les chiffres sont réels, précis et sourcés. Pas "beaucoup" mais "47 %".
+4. Le contenu est celui d'un expert du domaine, pas un résumé Wikipedia.
+5. Zéro phrase passive, zéro jargon vide. Chaque mot compte.
+
+FORMAT : retourne UNIQUEMENT du JSON valide, sans markdown ni commentaire.\
 """
 
 _V3_PLANNER_USER = """\
-Planifie une présentation sur : {prompt}
+Crée une présentation sur : {prompt}
 Nombre de slides : {nb_slides}
 
 Charte graphique :
@@ -2659,31 +2665,53 @@ Charte graphique :
 - Couleur accent   : #{accent}
 - Police           : {font}
 
-Layouts disponibles :
-{layouts_block}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAYOUTS DISPONIBLES + STRUCTURE JSON EXACTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Retourne UNIQUEMENT ce JSON :
+cover_dark / cover_split  →  {{"title":"...", "subtitle":"...", "footer":"..."}}
+section                   →  {{"number":"01", "title":"..."}}
+kpi_grid                  →  {{"title":"...", "kpis":[{{"value":"47 %","label":"Part de marché","sublabel":"2023, source XYZ"}}], "footer":"..."}}
+kpi_row                   →  {{"title":"...", "kpis":[{{"value":"3,2 Md€","label":"CA 2023","sublabel":"vs 2,1 Md€ en 2022"}}], "footer":"..."}}
+timeline_h                →  {{"title":"...", "steps":[{{"date":"2021","title":"Lancement","body":"Déploiement initial dans 3 pays"}}], "footer":"..."}}
+two_col                   →  {{"title":"...", "col_a":{{"title":"POUR","items":["Argument 1","Argument 2"]}}, "col_b":{{"title":"CONTRE","items":["Limite 1","Limite 2"]}}, "footer":"..."}}
+quote_dark                →  {{"quote":"Citation percutante ≤ 20 mots", "author":"Prénom NOM, Titre — 2024", "footer":"..."}}
+list_numbered             →  {{"title":"...", "items":[{{"title":"Levier 1","body":"Explication concise en 15 mots max."}}], "footer":"..."}}
+list_cards                →  {{"title":"...", "cards":[{{"title":"Axe 1","body":"Description en 20 mots max."}}], "footer":"..."}}
+image_split               →  {{"title":"...", "points":["Point 1 en 15 mots","Point 2"], "footer":"..."}}
+full_text                 →  {{"title":"...", "paragraphs":["Paragraphe 1 (≤ 40 mots)","Paragraphe 2"], "footer":"..."}}
+stat_hero                 →  {{"value":"€ 2,3 Md", "label":"Montant des pertes évitées", "context":"Estimation sur 5 ans — rapport Ernst & Young 2023", "footer":"..."}}
+closing_dark / closing_split → {{"title":"Merci", "subtitle":"Sources : ... · Contact : ..."}}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRUCTURE DE RÉPONSE ATTENDUE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {{
-  "presentation_title": "...",
-  "footer_text": "...",
+  "presentation_title": "Titre accrocheur ≤ 8 mots",
+  "footer_text": "Nom entreprise · Sujet · Année",
   "slides": [
-    {{
-      "layout": "<nom_layout>",
-      "content": {{ ... }}
-    }}
+    {{"layout": "cover_dark", "content": {{"title": "...", "subtitle": "...", "footer": "..."}}}},
+    {{"layout": "kpi_grid",   "content": {{"title": "...", "kpis": [...], "footer": "..."}}}},
+    ...
+    {{"layout": "closing_dark", "content": {{"title": "Merci", "subtitle": "..."}}}}
   ]
 }}
 
-Règles impératives :
-- Commence TOUJOURS par cover_dark ou cover_split
-- Termine TOUJOURS par closing_dark ou closing_split
-- Varie les layouts : jamais deux fois le même layout consécutivement
-- Pour kpi_grid : 4 à 6 KPIs, valeurs ≤ 3 mots
-- Pour kpi_row  : 3 à 4 KPIs, valeurs ≤ 3 mots
-- Pour list_*   : 3 à 5 items maximum
-- Pour timeline_h : 4 à 5 jalons maximum
-- footer_text identique sur toutes les slides de contenu
-- Titre de slide ≤ 8 mots, items ≤ 18 mots, body ≤ 40 mots
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RÈGLES IMPÉRATIVES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Slide 1 : TOUJOURS cover_dark ou cover_split
+- Dernière slide : TOUJOURS closing_dark ou closing_split
+- Jamais deux layouts identiques consécutifs
+- Alterner fonds sombres (cover/section/quote/kpi_grid) et clairs (list/two_col/full_text/stat_hero)
+- kpi_grid : 4 à 6 KPIs avec valeurs chiffrées réelles
+- kpi_row : 3 à 4 KPIs maximum
+- timeline_h : 4 à 5 jalons avec dates réelles
+- list_* : 3 à 5 items maximum
+- Titres : ≤ 8 mots, assertifs, jamais nominaux
+- Bodies : ≤ 25 mots, concis, factuels
+- footer_text : identique sur toutes les slides sauf cover et closing
+- Contenu expert : chiffres précis, sources citées, angle analytique
 \
 """
 
@@ -2709,7 +2737,7 @@ def plan_presentation_v3(prompt: str, nb_slides: int, palette: dict) -> dict:
         layouts_block = layouts_block,
     )
 
-    max_tokens = max(2500, nb_slides * 220)
+    max_tokens = max(4000, nb_slides * 380)
 
     for attempt in range(3):
         msg = client.messages.create(
