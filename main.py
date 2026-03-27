@@ -1171,7 +1171,13 @@ async def generate_presentation(
 
     n = _resolve_nb_slides(nb_slides)
     pptx_bytes = await template.read()
-    final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
+
+    try:
+        final_bytes, plan, _, _pal = run_pipeline_v3(pptx_bytes, prompt, n)
+        log.info("[/generate] Pipeline V3 OK")
+    except Exception as e:
+        log.warning(f"[/generate] V3 échoué ({e}) → fallback L1")
+        final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
 
     filename = f"visualcortex-{_safe_name(prompt)}.pptx"
     return StreamingResponse(
@@ -1226,53 +1232,40 @@ async def generate_stream(
     pptx_bytes = await template.read()
 
     async def _stream():
-        import asyncio, base64
+        import asyncio, base64 as _b64
         loop = asyncio.get_event_loop()
 
         try:
             yield _sse("start", {"nb_slides": nb_slides})
 
-            prs       = Presentation(io.BytesIO(pptx_bytes))
-            brand     = extract_brand(prs)
-            library   = build_layout_library(prs)
-            selection = select_template_slides(library, nb_slides)
-
-            # Appel Claude 1 — planning (exécuté dans un thread pour ne pas bloquer)
-            plan = await loop.run_in_executor(
+            # Phase 1+2 : brand + planning V3
+            prs_tmp = Presentation(io.BytesIO(pptx_bytes))
+            brand   = extract_brand(prs_tmp)
+            palette = _h2_extract_palette(brand)
+            plan    = await loop.run_in_executor(
                 None,
-                lambda: plan_presentation(prompt, nb_slides, selection, brand)
+                lambda: plan_presentation_v3(prompt, nb_slides, palette)
             )
             yield _sse("planned", {"title": plan.get("presentation_title", "")})
 
-            # Compléter le plan si insuffisant
-            plan_slides = plan.get("slides", [])
-            while len(plan_slides) < nb_slides:
-                fb = selection[min(len(plan_slides), len(selection) - 2)]
-                plan_slides.append({
-                    "plan_index":           len(plan_slides),
-                    "template_slide_index": fb["slide_index"],
-                    "slide_type":           fb["slide_type"],
-                    "narrative_angle":      "Développement complémentaire",
-                    "key_message":          "Argument additionnel",
-                    "visual_hint":          "",
-                })
-            plan["slides"] = plan_slides[:nb_slides]
-
-            # Appel Claude 2 — génération contenu
-            mapping = await loop.run_in_executor(
-                None,
-                lambda: generate_content(prompt, plan, selection, brand)
-            )
+            # Phase 3 : application layouts (dans un thread)
             yield _sse("generated", {})
-
-            # Hydratation PPTX
             yield _sse("hydrating", {})
-            final_bytes = hydrate_presentation(
-                pptx_bytes, mapping, plan["slides"], nb_slides
-            )
 
-            # Envoi du fichier en base64 dans l'event final
-            b64      = base64.b64encode(final_bytes).decode()
+            try:
+                final_bytes, _plan, _brand, _pal = await loop.run_in_executor(
+                    None,
+                    lambda: run_pipeline_v3(pptx_bytes, prompt, nb_slides)
+                )
+                log.info("[/generate-stream] Pipeline V3 OK")
+            except Exception as e_v3:
+                log.warning(f"[/generate-stream] V3 échoué ({e_v3}) → fallback L1")
+                final_bytes, _plan, _ = await loop.run_in_executor(
+                    None,
+                    lambda: run_pipeline(pptx_bytes, prompt, nb_slides)
+                )
+
+            b64      = _b64.b64encode(final_bytes).decode()
             filename = f"visualcortex-{_safe_name(prompt)}.pptx"
             yield _sse("done", {"file_b64": b64, "filename": filename})
 
