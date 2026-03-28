@@ -1508,28 +1508,54 @@ def _h2_extract_palette(brand: dict) -> dict:
         except Exception:
             pass
 
-    # dark = version très sombre du primary (×0.30)
-    try:
-        p = palette['primary']
-        r, g, b = int(p[0:2], 16), int(p[2:4], 16), int(p[4:6], 16)
-        palette['dark'] = (f"{max(0,int(r*0.30)):02X}"
-                           f"{max(0,int(g*0.30)):02X}"
-                           f"{max(0,int(b*0.30)):02X}")
-    except Exception:
-        pass
+    # dark : chercher dans all_colors une couleur très sombre du template (pas noir pur)
+    found_dark = False
+    for c in all_colors:
+        try:
+            r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+            lum = 0.299*r + 0.587*g + 0.114*b
+            if lum < 35 and not (r < 12 and g < 12 and b < 12):
+                palette['dark'] = c
+                found_dark = True
+                break
+        except Exception:
+            pass
+    if not found_dark:
+        try:
+            p = palette['primary']
+            r, g, b = int(p[0:2], 16), int(p[2:4], 16), int(p[4:6], 16)
+            palette['dark'] = (f"{max(0,int(r*0.30)):02X}"
+                               f"{max(0,int(g*0.30)):02X}"
+                               f"{max(0,int(b*0.30)):02X}")
+        except Exception:
+            pass
 
-    # light = version très claire du primary (90 % blanc)
-    try:
-        p = palette['primary']
-        r, g, b = int(p[0:2], 16), int(p[2:4], 16), int(p[4:6], 16)
-        palette['light'] = (f"{int(r*0.10+255*0.90):02X}"
-                            f"{int(g*0.10+255*0.90):02X}"
-                            f"{int(b*0.10+255*0.90):02X}")
-    except Exception:
-        pass
+    # light : chercher dans all_colors une couleur très claire du template (pas blanc pur)
+    # Inclut les teintes légères souvent filtrées comme "neutres" par extract_brand
+    found_light = False
+    for c in all_colors:
+        try:
+            r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+            lum = 0.299*r + 0.587*g + 0.114*b
+            if 205 < lum < 252 and not (r > 248 and g > 248 and b > 248):
+                palette['light'] = c
+                found_light = True
+                break
+        except Exception:
+            pass
+    if not found_light:
+        try:
+            p = palette['primary']
+            r, g, b = int(p[0:2], 16), int(p[2:4], 16), int(p[4:6], 16)
+            palette['light'] = (f"{int(r*0.10+255*0.90):02X}"
+                                f"{int(g*0.10+255*0.90):02X}"
+                                f"{int(b*0.10+255*0.90):02X}")
+        except Exception:
+            pass
 
     log.info(f"[palette] primary=#{palette['primary']} secondary=#{palette['secondary']} "
-             f"accent=#{palette['accent']} font={palette['font']}")
+             f"accent=#{palette['accent']} light=#{palette['light']} "
+             f"dark=#{palette['dark']} text=#{palette['text']} font={palette['font']}")
     return palette
 
 
