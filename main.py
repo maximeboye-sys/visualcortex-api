@@ -440,10 +440,12 @@ def _shape_role(shape, w: int, h: int) -> str:
 def extract_brand(prs: Presentation) -> dict:
     """
     Extraction complète de la charte depuis le template.
-    Source prioritaire : theme/theme1.xml (dk2, lt2, accent1-6 = charte officielle).
+    Source prioritaire : ppt/theme/theme1.xml lu depuis le ZIP PPTX.
     Fallback : scan regex de tout le XML pour les couleurs et polices.
     """
     import re as _re
+    import io
+    import zipfile as _zipfile
     from collections import Counter
 
     color_counter = Counter()
@@ -456,55 +458,50 @@ def extract_brand(prs: Presentation) -> dict:
             fonts_seen.append(f)
 
     def _is_neutral(h: str) -> bool:
-        """Blanc, noir ou gris → True."""
         try:
             r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-            if r > 235 and g > 235 and b > 235: return True   # blanc
-            if r < 25  and g < 25  and b < 25:  return True   # noir
-            if abs(r-g) < 25 and abs(g-b) < 25: return True   # gris
+            if r > 235 and g > 235 and b > 235: return True
+            if r < 25  and g < 25  and b < 25:  return True
+            if abs(r-g) < 25 and abs(g-b) < 25: return True
             return False
         except Exception:
             return True
 
-    # ── Étape 1 : extraire les couleurs officielles du thème PowerPoint ──────
-    # Le fichier theme/theme1.xml est la source de vérité de la charte.
-    # Il déclare : dk2 (couleur sombre), lt2 (couleur claire), accent1-6 (palettes).
+    # ── Étape 1 : lire ppt/theme/theme1.xml depuis le ZIP ────────────────────
+    # Un PPTX est un ZIP. Le thème officiel s'y trouve toujours.
     theme_colors: dict = {}
     try:
-        for master in prs.slide_masters[:1]:
-            master_part = master.slide_master_part
-            for rel in master_part.rels.values():
-                if 'theme' in rel.reltype.lower():
-                    try:
-                        theme_xml = rel.target_part.blob.decode('utf-8', errors='ignore')
-                        for slot in ['dk1', 'lt1', 'dk2', 'lt2',
-                                     'accent1', 'accent2', 'accent3',
-                                     'accent4', 'accent5', 'accent6']:
-                            # Couleur hex directe
-                            m = _re.search(
-                                rf'<a:{slot}>\s*<a:srgbClr val="([0-9A-Fa-f]{{6}})"',
-                                theme_xml)
-                            if m:
-                                theme_colors[slot] = m.group(1).upper()
-                                continue
-                            # Couleur système (ex: windowText) avec lastClr comme fallback
-                            m = _re.search(
-                                rf'<a:{slot}>\s*<a:sysClr[^>]*lastClr="([0-9A-Fa-f]{{6}})"',
-                                theme_xml)
-                            if m:
-                                theme_colors[slot] = m.group(1).upper()
-                        # Polices du thème
-                        for m in _re.findall(r'typeface="([^"]+)"', theme_xml):
-                            _add_font(m)
-                    except Exception:
-                        pass
-                    break
+        buf = io.BytesIO()
+        prs.save(buf)
+        buf.seek(0)
+        with _zipfile.ZipFile(buf) as zf:
+            theme_files = sorted([n for n in zf.namelist()
+                                   if _re.search(r'ppt/theme/theme\d*\.xml$', n, _re.I)])
+            for tf in theme_files[:1]:
+                xml = zf.read(tf).decode('utf-8', errors='ignore')
+                for slot in ['dk1', 'lt1', 'dk2', 'lt2',
+                             'accent1', 'accent2', 'accent3',
+                             'accent4', 'accent5', 'accent6']:
+                    m = _re.search(
+                        rf'<a:{slot}[^>]*>\s*<a:srgbClr val="([0-9A-Fa-f]{{6}})"',
+                        xml)
+                    if m:
+                        theme_colors[slot] = m.group(1).upper()
+                        continue
+                    m = _re.search(
+                        rf'<a:{slot}[^>]*>\s*<a:sysClr[^>]*lastClr="([0-9A-Fa-f]{{6}})"',
+                        xml)
+                    if m:
+                        theme_colors[slot] = m.group(1).upper()
+                # Polices du thème
+                for m in _re.findall(r'typeface="([^"]+)"', xml):
+                    _add_font(m)
     except Exception as e:
-        log.warning(f'[brand] theme extraction failed: {e}')
+        log.warning(f'[brand] theme ZIP extraction failed: {e}')
 
     log.info(f'[brand] theme_colors={theme_colors}')
 
-    # ── Étape 2 : scan regex de tout le XML (slides + layouts + masters) ─────
+    # ── Étape 2 : scan regex (slides + layouts + masters) ────────────────────
     sources = list(prs.slides) + list(prs.slide_layouts) + list(prs.slide_masters)
     for source in sources:
         try:
@@ -525,7 +522,7 @@ def extract_brand(prs: Presentation) -> dict:
         'fonts':           fonts_seen[:5],
         'colors':          chromatic[:8],
         'all_colors':      all_colors[:20],
-        'theme_colors':    theme_colors,       # couleurs officielles du thème
+        'theme_colors':    theme_colors,
         'slide_count':     len(prs.slides),
         'layouts':         [l.name for l in prs.slide_layouts],
         'slide_width_in':  round(_emu(w), 2),
@@ -1502,17 +1499,9 @@ def _make_palette_swatch(palette: dict) -> dict | None:
 
 def _h2_extract_palette(brand: dict) -> dict:
     """
-    Construit la palette depuis les couleurs officielles du thème PowerPoint.
-    Source prioritaire : theme_colors (dk2, lt2, accent1-6 de theme/theme1.xml).
-    Fallback : scan fréquence + dérivation si thème incomplet.
-
-    Mapping des rôles :
-      primary   ← dk2  (couleur sombre principale de la charte)
-      secondary ← accent1 (premier accent)
-      accent    ← accent2 (deuxième accent, souvent la couleur vive)
-      light     ← lt2  (fond clair officiel)
-      dark      ← couleur la plus sombre parmi les couleurs du thème
-      text      ← première couleur sombre (lum 15-120) dans all_colors
+    Construit la palette depuis theme_colors (ppt/theme/theme1.xml, source de vérité).
+    Fallback sur scan fréquence si le thème est absent ou incomplet.
+    Rôles : primary=dk2, secondary=accent1, accent=accent2, light=lt2, dark=plus sombre.
     """
     def _lum(h: str) -> float:
         try:
@@ -1535,85 +1524,62 @@ def _h2_extract_palette(brand: dict) -> dict:
     if fonts:
         palette['font'] = fonts[0]
 
-    # ── Source 1 : couleurs du thème PowerPoint (source de vérité) ───────────
+    # Couleurs scan fréquence (toujours disponibles comme fallback)
+    chromatic  = [c.lstrip('#').strip() for c in brand.get('colors', [])
+                  if len(c.lstrip('#').strip()) == 6]
+    all_colors = [c.lstrip('#').strip() for c in brand.get('all_colors', chromatic)
+                  if len(c.lstrip('#').strip()) == 6]
+
+    # ── Source 1 : couleurs officielles du thème (dk2, lt2, accent1-6) ───────
     tc = {k: v.lstrip('#').strip() for k, v in brand.get('theme_colors', {}).items()
           if v and len(v.lstrip('#').strip()) == 6}
 
     if tc:
-        # primary : dk2 (couleur sombre de la charte)
-        if 'dk2' in tc:
-            palette['primary'] = tc['dk2']
-
-        # secondary : accent1
-        if 'accent1' in tc:
-            palette['secondary'] = tc['accent1']
-
-        # accent : accent2 (sinon accent3)
-        if 'accent2' in tc:
-            palette['accent'] = tc['accent2']
-        elif 'accent3' in tc:
-            palette['accent'] = tc['accent3']
-
-        # light : lt2 si luminosité > 180 (vraiment clair)
+        if 'dk2'    in tc: palette['primary']   = tc['dk2']
+        if 'accent1' in tc: palette['secondary'] = tc['accent1']
+        if 'accent2' in tc: palette['accent']    = tc['accent2']
+        elif 'accent3' in tc: palette['accent']  = tc['accent3']
         if 'lt2' in tc and _lum(tc['lt2']) > 180:
             palette['light'] = tc['lt2']
+        # dark = couleur la plus sombre du thème (pas noir pur)
+        dark_from_theme = sorted(
+            [v for v in tc.values()
+             if _lum(v) < 60 and not (int(v[0:2],16)<12 and int(v[2:4],16)<12 and int(v[4:6],16)<12)],
+            key=_lum)
+        if dark_from_theme:
+            palette['dark'] = dark_from_theme[0]
+        palette['theme'] = tc
+    else:
+        # ── Source 2 : fréquence (fallback si thème absent) ──────────────────
+        if chromatic:                          palette['primary']   = chromatic[0]
+        if len(chromatic) >= 2:               palette['secondary'] = chromatic[1]
+        if len(chromatic) >= 3:               palette['accent']    = chromatic[2]
 
-        # dark : couleur la plus sombre parmi les couleurs du thème (pas noir pur)
-        theme_vals = [v for v in tc.values()]
-        dark_candidates = sorted(
-            [v for v in theme_vals if _lum(v) < 60 and not (
-                int(v[0:2],16) < 12 and int(v[2:4],16) < 12 and int(v[4:6],16) < 12)],
-            key=_lum
-        )
-        if dark_candidates:
-            palette['dark'] = dark_candidates[0]
-
-        # Exposer toutes les couleurs du thème dans la palette pour un usage futur
-        palette['theme'] = tc  # dict: {dk2, lt2, accent1, …, accent6}
-
-    # ── Source 2 : scan fréquence (fallback ou complément) ───────────────────
-    chromatic = [c.lstrip('#').strip() for c in brand.get('colors', [])
-                 if len(c.lstrip('#').strip()) == 6]
-    all_colors = [c.lstrip('#').strip() for c in brand.get('all_colors', chromatic)
-                  if len(c.lstrip('#').strip()) == 6]
-
-    # Si le thème n'a pas fourni de couleurs, utiliser la fréquence
-    if not tc:
-        if chromatic:
-            palette['primary']   = chromatic[0]
-        if len(chromatic) >= 2:
-            palette['secondary'] = chromatic[1]
-        if len(chromatic) >= 3:
-            palette['accent']    = chromatic[2]
-
-    # text : première couleur sombre non-noir dans all_colors (lum 15-120)
+    # text : première couleur sombre dans all_colors (lum 15-120)
     for c in all_colors:
         if 15 < _lum(c) < 120:
             palette['text'] = c
             break
 
-    # light fallback : première couleur très claire dans all_colors (pas blanc pur)
-    if 'light' not in palette or palette['light'] == 'EEF3FA':
-        if not tc.get('lt2') or _lum(tc.get('lt2', '')) <= 180:
-            for c in all_colors:
-                lum = _lum(c)
-                r, g, b = int(c[0:2],16), int(c[2:4],16), int(c[4:6],16)
-                if 200 < lum < 252 and not (r > 248 and g > 248 and b > 248):
-                    palette['light'] = c
-                    break
-            else:
-                p = palette['primary']
-                r, g, b = int(p[0:2],16), int(p[2:4],16), int(p[4:6],16)
-                palette['light'] = (f"{int(r*0.10+255*0.90):02X}"
-                                    f"{int(g*0.10+255*0.90):02X}"
-                                    f"{int(b*0.10+255*0.90):02X}")
-
-    # dark fallback : si non fourni par le thème
-    if palette['dark'] == '0D1F3C' and not dark_candidates if tc else True:
+    # light fallback : si lt2 absent ou trop sombre
+    if palette['light'] == 'EEF3FA':
         for c in all_colors:
-            lum = _lum(c)
             r, g, b = int(c[0:2],16), int(c[2:4],16), int(c[4:6],16)
-            if lum < 35 and not (r < 12 and g < 12 and b < 12):
+            if 200 < _lum(c) < 252 and not (r > 248 and g > 248 and b > 248):
+                palette['light'] = c
+                break
+        else:
+            p = palette['primary']
+            r, g, b = int(p[0:2],16), int(p[2:4],16), int(p[4:6],16)
+            palette['light'] = (f"{int(r*0.10+255*0.90):02X}"
+                                f"{int(g*0.10+255*0.90):02X}"
+                                f"{int(b*0.10+255*0.90):02X}")
+
+    # dark fallback : si thème n'a pas fourni de couleur sombre
+    if palette['dark'] == '0D1F3C':
+        for c in all_colors:
+            r, g, b = int(c[0:2],16), int(c[2:4],16), int(c[4:6],16)
+            if _lum(c) < 35 and not (r < 12 and g < 12 and b < 12):
                 palette['dark'] = c
                 break
         else:
