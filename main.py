@@ -2699,6 +2699,22 @@ def run_pipeline_v3(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
             },
         })
     slides_plan = slides_plan[:nb_slides]
+
+    # Garantie : la dernière slide est TOUJOURS une closing
+    closing_layouts = {'closing_dark', 'closing_split'}
+    if not slides_plan or slides_plan[-1].get('layout') not in closing_layouts:
+        closing_slide = {
+            'layout': 'closing_dark',
+            'content': {
+                'title':    'Merci',
+                'subtitle': plan.get('footer_text', ''),
+            },
+        }
+        if len(slides_plan) >= nb_slides and slides_plan:
+            slides_plan[-1] = closing_slide   # remplace la dernière si plan complet
+        else:
+            slides_plan.append(closing_slide)  # ajoute sinon
+
     log.info(f'[V3] {len(slides_plan)} slides à générer : {[s.get("layout") for s in slides_plan]}')
 
     # ── Phase 3 ───────────────────────────────────────────────
