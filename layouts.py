@@ -31,21 +31,47 @@ def _hex(hex_str: str) -> RGBColor:
 
 
 def _blank(prs: Presentation):
-    """Ajoute une slide entièrement vierge. Retourne (slide, W_in, H_in)."""
+    """
+    Slide vierge qui hérite correctement du slide master.
+    Garantit l'affichage du logo et des éléments du master
+    quel que soit le template uploadé.
+    """
+    # Chercher un layout 'Vide' / 'Blank' / 'Empty' sans showMasterSp="0"
     target = None
     for layout in prs.slide_layouts:
-        if 'blank' in layout.name.lower():
-            target = layout
-            break
+        name = layout.name.lower()
+        if any(x in name for x in ['vide', 'blank', 'empty']):
+            xml = etree.tostring(layout._element, pretty_print=False).decode()
+            if 'showMasterSp="0"' not in xml:
+                target = layout
+                break
+
+    # Fallback : premier layout sans showMasterSp="0"
     if target is None:
-        target = prs.slide_layouts[min(6, len(prs.slide_layouts) - 1)]
+        for layout in prs.slide_layouts:
+            xml = etree.tostring(layout._element, pretty_print=False).decode()
+            if 'showMasterSp="0"' not in xml:
+                target = layout
+                break
+
+    if target is None:
+        target = prs.slide_layouts[-1]
+
     slide = prs.slides.add_slide(target)
+
+    # Supprimer uniquement les placeholders (pas les shapes héritées du master)
     sp_tree = slide.shapes._spTree
     for ph in list(slide.placeholders):
         try:
             sp_tree.remove(ph._element)
         except Exception:
             pass
+
+    # Forcer l'affichage des shapes du master (logo, ligne déco, etc.)
+    cSld = slide._element.find(qn('p:cSld'))
+    if cSld is not None:
+        cSld.set('showMasterSp', '1')
+
     W = prs.slide_width  / 914400.0
     H = prs.slide_height / 914400.0
     return slide, W, H
@@ -87,6 +113,40 @@ def _set_lsp(p, pct: int):
         lnSpc = etree.SubElement(pPr, qn('a:lnSpc'))
         spcPct = etree.SubElement(lnSpc, qn('a:spcPct'))
         spcPct.set('val', str(int(pct * 1000)))
+    except Exception:
+        pass
+
+
+def _apply_text_gradient(txBox, color_start: str, color_end: str):
+    """
+    Applique un gradient linéaire (gauche → droite) sur tous les runs du textbox.
+    color_start / color_end = hex 'RRGGBB' (sans #).
+    Utilisé pour reproduire les titres en dégradé des templates corporate.
+    """
+    _NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    cs = color_start.lstrip('#').strip()
+    ce = color_end.lstrip('#').strip()
+    if len(cs) != 6 or len(ce) != 6:
+        return
+    grad_xml = (
+        f'<a:gradFill xmlns:a="{_NS}" flip="none" rotWithShape="1">'
+        f'<a:gsLst>'
+        f'<a:gs pos="0"><a:srgbClr val="{cs}"/></a:gs>'
+        f'<a:gs pos="100000"><a:srgbClr val="{ce}"/></a:gs>'
+        f'</a:gsLst>'
+        f'<a:lin ang="5400000" scaled="0"/>'
+        f'</a:gradFill>'
+    )
+    try:
+        grad_el = etree.fromstring(grad_xml)
+        for para in txBox.text_frame.paragraphs:
+            for run in para.runs:
+                rPr = run._r.find(qn('a:rPr'))
+                if rPr is None:
+                    rPr = etree.SubElement(run._r, qn('a:rPr'))
+                for sf in rPr.findall(qn('a:solidFill')):
+                    rPr.remove(sf)
+                rPr.insert(0, etree.fromstring(grad_xml))
     except Exception:
         pass
 
@@ -134,9 +194,10 @@ def cover_dark(prs: Presentation, content: dict, palette: dict):
     bw = W * 0.22
     _rect(slide, (W - bw) / 2, H * 0.635, bw, 0.045, palette['accent'])
 
-    _txt(slide, content.get('title', ''),
-         W*0.08, H*0.28, W*0.84, H*0.28,
-         f, 42, 'FFFFFF', bold=True, align='center', lsp=108)
+    title_box = _txt(slide, content.get('title', ''),
+                     W*0.08, H*0.28, W*0.84, H*0.28,
+                     f, 42, 'FFFFFF', bold=True, align='center', lsp=108)
+    _apply_text_gradient(title_box, 'FFFFFF', palette.get('accent', 'F0A500'))
 
     if content.get('subtitle'):
         _txt(slide, content['subtitle'],
@@ -160,9 +221,11 @@ def cover_split(prs: Presentation, content: dict, palette: dict):
     _rect(slide, 0, H*0.78, sp, H*0.22, palette['accent'])
     _rect(slide, sp, 0, W - sp, H, 'FFFFFF')
 
-    _txt(slide, content.get('title', ''),
-         sp + 0.5, H*0.27, W - sp - 0.65, H*0.32,
-         f, 34, palette['primary'], bold=True, lsp=108)
+    title_box = _txt(slide, content.get('title', ''),
+                     sp + 0.5, H*0.27, W - sp - 0.65, H*0.32,
+                     f, 34, palette['primary'], bold=True, lsp=108)
+    _apply_text_gradient(title_box, palette.get('primary', '1A3A6B'),
+                         palette.get('secondary', '2E6DA4'))
     _div(slide, sp + 0.5, H*0.62, (W - sp - 1.0)*0.55, palette['accent'], h=0.05)
 
     if content.get('subtitle'):
