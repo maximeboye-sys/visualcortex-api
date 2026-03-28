@@ -439,126 +439,64 @@ def _shape_role(shape, w: int, h: int) -> str:
 
 def extract_brand(prs: Presentation) -> dict:
     """
-    Extraire la charte depuis n'importe quel template PPTX.
-    Sources par priorité décroissante :
-      1. Couleurs du thème XML (accent1-6, dk2) — source la plus fiable
-      2. Couleurs du thème XML font (majorFont / minorFont)
-      3. Couleurs de remplissage des shapes du slide master
-      4. Couleurs et polices des textes dans les slides (fallback)
+    Extraction complète de la charte depuis TOUT le XML du template :
+    slides, layouts, slide masters — fills, textes, shapes.
+    Fonctionne avec n'importe quelle charte graphique.
     """
-    _NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
-    _SKIP = {'FFFFFF', 'FFFFFE', '000000', 'FEFEFE', 'F2F2F2', 'EEEEEE'}
+    import re as _re
+    from collections import Counter
 
-    theme_colors  = []
-    master_colors = []
-    text_colors   = []
-    fonts         = []
+    color_counter = Counter()
+    fonts_seen: list = []
+    fonts_set: set = set()
 
-    # ── Source 1 & 2 : Thème XML du slide master ──────────────
-    try:
-        master = prs.slide_masters[0]
-        for rel in master.part.rels.values():
-            if 'theme' not in rel.reltype:
-                continue
-            theme_el = rel._target._element
+    def _add_font(f: str):
+        if f and not f.startswith('+') and f.strip() and f not in fonts_set:
+            fonts_set.add(f)
+            fonts_seen.append(f)
 
-            # Couleurs : accent1-6 en priorité, puis dk2
-            clr_scheme = theme_el.find(f'.//{{{_NS}}}clrScheme')
-            if clr_scheme is not None:
-                order = ['accent1','accent2','accent3','accent4',
-                         'accent5','accent6','dk2','dk1','lt2']
-                slot_map = {}
-                for child in clr_scheme:
-                    tag = child.tag.split('}')[-1]
-                    for el_name, attr in [('srgbClr','val'), ('sysClr','lastClr')]:
-                        el = child.find(f'{{{_NS}}}{el_name}')
-                        if el is not None:
-                            val = el.get(attr, '').upper().lstrip('#')
-                            if len(val) == 6:
-                                slot_map[tag] = val
-                for slot in order:
-                    v = slot_map.get(slot, '')
-                    if v and v not in _SKIP and v not in theme_colors:
-                        theme_colors.append(v)
+    def _is_neutral(h: str) -> bool:
+        """Blanc, noir ou gris → True."""
+        try:
+            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            if r > 235 and g > 235 and b > 235: return True   # blanc
+            if r < 25  and g < 25  and b < 25:  return True   # noir
+            if abs(r-g) < 25 and abs(g-b) < 25: return True   # gris
+            return False
+        except Exception:
+            return True
 
-            # Polices : minorFont (corps) en premier, puis majorFont (titres)
-            font_scheme = theme_el.find(f'.//{{{_NS}}}fontScheme')
-            if font_scheme is not None:
-                for node_name in ['minorFont', 'majorFont']:
-                    node = font_scheme.find(f'{{{_NS}}}{node_name}')
-                    if node is not None:
-                        latin = node.find(f'{{{_NS}}}latin')
-                        if latin is not None:
-                            tf = latin.get('typeface', '')
-                            if tf and tf not in ('+mj-lt', '+mn-lt', '') and tf not in fonts:
-                                fonts.append(tf)
-            break
-    except Exception:
-        pass
+    # Scanner slides + layouts + masters (tout le XML)
+    sources = list(prs.slides) + list(prs.slide_layouts) + list(prs.slide_masters)
+    for source in sources:
+        try:
+            xml = etree.tostring(source._element, pretty_print=False).decode()
+        except Exception:
+            continue
+        # Toutes couleurs sRGB (fills, textes, bordures…)
+        for m in _re.findall(r'srgbClr val="([0-9A-Fa-f]{6})"', xml):
+            color_counter[m.upper()] += 1
+        # Polices déclarées dans le XML
+        for m in _re.findall(r'typeface="([^"]+)"', xml):
+            _add_font(m)
 
-    # ── Source 3 : Shapes du slide master ─────────────────────
-    try:
-        for shape in iter_all_shapes(prs.slide_masters[0].shapes):
-            # Fill color
-            try:
-                fill = shape.fill
-                if fill.type is not None:
-                    rgb = fill.fore_color.rgb
-                    hx = str(rgb).upper()
-                    if hx not in _SKIP and hx not in master_colors:
-                        master_colors.append(hx)
-            except Exception:
-                pass
-            # Font
-            if getattr(shape, 'has_text_frame', False):
-                for para in shape.text_frame.paragraphs:
-                    for run in para.runs:
-                        if run.font.name and run.font.name not in fonts:
-                            fonts.append(run.font.name)
-    except Exception:
-        pass
-
-    # ── Source 4 : Textes des slides (fallback) ───────────────
-    try:
-        for slide in prs.slides:
-            for shape in iter_all_shapes(slide.shapes):
-                if not getattr(shape, 'has_text_frame', False):
-                    continue
-                for para in shape.text_frame.paragraphs:
-                    for run in para.runs:
-                        if run.font.name and run.font.name not in fonts:
-                            fonts.append(run.font.name)
-                        if run.font.color and run.font.color.type is not None:
-                            try:
-                                hx = str(run.font.color.rgb).upper()
-                                if hx not in _SKIP and hx not in text_colors:
-                                    text_colors.append(hx)
-                            except Exception:
-                                pass
-    except Exception:
-        pass
-
-    # ── Fusion : thème > master > textes ──────────────────────
-    all_colors = []
-    seen = set()
-    for c in theme_colors + master_colors + text_colors:
-        if c not in seen and len(c) == 6:
-            seen.add(c)
-            all_colors.append(c)
+    # Couleurs chromatiques (sans neutres), triées par fréquence
+    chromatic  = [c for c, _ in color_counter.most_common() if not _is_neutral(c)]
+    all_colors = [c for c, _ in color_counter.most_common()]
 
     w, h = prs.slide_width, prs.slide_height
-    log.info(f'[brand] fonts={fonts[:3]} theme_colors={theme_colors[:4]} '
-             f'master_colors={master_colors[:2]} text_colors={text_colors[:2]}')
+    log.info(f'[brand] chromatic={chromatic[:4]} fonts={fonts_seen[:3]}')
     return {
-        "fonts":           fonts[:5],
-        "colors":          all_colors[:8],
-        "slide_count":     len(prs.slides),
-        "layouts":         [l.name for l in prs.slide_layouts],
-        "slide_width_in":  round(_emu(w), 2),
-        "slide_height_in": round(_emu(h), 2),
-        "aspect_ratio":    (
-            "16:9" if abs(w / h - 16 / 9) < 0.05 else
-            "4:3"  if abs(w / h - 4 / 3)  < 0.05 else "custom"
+        'fonts':           fonts_seen[:5],
+        'colors':          chromatic[:8],    # couleurs de charte, neutres exclues
+        'all_colors':      all_colors[:20],  # toutes couleurs pour usage avancé
+        'slide_count':     len(prs.slides),
+        'layouts':         [l.name for l in prs.slide_layouts],
+        'slide_width_in':  round(_emu(w), 2),
+        'slide_height_in': round(_emu(h), 2),
+        'aspect_ratio':    (
+            '16:9' if abs(w / h - 16 / 9) < 0.05 else
+            '4:3'  if abs(w / h - 4 / 3)  < 0.05 else 'custom'
         ),
     }
 
@@ -1528,107 +1466,67 @@ def _make_palette_swatch(palette: dict) -> dict | None:
 
 def _h2_extract_palette(brand: dict) -> dict:
     """
-    Construit la palette de rôles (primary, secondary, accent, light, text, font)
-    depuis la charte extraite du template.
-
-    Sélection intelligente :
-    - primary   → couleur la plus sombre et saturée (fond cover, sections)
-    - secondary → 2e couleur sombre (accents structurels)
-    - accent    → couleur la plus vive/saturée, différente de primary
-    - light     → version très claire du primary (fonds contenu)
-    - text      → version très foncée du primary (texte sur fond clair)
-    - font      → police du template
+    Construit la palette de rôles depuis les couleurs chromatiques du template.
+    Les couleurs sont déjà filtrées (sans neutres) par extract_brand().
+    Attribue les rôles par fréquence d'apparition dans le template.
+    Fonctionne avec n'importe quelle charte graphique.
     """
-
-    def _lum(h: str) -> float:
-        try:
-            h = h.lstrip('#').strip()
-            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-            return 0.299*r + 0.587*g + 0.114*b
-        except Exception:
-            return 128.0
-
-    def _sat(h: str) -> float:
-        """Saturation HSV (0–1)."""
-        try:
-            h = h.lstrip('#').strip()
-            r, g, b = int(h[0:2],16)/255, int(h[2:4],16)/255, int(h[4:6],16)/255
-            mx, mn = max(r, g, b), min(r, g, b)
-            return 0.0 if mx == 0 else (mx - mn) / mx
-        except Exception:
-            return 0.0
-
-    def _light(h: str, mix: float = 0.88) -> str:
-        try:
-            h = h.lstrip('#').strip()
-            r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
-            return (f"{int(r*(1-mix)+255*mix):02X}"
-                    f"{int(g*(1-mix)+255*mix):02X}"
-                    f"{int(b*(1-mix)+255*mix):02X}")
-        except Exception:
-            return 'EEF3FA'
-
-    def _darken(h: str, factor: float = 0.30) -> str:
-        try:
-            h = h.lstrip('#').strip()
-            r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
-            return (f"{max(0,int(r*factor)):02X}"
-                    f"{max(0,int(g*factor)):02X}"
-                    f"{max(0,int(b*factor)):02X}")
-        except Exception:
-            return '1A1A2E'
-
     palette = {
         'primary':   '1A3A6B',
         'secondary': '2E6DA4',
         'accent':    'F0A500',
+        'dark':      '0D1F3C',
         'light':     'EEF3FA',
         'text':      '1A1A2E',
         'font':      'Calibri',
     }
 
-    fonts  = brand.get('fonts', [])
-    colors = [c.lstrip('#').strip() for c in brand.get('colors', []) if len(c.lstrip('#').strip()) == 6]
-
+    fonts = brand.get('fonts', [])
     if fonts:
         palette['font'] = fonts[0]
 
-    if not colors:
-        # Pas de couleurs extraites → fallback bleu corporate
-        palette['light'] = _light(palette['primary'])
-        palette['text']  = _darken(palette['primary'])
-        return palette
+    chromatic = [c.lstrip('#').strip() for c in brand.get('colors', [])
+                 if len(c.lstrip('#').strip()) == 6]
 
-    # ── Primary : couleur la plus sombre (lum < 140) et saturée ──
-    dark = sorted([c for c in colors if _lum(c) < 140], key=lambda c: _lum(c))
-    if dark:
-        palette['primary'] = dark[0]
-    else:
-        # Pas de couleur sombre → prendre la plus saturée
-        palette['primary'] = max(colors, key=_sat)
+    if chromatic:
+        palette['primary']   = chromatic[0]
+    if len(chromatic) >= 2:
+        palette['secondary'] = chromatic[1]
+    if len(chromatic) >= 3:
+        palette['accent']    = chromatic[2]
 
-    # ── Secondary : 2e couleur sombre différente de primary ───────
-    remaining = [c for c in colors if c != palette['primary']]
-    dark2 = sorted([c for c in remaining if _lum(c) < 160], key=lambda c: _lum(c))
-    if dark2:
-        palette['secondary'] = dark2[0]
-    elif remaining:
-        palette['secondary'] = remaining[0]
+    # Couleur de texte : sombre mais pas noir pur (lum 15–120)
+    all_colors = [c.lstrip('#').strip() for c in brand.get('all_colors', chromatic)
+                  if len(c.lstrip('#').strip()) == 6]
+    for c in all_colors:
+        try:
+            r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+            lum = 0.299*r + 0.587*g + 0.114*b
+            if 15 < lum < 120:
+                palette['text'] = c
+                break
+        except Exception:
+            pass
 
-    # ── Accent : couleur la plus vive (saturée) et visible ────────
-    # Critères : saturation > 0.25, luminance entre 50 et 230, ≠ primary
-    candidates = sorted(
-        [c for c in colors if c != palette['primary'] and _sat(c) > 0.25 and 50 < _lum(c) < 230],
-        key=_sat, reverse=True
-    )
-    if candidates:
-        palette['accent'] = candidates[0]
-    elif len(colors) >= 3:
-        palette['accent'] = colors[2]
+    # dark = version très sombre du primary (×0.30)
+    try:
+        p = palette['primary']
+        r, g, b = int(p[0:2], 16), int(p[2:4], 16), int(p[4:6], 16)
+        palette['dark'] = (f"{max(0,int(r*0.30)):02X}"
+                           f"{max(0,int(g*0.30)):02X}"
+                           f"{max(0,int(b*0.30)):02X}")
+    except Exception:
+        pass
 
-    # ── Light et Text calculés depuis primary ─────────────────────
-    palette['light'] = _light(palette['primary'], mix=0.88)
-    palette['text']  = _darken(palette['primary'], factor=0.30)
+    # light = version très claire du primary (90 % blanc)
+    try:
+        p = palette['primary']
+        r, g, b = int(p[0:2], 16), int(p[2:4], 16), int(p[4:6], 16)
+        palette['light'] = (f"{int(r*0.10+255*0.90):02X}"
+                            f"{int(g*0.10+255*0.90):02X}"
+                            f"{int(b*0.10+255*0.90):02X}")
+    except Exception:
+        pass
 
     log.info(f"[palette] primary=#{palette['primary']} secondary=#{palette['secondary']} "
              f"accent=#{palette['accent']} font={palette['font']}")
