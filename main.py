@@ -1536,12 +1536,22 @@ def _h2_extract_palette(brand: dict) -> dict:
           if v and len(v.lstrip('#').strip()) == 6}
 
     if tc:
-        if 'dk2'    in tc: palette['primary']   = tc['dk2']
-        if 'accent1' in tc: palette['secondary'] = tc['accent1']
-        if 'accent2' in tc: palette['accent']    = tc['accent2']
-        elif 'accent3' in tc: palette['accent']  = tc['accent3']
-        if 'lt2' in tc and _lum(tc['lt2']) > 180:
-            palette['light'] = tc['lt2']
+        # Build a deduplicated list of chromatic candidates (excluding near-white and near-black)
+        _seen: list = []
+        for _slot in ['dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6']:
+            _c = tc.get(_slot, '')
+            _r, _g, _b = int(_c[0:2],16) if _c else 0, int(_c[2:4],16) if _c else 0, int(_c[4:6],16) if _c else 0
+            if _c and _c not in _seen and not (_r > 240 and _g > 240 and _b > 240):
+                _seen.append(_c)
+        if len(_seen) >= 1: palette['primary']   = _seen[0]
+        if len(_seen) >= 2: palette['secondary'] = _seen[1]
+        if len(_seen) >= 3: palette['accent']    = _seen[2]
+        # light: use lt2 only if luminous AND not pure/near white
+        if 'lt2' in tc:
+            _lt = tc['lt2']
+            _lr, _lg, _lb = int(_lt[0:2],16), int(_lt[2:4],16), int(_lt[4:6],16)
+            if _lum(_lt) > 180 and not (_lr > 248 and _lg > 248 and _lb > 248):
+                palette['light'] = _lt
         # dark = couleur la plus sombre du thème (pas noir pur)
         dark_from_theme = sorted(
             [v for v in tc.values()
