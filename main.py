@@ -446,6 +446,7 @@ def extract_brand(prs: Presentation) -> dict:
     import re as _re
     import io
     import zipfile as _zipfile
+    import lxml.etree as etree
     from collections import Counter
 
     color_counter = Counter()
