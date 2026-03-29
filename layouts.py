@@ -189,10 +189,10 @@ def cover_dark(prs: Presentation, content: dict, palette: dict):
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, palette['primary'])
+    _rect(slide, 0, 0, W, H, palette['dark'])
     # Accent: barre décorative centrée sous le titre
     bw = W * 0.22
-    _rect(slide, (W - bw) / 2, H * 0.585, bw, 0.042, palette['accent'])
+    _rect(slide, (W - bw) / 2, H * 0.585, bw, 0.042, palette['primary'])
 
     _txt(slide, content.get('title', ''),
          W*0.08, H*0.20, W*0.84, H*0.32,
@@ -235,11 +235,11 @@ def cover_split(prs: Presentation, content: dict, palette: dict):
 
 
 def section(prs: Presentation, content: dict, palette: dict):
-    """Séparateur de chapitre — fond primary, grand numéro déco, titre."""
+    """Séparateur de chapitre — fond sombre, grand numéro déco, titre."""
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, palette['primary'])
+    _rect(slide, 0, 0, W, H, palette['dark'])
 
     num = str(content.get('number', ''))
     if num:
@@ -259,7 +259,7 @@ def kpi_grid(prs: Presentation, content: dict, palette: dict):
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, palette['primary'])
+    _rect(slide, 0, 0, W, H, palette['dark'])
     _txt(slide, content.get('title', ''),
          0.5, 0.32, W - 1.0, 0.62,
          f, 26, 'FFFFFF', bold=True, lsp=108)
@@ -292,7 +292,7 @@ def kpi_grid(prs: Presentation, content: dict, palette: dict):
                  f, 9, 'BBBBBB', align='center', lsp=112)
         # Séparateur vertical entre colonnes
         if col < cols - 1:
-            _rect(slide, lx + cw - 0.018, ty + 0.05, 0.018, ch - 0.28, palette.get('dark', '0D1F3C'))
+            _rect(slide, lx + cw - 0.018, ty + 0.05, 0.018, ch - 0.28, palette.get('primary', '1A3A6B'))
 
     _footer_line(slide, content.get('footer', ''), W, H, f, 'AAAAAA')
     return slide
@@ -636,19 +636,19 @@ def stat_hero(prs: Presentation, content: dict, palette: dict):
 
 
 def closing_dark(prs: Presentation, content: dict, palette: dict):
-    """Fond primary, titre court centré, sous-titre sources."""
+    """Fond sombre, titre court centré, sous-titre sources."""
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, palette['primary'])
-    # Bandes accent gauche et droite
-    _rect(slide, 0,        0, W*0.10, H, palette['accent'])
-    _rect(slide, W*0.90,   0, W*0.10, H, palette['accent'])
+    _rect(slide, 0, 0, W, H, palette['dark'])
+    # Bandes brand gauche et droite
+    _rect(slide, 0,        0, W*0.10, H, palette['primary'])
+    _rect(slide, W*0.90,   0, W*0.10, H, palette['primary'])
 
     _txt(slide, content.get('title', ''),
          W*0.16, H*0.28, W*0.68, H*0.32,
          f, 40, 'FFFFFF', bold=True, align='center', lsp=108)
-    _div(slide, W*0.36, H*0.63, W*0.28, palette['accent'], h=0.048)
+    _div(slide, W*0.36, H*0.63, W*0.28, palette['primary'], h=0.048)
 
     if content.get('subtitle'):
         _txt(slide, content['subtitle'],

@@ -1546,16 +1546,20 @@ def _h2_extract_palette(brand: dict) -> dict:
         if len(_seen) >= 1: palette['primary']   = _seen[0]
         if len(_seen) >= 2: palette['secondary'] = _seen[1]
         if len(_seen) >= 3: palette['accent']    = _seen[2]
+        # text = dk1 (source de vérité pour la couleur du texte / fonds sombres neutres)
+        if 'dk1' in tc:
+            palette['text'] = tc['dk1']
+            palette['dark'] = tc['dk1']   # dark backgrounds use dk1 by default
         # light: use lt2 only if luminous AND not pure/near white
         if 'lt2' in tc:
             _lt = tc['lt2']
             _lr, _lg, _lb = int(_lt[0:2],16), int(_lt[2:4],16), int(_lt[4:6],16)
             if _lum(_lt) > 180 and not (_lr > 248 and _lg > 248 and _lb > 248):
                 palette['light'] = _lt
-        # dark = couleur la plus sombre du thème (pas noir pur)
+        # dark: if theme has a darker color than dk1, prefer it
         dark_from_theme = sorted(
             [v for v in tc.values()
-             if _lum(v) < 60 and not (int(v[0:2],16)<12 and int(v[2:4],16)<12 and int(v[4:6],16)<12)],
+             if _lum(v) < 100 and not (int(v[0:2],16)<12 and int(v[2:4],16)<12 and int(v[4:6],16)<12)],
             key=_lum)
         if dark_from_theme:
             palette['dark'] = dark_from_theme[0]
@@ -1566,11 +1570,12 @@ def _h2_extract_palette(brand: dict) -> dict:
         if len(chromatic) >= 2:               palette['secondary'] = chromatic[1]
         if len(chromatic) >= 3:               palette['accent']    = chromatic[2]
 
-    # text : première couleur sombre dans all_colors (lum 15-120)
-    for c in all_colors:
-        if 15 < _lum(c) < 120:
-            palette['text'] = c
-            break
+    # text fallback: only if not already set from dk1
+    if palette['text'] == '1A1A2E':
+        for c in all_colors:
+            if 15 < _lum(c) < 120:
+                palette['text'] = c
+                break
 
     # light fallback : si lt2 absent ou trop sombre
     if palette['light'] == 'EEF3FA':
