@@ -177,7 +177,7 @@ def _div(slide, l, t, w, color: str, h=0.032):
 
 def _footer_line(slide, text: str, W, H, font: str, color: str = 'AAAAAA'):
     if text:
-        _txt(slide, text, 0.5, H - 0.42, W - 1.0, 0.35, font, 10, color, lsp=110)
+        _txt(slide, text, W*0.04, H*0.92, W*0.92, H*0.06, font, 10, color, lsp=110)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -192,7 +192,7 @@ def cover_dark(prs: Presentation, content: dict, palette: dict):
     _rect(slide, 0, 0, W, H, palette['dark'])
     # Accent: barre décorative centrée sous le titre
     bw = W * 0.22
-    _rect(slide, (W - bw) / 2, H * 0.585, bw, 0.042, palette['primary'])
+    _rect(slide, (W - bw) / 2, H * 0.585, bw, H * 0.006, palette['primary'])
 
     _txt(slide, content.get('title', ''),
          W*0.08, H*0.20, W*0.84, H*0.32,
@@ -205,7 +205,7 @@ def cover_dark(prs: Presentation, content: dict, palette: dict):
 
     if content.get('footer'):
         _txt(slide, content['footer'],
-             W*0.1, H - 0.44, W*0.8, 0.35,
+             W*0.1, H*0.92, W*0.8, H*0.06,
              f, 10, 'AAAAAA', align='center', lsp=110)
     return slide
 
@@ -221,13 +221,13 @@ def cover_split(prs: Presentation, content: dict, palette: dict):
     _rect(slide, sp, 0, W - sp, H, 'FFFFFF')
 
     _txt(slide, content.get('title', ''),
-         sp + 0.5, H*0.27, W - sp - 0.65, H*0.32,
+         sp + W*0.04, H*0.27, W - sp - W*0.08, H*0.32,
          f, 38, palette['primary'], bold=True, lsp=108)
-    _div(slide, sp + 0.5, H*0.62, (W - sp - 1.0)*0.55, palette['accent'], h=0.05)
+    _div(slide, sp + W*0.04, H*0.62, (W - sp - W*0.08)*0.55, palette['accent'], h=H*0.006)
 
     if content.get('subtitle'):
         _txt(slide, content['subtitle'],
-             sp + 0.5, H*0.66, W - sp - 0.65, H*0.16,
+             sp + W*0.04, H*0.66, W - sp - W*0.08, H*0.16,
              f, 16, palette['text'], lsp=128)
 
     _footer_line(slide, content.get('footer', ''), W, H, f, 'AAAAAA')
@@ -247,9 +247,9 @@ def section(prs: Presentation, content: dict, palette: dict):
         _txt(slide, num, W*0.52, H*0.02, W*0.46, H*0.88,
              f, 80, palette['accent'], bold=True, align='left', lsp=100)
 
-    _div(slide, 0.5, H*0.47, W*0.28, palette['accent'], h=0.05)
+    _div(slide, W*0.04, H*0.47, W*0.28, palette['accent'], h=H*0.006)
     _txt(slide, content.get('title', ''),
-         0.5, H*0.52, W*0.62, H*0.32,
+         W*0.04, H*0.52, W*0.62, H*0.32,
          f, 36, 'FFFFFF', bold=True, lsp=108)
     return slide
 
@@ -261,9 +261,9 @@ def kpi_grid(prs: Presentation, content: dict, palette: dict):
 
     _rect(slide, 0, 0, W, H, palette['dark'])
     _txt(slide, content.get('title', ''),
-         0.5, 0.32, W - 1.0, 0.62,
+         W*0.04, H*0.05, W*0.92, H*0.09,
          f, 26, 'FFFFFF', bold=True, lsp=108)
-    _div(slide, 0.5, 0.98, W*0.13, palette['accent'], h=0.045)
+    _div(slide, W*0.04, H*0.14, W*0.13, palette['accent'], h=H*0.006)
 
     kpis = (content.get('kpis') or [])[:6]
     n = len(kpis)
@@ -272,27 +272,28 @@ def kpi_grid(prs: Presentation, content: dict, palette: dict):
 
     cols = 3 if n > 4 else (2 if n > 2 else n)
     rows = (n + cols - 1) // cols
-    cw = (W - 1.0) / cols
-    ch = (H - 1.75) / rows
+    cw = (W - W*0.08) / cols
+    ch = (H - H*0.36) / rows
 
     for i, kpi in enumerate(kpis):
         col, row = i % cols, i // cols
-        lx = 0.5 + col * cw
-        ty = 1.30 + row * ch
+        lx = W*0.04 + col * cw
+        ty = H*0.18 + row * ch
 
         _txt(slide, str(kpi.get('value', '')),
-             lx, ty, cw - 0.15, 0.65,
+             lx, ty, cw - W*0.02, H*0.09,
              f, 34, palette['accent'], bold=True, align='center', lsp=100)
         _txt(slide, str(kpi.get('label', '')),
-             lx, ty + 0.73, cw - 0.15, 0.34,
+             lx, ty + H*0.10, cw - W*0.02, H*0.05,
              f, 11, 'FFFFFF', align='center', lsp=115)
         if kpi.get('sublabel'):
             _txt(slide, kpi['sublabel'],
-                 lx, ty + 1.14, cw - 0.15, 0.28,
+                 lx, ty + H*0.16, cw - W*0.02, H*0.04,
                  f, 9, 'BBBBBB', align='center', lsp=112)
         # Séparateur vertical entre colonnes
         if col < cols - 1:
-            _rect(slide, lx + cw - 0.018, ty + 0.05, 0.018, ch - 0.28, palette.get('primary', '1A3A6B'))
+            _rect(slide, lx + cw - W*0.002, ty + H*0.007, W*0.002, ch - H*0.04,
+                  palette.get('primary', '1A3A6B'))
 
     _footer_line(slide, content.get('footer', ''), W, H, f, 'AAAAAA')
     return slide
@@ -304,36 +305,36 @@ def kpi_row(prs: Presentation, content: dict, palette: dict):
     f = palette.get('font', 'Calibri')
 
     _rect(slide, 0, 0, W, H, 'FFFFFF')
-    _rect(slide, 0, 0, W, 0.07, palette['primary'])
+    _rect(slide, 0, 0, W, H*0.01, palette['primary'])
 
     _txt(slide, content.get('title', ''),
-         0.5, 0.35, W - 1.0, 0.62,
+         W*0.04, H*0.05, W*0.92, H*0.09,
          f, 28, palette['primary'], bold=True, lsp=108)
-    _div(slide, 0.5, 1.02, W*0.13, palette['accent'], h=0.045)
+    _div(slide, W*0.04, H*0.14, W*0.13, palette['accent'], h=H*0.006)
 
     kpis = (content.get('kpis') or [])[:4]
     n = len(kpis)
     if not n:
         return slide
 
-    cw = (W - 1.0) / n
+    cw = (W - W*0.08) / n
     ty = H * 0.42
 
     for i, kpi in enumerate(kpis):
-        lx = 0.5 + i * cw
-        _rect(slide, lx + 0.12, ty - 0.16, cw - 0.40, 0.048, palette['accent'])
+        lx = W*0.04 + i * cw
+        _rect(slide, lx + W*0.015, ty - H*0.023, cw - W*0.05, H*0.007, palette['accent'])
         _txt(slide, str(kpi.get('value', '')),
-             lx, ty, cw - 0.15, 0.72,
+             lx, ty, cw - W*0.02, H*0.10,
              f, 38, palette['primary'], bold=True, align='center', lsp=100)
         _txt(slide, str(kpi.get('label', '')),
-             lx, ty + 0.82, cw - 0.15, 0.34,
+             lx, ty + H*0.12, cw - W*0.02, H*0.05,
              f, 12, palette['text'], align='center', lsp=115)
         if kpi.get('sublabel'):
             _txt(slide, kpi['sublabel'],
-                 lx, ty + 1.24, cw - 0.15, 0.28,
+                 lx, ty + H*0.18, cw - W*0.02, H*0.04,
                  f, 10, 'AAAAAA', align='center', lsp=112)
         if i < n - 1:
-            _rect(slide, lx + cw - 0.015, ty, 0.015, 1.5, palette['light'])
+            _rect(slide, lx + cw - W*0.002, ty, W*0.002, H*0.22, palette['light'])
 
     _footer_line(slide, content.get('footer', ''), W, H, f)
     return slide
@@ -345,12 +346,12 @@ def timeline_h(prs: Presentation, content: dict, palette: dict):
     f = palette.get('font', 'Calibri')
 
     _rect(slide, 0, 0, W, H, 'FFFFFF')
-    _rect(slide, 0, 0, W, 0.07, palette['primary'])
+    _rect(slide, 0, 0, W, H*0.01, palette['primary'])
 
     _txt(slide, content.get('title', ''),
-         0.5, 0.35, W - 1.0, 0.62,
+         W*0.04, H*0.05, W*0.92, H*0.09,
          f, 28, palette['primary'], bold=True, lsp=108)
-    _div(slide, 0.5, 1.02, W*0.13, palette['accent'], h=0.045)
+    _div(slide, W*0.04, H*0.14, W*0.13, palette['accent'], h=H*0.006)
 
     steps = (content.get('steps') or [])[:5]
     n = len(steps)
@@ -358,36 +359,36 @@ def timeline_h(prs: Presentation, content: dict, palette: dict):
         return slide
 
     axis_y = H * 0.52
-    margin = 0.9
+    margin = W * 0.12
     avail = W - margin * 2
     step_w = avail / max(n - 1, 1)
 
     # Axe principal
-    _rect(slide, margin, axis_y - 0.014, avail, 0.028, palette['primary'])
+    _rect(slide, margin, axis_y - H*0.002, avail, H*0.004, palette['primary'])
 
     for i, step in enumerate(steps):
         cx = margin if n == 1 else margin + i * step_w
 
         # Dot
-        _circle(slide, cx, axis_y, 0.17, palette['accent'])
-        _circle(slide, cx, axis_y, 0.09, 'FFFFFF')
+        _circle(slide, cx, axis_y, H*0.024, palette['accent'])
+        _circle(slide, cx, axis_y, H*0.013, 'FFFFFF')
 
-        bw = min(step_w * 0.88, 1.75) if n > 1 else 1.75
+        bw = min(step_w * 0.88, W*0.22) if n > 1 else W*0.22
         lx = cx - bw / 2
 
         # Date au-dessus
         _txt(slide, str(step.get('date', '')),
-             lx, axis_y - 0.68, bw, 0.36,
+             lx, axis_y - H*0.10, bw, H*0.05,
              f, 12, palette['accent'], bold=True, align='center', lsp=110)
 
         # Titre en dessous
         _txt(slide, str(step.get('title', '')),
-             lx, axis_y + 0.26, bw, 0.40,
+             lx, axis_y + H*0.038, bw, H*0.058,
              f, 12, palette['primary'], bold=True, align='center', lsp=115)
 
         if step.get('body'):
             _txt(slide, step['body'],
-                 lx, axis_y + 0.74, bw, 0.70,
+                 lx, axis_y + H*0.107, bw, H*0.10,
                  f, 10, palette['text'], align='center', lsp=118)
 
     _footer_line(slide, content.get('footer', ''), W, H, f)
@@ -400,32 +401,32 @@ def two_col(prs: Presentation, content: dict, palette: dict):
     f = palette.get('font', 'Calibri')
 
     _rect(slide, 0, 0, W, H, 'FFFFFF')
-    _rect(slide, 0, 0, W, 0.07, palette['primary'])
+    _rect(slide, 0, 0, W, H*0.01, palette['primary'])
 
     _txt(slide, content.get('title', ''),
-         0.5, 0.35, W - 1.0, 0.62,
+         W*0.04, H*0.05, W*0.92, H*0.09,
          f, 28, palette['primary'], bold=True, lsp=108)
-    _div(slide, 0.5, 1.02, W*0.13, palette['accent'], h=0.045)
+    _div(slide, W*0.04, H*0.14, W*0.13, palette['accent'], h=H*0.006)
 
-    cw = (W - 1.3) / 2
+    cw = W * 0.43
     col_a = content.get('col_a') or {}
     col_b = content.get('col_b') or {}
 
     for j, (col, lx, bar_color) in enumerate([
-        (col_a, 0.5,            palette['primary']),
-        (col_b, 0.5 + cw + 0.3, palette['secondary']),
+        (col_a, W*0.04,            palette['primary']),
+        (col_b, W*0.04 + cw + W*0.06, palette['secondary']),
     ]):
-        _rect(slide, lx, 1.22, cw, 0.040, bar_color)
+        _rect(slide, lx, H*0.21, cw, H*0.005, bar_color)
         _txt(slide, col.get('title', ''),
-             lx, 1.32, cw, 0.40,
+             lx, H*0.24, cw, H*0.06,
              f, 14, bar_color, bold=True, lsp=115)
 
         items = (col.get('items') or [])[:5]
         for k, item in enumerate(items):
-            iy = 1.82 + k * 0.72
-            _circle(slide, lx + 0.17, iy + 0.17, 0.095, bar_color)
+            iy = H*0.32 + k * H*0.11
+            _circle(slide, lx + W*0.022, iy + H*0.024, W*0.012, bar_color)
             _txt(slide, str(item),
-                 lx + 0.40, iy, cw - 0.48, 0.60,
+                 lx + W*0.052, iy, cw - W*0.062, H*0.087,
                  f, 12, palette['text'], lsp=122)
 
     _footer_line(slide, content.get('footer', ''), W, H, f)
@@ -440,18 +441,18 @@ def quote_dark(prs: Presentation, content: dict, palette: dict):
     _rect(slide, 0, 0, W, H, palette['dark'])
 
     # Guillemet décoratif grand
-    _txt(slide, '\u201c', 0.25, H*0.05, 2.0, 1.8,
+    _txt(slide, '\u201c', W*0.03, H*0.05, W*0.26, H*0.26,
          f, 130, palette['accent'], bold=True, lsp=100)
 
     _txt(slide, content.get('quote', ''),
          W*0.11, H*0.26, W*0.78, H*0.40,
          f, 22, 'FFFFFF', italic=True, align='center', lsp=132)
 
-    _div(slide, W*0.38, H*0.69, W*0.24, palette['accent'], h=0.048)
+    _div(slide, W*0.38, H*0.69, W*0.24, palette['accent'], h=H*0.007)
 
     if content.get('author'):
         _txt(slide, f"— {content['author']}",
-             W*0.18, H*0.73, W*0.64, 0.40,
+             W*0.18, H*0.73, W*0.64, H*0.06,
              f, 12, palette['accent'], bold=True, align='center', lsp=115)
 
     _footer_line(slide, content.get('footer', ''), W, H, f, 'AAAAAA')
@@ -464,37 +465,37 @@ def list_numbered(prs: Presentation, content: dict, palette: dict):
     f = palette.get('font', 'Calibri')
 
     _rect(slide, 0, 0, W, H, 'FFFFFF')
-    _rect(slide, 0, 0, W, 0.07, palette['primary'])
+    _rect(slide, 0, 0, W, H*0.01, palette['primary'])
 
     _txt(slide, content.get('title', ''),
-         0.5, 0.35, W - 1.0, 0.62,
+         W*0.04, H*0.05, W*0.92, H*0.09,
          f, 28, palette['primary'], bold=True, lsp=108)
-    _div(slide, 0.5, 1.02, W*0.13, palette['accent'], h=0.045)
+    _div(slide, W*0.04, H*0.14, W*0.13, palette['accent'], h=H*0.006)
 
     items = (content.get('items') or [])[:5]
     n = len(items)
     if not n:
         return slide
 
-    avail_h = H - 1.88
-    item_h = min(1.10, avail_h / n)
+    avail_h = H - H*0.28
+    item_h = min(H*0.16, avail_h / n)
 
     for i, item in enumerate(items):
-        iy = 1.28 + i * item_h
+        iy = H*0.18 + i * item_h
         cy = iy + item_h * 0.42
 
-        _circle(slide, 0.82, cy, 0.26, palette['primary'])
+        _circle(slide, W*0.105, cy, W*0.034, palette['primary'])
         _txt(slide, str(i + 1),
-             0.56, cy - 0.22, 0.52, 0.44,
+             W*0.072, cy - H*0.032, W*0.068, H*0.064,
              f, 13, 'FFFFFF', bold=True, align='center', lsp=100)
 
         title = item.get('title', '') if isinstance(item, dict) else str(item)
-        _txt(slide, title, 1.28, iy + item_h*0.10, W - 1.72, 0.34,
+        _txt(slide, title, W*0.165, iy + item_h*0.10, W*0.775, H*0.049,
              f, 13, palette['primary'], bold=True, lsp=115)
 
         if isinstance(item, dict) and item.get('body'):
             _txt(slide, item['body'],
-                 1.28, iy + item_h*0.10 + 0.40, W - 1.72, item_h - 0.56,
+                 W*0.165, iy + item_h*0.10 + H*0.058, W*0.775, item_h - H*0.08,
                  f, 12, palette['text'], lsp=122)
 
     _footer_line(slide, content.get('footer', ''), W, H, f)
@@ -507,32 +508,32 @@ def list_cards(prs: Presentation, content: dict, palette: dict):
     f = palette.get('font', 'Calibri')
 
     _rect(slide, 0, 0, W, H, palette['light'])
-    _rect(slide, 0, 0, W, 0.07, palette['primary'])
+    _rect(slide, 0, 0, W, H*0.01, palette['primary'])
 
     _txt(slide, content.get('title', ''),
-         0.5, 0.35, W - 1.0, 0.62,
+         W*0.04, H*0.05, W*0.92, H*0.09,
          f, 28, palette['primary'], bold=True, lsp=108)
-    _div(slide, 0.5, 1.02, W*0.13, palette['accent'], h=0.045)
+    _div(slide, W*0.04, H*0.14, W*0.13, palette['accent'], h=H*0.006)
 
     cards = (content.get('cards') or [])[:4]
-    cw = (W - 1.3) / 2
-    ch = (H - 2.05) / 2 - 0.12
+    cw = W * 0.43
+    ch = (H - H*0.30) / 2 - H*0.017
 
     for i, card in enumerate(cards):
         col, row = i % 2, i // 2
-        lx = 0.5 + col * (cw + 0.3)
-        ty = 1.28 + row * (ch + 0.18)
+        lx = W*0.04 + col * (cw + W*0.06)
+        ty = H*0.18 + row * (ch + H*0.026)
 
         _rrect(slide, lx, ty, cw, ch, 'FFFFFF', radius=0.04)
-        _rrect(slide, lx, ty, cw, 0.075, palette['accent'], radius=0.04)
+        _rrect(slide, lx, ty, cw, H*0.011, palette['accent'], radius=0.04)
 
         title = card.get('title', '') if isinstance(card, dict) else str(card)
-        _txt(slide, title, lx + 0.18, ty + 0.14, cw - 0.36, 0.38,
+        _txt(slide, title, lx + W*0.023, ty + H*0.020, cw - W*0.046, H*0.055,
              f, 13, palette['primary'], bold=True, lsp=115)
 
         if isinstance(card, dict) and card.get('body'):
             _txt(slide, card['body'],
-                 lx + 0.18, ty + 0.64, cw - 0.36, ch - 0.76,
+                 lx + W*0.023, ty + H*0.092, cw - W*0.046, ch - H*0.11,
                  f, 12, palette['text'], lsp=122)
 
     _footer_line(slide, content.get('footer', ''), W, H, f)
@@ -550,20 +551,20 @@ def image_split(prs: Presentation, content: dict, palette: dict):
     _rect(slide, sp, 0,  W - sp, H, 'FFFFFF')
 
     _txt(slide, content.get('title', ''),
-         0.45, H*0.28, sp - 0.6, H*0.38,
+         W*0.04, H*0.28, sp - W*0.08, H*0.38,
          f, 28, 'FFFFFF', bold=True, lsp=108)
-    _div(slide, 0.45, H*0.70, sp*0.40, palette['accent'], h=0.048)
+    _div(slide, W*0.04, H*0.70, sp*0.40, palette['accent'], h=H*0.007)
 
     points = (content.get('points') or [])[:5]
     n_pts = len(points)
-    step = 0.92
-    total_h = max(n_pts - 1, 0) * step + 0.80
-    py_start = max(0.80, (H - total_h) / 2.0)
+    step = H * 0.133
+    total_h = max(n_pts - 1, 0) * step + H*0.116
+    py_start = max(H*0.116, (H - total_h) / 2.0)
     for i, pt in enumerate(points):
         py = py_start + i * step
-        _rect(slide, sp + 0.45, py + 0.14, 0.052, 0.052, palette['accent'])
+        _rect(slide, sp + W*0.058, py + H*0.020, W*0.007, H*0.007, palette['accent'])
         _txt(slide, str(pt),
-             sp + 0.62, py, W - sp - 0.78, 0.78,
+             sp + W*0.080, py, W - sp - W*0.100, H*0.113,
              f, 13, palette['text'], lsp=126)
 
     _footer_line(slide, content.get('footer', ''), W, H, f)
@@ -576,29 +577,29 @@ def full_text(prs: Presentation, content: dict, palette: dict):
     f = palette.get('font', 'Calibri')
 
     _rect(slide, 0, 0, W, H, 'FFFFFF')
-    _rect(slide, 0, 0, W, 0.07, palette['primary'])
-    _rect(slide, 0, 0, 0.07, H, palette['primary'])
+    _rect(slide, 0, 0, W, H*0.01, palette['primary'])
+    _rect(slide, 0, 0, W*0.01, H, palette['primary'])
 
     _txt(slide, content.get('title', ''),
-         0.55, 0.35, W - 0.75, 0.62,
+         W*0.04, H*0.05, W*0.92, H*0.09,
          f, 28, palette['primary'], bold=True, lsp=108)
-    _div(slide, 0.55, 1.02, W*0.13, palette['accent'], h=0.045)
+    _div(slide, W*0.04, H*0.14, W*0.13, palette['accent'], h=H*0.006)
 
     paragraphs = (content.get('paragraphs') or [])[:3]
     n = len(paragraphs)
     if not n:
         return slide
 
-    avail = H - 1.80
+    avail = H - H*0.26
     ph = avail / n
 
     for i, para in enumerate(paragraphs):
-        py = 1.28 + i * ph
+        py = H*0.18 + i * ph
         _txt(slide, str(para),
-             0.55, py, W - 1.05, ph * 0.82,
+             W*0.04, py, W*0.92, ph * 0.82,
              f, 13, palette['text'], lsp=132)
         if i < n - 1:
-            _div(slide, 0.55, py + ph - 0.08, W - 1.05, palette['light'], h=0.014)
+            _div(slide, W*0.04, py + ph - H*0.012, W*0.92, palette['light'], h=H*0.002)
 
     _footer_line(slide, content.get('footer', ''), W, H, f)
     return slide
@@ -610,8 +611,8 @@ def stat_hero(prs: Presentation, content: dict, palette: dict):
     f = palette.get('font', 'Calibri')
 
     _rect(slide, 0, 0, W, H, 'FFFFFF')
-    _rect(slide, 0, 0,      W, 0.07, palette['primary'])
-    _rect(slide, 0, H-0.07, W, 0.07, palette['primary'])
+    _rect(slide, 0, 0,        W, H*0.01, palette['primary'])
+    _rect(slide, 0, H - H*0.01, W, H*0.01, palette['primary'])
 
     # Cercle décoratif en arrière-plan
     _circle(slide, W*0.74, H*0.44, H*0.33, palette['light'])
@@ -620,15 +621,15 @@ def stat_hero(prs: Presentation, content: dict, palette: dict):
          W*0.04, H*0.12, W*0.92, H*0.52,
          f, 72, palette['primary'], bold=True, align='center', lsp=100)
 
-    _div(slide, W*0.30, H*0.67, W*0.40, palette['accent'], h=0.048)
+    _div(slide, W*0.30, H*0.67, W*0.40, palette['accent'], h=H*0.007)
 
     _txt(slide, str(content.get('label', '')),
-         W*0.10, H*0.69, W*0.80, 0.52,
+         W*0.10, H*0.69, W*0.80, H*0.075,
          f, 16, palette['text'], bold=True, align='center', lsp=115)
 
     if content.get('context'):
         _txt(slide, content['context'],
-             W*0.15, H*0.78, W*0.70, 0.50,
+             W*0.15, H*0.78, W*0.70, H*0.072,
              f, 11, palette['text'], align='center', lsp=122)
 
     _footer_line(slide, content.get('footer', ''), W, H, f)
@@ -648,7 +649,7 @@ def closing_dark(prs: Presentation, content: dict, palette: dict):
     _txt(slide, content.get('title', ''),
          W*0.16, H*0.28, W*0.68, H*0.32,
          f, 40, 'FFFFFF', bold=True, align='center', lsp=108)
-    _div(slide, W*0.36, H*0.63, W*0.28, palette['primary'], h=0.048)
+    _div(slide, W*0.36, H*0.63, W*0.28, palette['primary'], h=H*0.007)
 
     if content.get('subtitle'):
         _txt(slide, content['subtitle'],
@@ -668,21 +669,21 @@ def closing_split(prs: Presentation, content: dict, palette: dict):
     _rect(slide, sp, 0,  W - sp, H, 'FFFFFF')
 
     _txt(slide, content.get('title', ''),
-         0.5, H*0.24, sp - 0.65, H*0.40,
+         W*0.04, H*0.24, sp - W*0.09, H*0.40,
          f, 34, 'FFFFFF', bold=True, lsp=108)
-    _div(slide, 0.5, H*0.67, sp*0.42, 'FFFFFF', h=0.038)
+    _div(slide, W*0.04, H*0.67, sp*0.42, 'FFFFFF', h=H*0.005)
 
     if content.get('subtitle'):
         _txt(slide, content['subtitle'],
-             sp + 0.5, H*0.28, W - sp - 0.70, H*0.38,
+             sp + W*0.04, H*0.28, W - sp - W*0.10, H*0.38,
              f, 15, palette['text'], lsp=132)
 
     # Bouton CTA
-    btn_l = sp + 0.5
+    btn_l = sp + W*0.04
     btn_t = H * 0.70
-    _rrect(slide, btn_l, btn_t, 2.4, 0.52, palette['accent'], radius=0.08)
+    _rrect(slide, btn_l, btn_t, W*0.31, H*0.075, palette['accent'], radius=0.08)
     _txt(slide, 'Merci',
-         btn_l, btn_t + 0.03, 2.4, 0.46,
+         btn_l, btn_t + H*0.004, W*0.31, H*0.067,
          f, 16, 'FFFFFF', bold=True, align='center', lsp=110)
     return slide
 
