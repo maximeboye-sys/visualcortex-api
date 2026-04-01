@@ -437,7 +437,7 @@ def quote_dark(prs: Presentation, content: dict, palette: dict):
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, palette['primary'])
+    _rect(slide, 0, 0, W, H, palette['dark'])
 
     # Guillemet décoratif grand
     _txt(slide, '\u201c', 0.25, H*0.05, 2.0, 1.8,

@@ -1536,16 +1536,32 @@ def _h2_extract_palette(brand: dict) -> dict:
           if v and len(v.lstrip('#').strip()) == 6}
 
     if tc:
-        # Build a deduplicated list of chromatic candidates (excluding near-white and near-black)
-        _seen: list = []
-        for _slot in ['dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6']:
-            _c = tc.get(_slot, '')
-            _r, _g, _b = int(_c[0:2],16) if _c else 0, int(_c[2:4],16) if _c else 0, int(_c[4:6],16) if _c else 0
-            if _c and _c not in _seen and not (_r > 240 and _g > 240 and _b > 240):
-                _seen.append(_c)
-        if len(_seen) >= 1: palette['primary']   = _seen[0]
-        if len(_seen) >= 2: palette['secondary'] = _seen[1]
-        if len(_seen) >= 3: palette['accent']    = _seen[2]
+        # primary = dk2 (couleur de marque pour titres/fonds/barres)
+        for _s in ['dk2', 'accent1']:
+            _c = tc.get(_s, '')
+            if _c:
+                _r2, _g2, _b2 = int(_c[0:2],16), int(_c[2:4],16), int(_c[4:6],16)
+                if not (_r2 > 240 and _g2 > 240 and _b2 > 240):
+                    palette['primary'] = _c
+                    break
+
+        # accent = accent1 (couleur déco de la marque — peut égaler primary)
+        for _s in ['accent1', 'accent2']:
+            _c = tc.get(_s, '')
+            if _c:
+                _r2, _g2, _b2 = int(_c[0:2],16), int(_c[2:4],16), int(_c[4:6],16)
+                if not (_r2 > 240 and _g2 > 240 and _b2 > 240):
+                    palette['accent'] = _c
+                    break
+
+        # secondary = premier accent non-blanc à partir de accent2
+        for _s in ['accent2', 'accent3', 'accent4', 'accent5', 'accent6']:
+            _c = tc.get(_s, '')
+            if not _c: continue
+            _r2, _g2, _b2 = int(_c[0:2],16), int(_c[2:4],16), int(_c[4:6],16)
+            if not (_r2 > 240 and _g2 > 240 and _b2 > 240):
+                palette['secondary'] = _c
+                break
         # text = dk1 (source de vérité pour la couleur du texte / fonds sombres neutres)
         if 'dk1' in tc:
             palette['text'] = tc['dk1']
