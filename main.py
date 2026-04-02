@@ -1227,20 +1227,36 @@ async def generate_presentation(
     template:      UploadFile = File(...),
     prompt:        str        = Form(...),
     nb_slides:     str        = Form(default="complet"),
+    document:      UploadFile = File(default=None),
     authorization: str        = Form(default=None),
 ):
     if not _is_pro(authorization):
         _quota(_ip(request))
 
-    n = _resolve_nb_slides(nb_slides)
+    n          = _resolve_nb_slides(nb_slides)
     pptx_bytes = await template.read()
 
+    # Extraction du document source optionnel
+    doc_content = ''
+    if document is not None:
+        try:
+            doc_bytes   = await document.read()
+            doc_content = extract_document_content(doc_bytes, document.filename or 'doc')
+        except Exception as e:
+            log.warning(f'[/generate] document extraction failed: {e}')
+
+    # V4 → V3 → L1
     try:
-        final_bytes, plan, _, _pal = run_pipeline_v3(pptx_bytes, prompt, n)
-        log.info("[/generate] Pipeline V3 OK")
+        final_bytes, plan, _, _pal = await run_pipeline_v4(pptx_bytes, prompt, n, doc_content)
+        log.info('[/generate] Pipeline V4 OK')
     except Exception as e:
-        log.warning(f"[/generate] V3 échoué ({e}) → fallback L1")
-        final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
+        log.warning(f'[/generate] V4 échoué ({e}) → fallback V3')
+        try:
+            final_bytes, plan, _, _pal = run_pipeline_v3(pptx_bytes, prompt, n)
+            log.info('[/generate] Pipeline V3 OK (fallback)')
+        except Exception as e2:
+            log.warning(f'[/generate] V3 échoué ({e2}) → fallback L1')
+            final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
 
     filename = f"visualcortex-{_safe_name(prompt)}.pptx"
     return StreamingResponse(
@@ -1703,6 +1719,12 @@ def _h2_blank_slide(prs: Presentation):
             sp_tree.remove(ph._element)
         except Exception:
             pass
+
+    # Garantir l'héritage du master (logo, éléments décoratifs)
+    import lxml.etree as _etree
+    cSld = slide._element.find(qn('p:cSld'))
+    if cSld is not None:
+        cSld.set('showMasterSp', '1')
 
     W = prs.slide_width  / 914400.0
     H = prs.slide_height / 914400.0
@@ -2902,6 +2924,441 @@ def run_pipeline_v3(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
 
 
 # ══════════════════════════════════════════════════════════════
+# PIPELINE V4 — TEMPLATE-NATIVE GENERATION
+# ══════════════════════════════════════════════════════════════
+
+def _map_layouts(prs: Presentation) -> dict:
+    """
+    Analyse les slide_layouts du template et produit un mapping
+    type sémantique → index de layout.
+    Retourne au minimum : cover, section, content, two_col, blank.
+    """
+    layout_map: dict = {}
+
+    for idx, layout in enumerate(prs.slide_layouts):
+        n = layout.name.lower()
+        ph_idxs = {ph.placeholder_format.idx for ph in layout.placeholders}
+
+        if any(k in n for k in ['title slide', 'titre de présentation', 'couverture',
+                                  'cover', 'garde', 'page de titre']):
+            layout_map.setdefault('cover', idx)
+        elif any(k in n for k in ['section', 'chapter', 'chapitre', 'séparateur', 'header']):
+            layout_map.setdefault('section', idx)
+        elif any(k in n for k in ['two content', '2 contenus', 'comparison',
+                                   'comparaison', 'deux', 'two col']):
+            layout_map.setdefault('two_col', idx)
+        elif any(k in n for k in ['blank', 'vide', 'vierge', 'empty']):
+            layout_map.setdefault('blank', idx)
+        elif 0 in ph_idxs and 1 in ph_idxs:
+            layout_map.setdefault('content', idx)
+
+    n_layouts = len(prs.slide_layouts)
+    if 'cover'   not in layout_map: layout_map['cover']   = 0
+    if 'blank'   not in layout_map: layout_map['blank']   = n_layouts - 1
+    if 'content' not in layout_map: layout_map['content'] = min(1, n_layouts - 1)
+    if 'section' not in layout_map: layout_map['section'] = layout_map['cover']
+    if 'two_col' not in layout_map: layout_map['two_col'] = layout_map['content']
+
+    log.info(f'[V4] layout_map={layout_map}')
+    return layout_map
+
+
+def _fill_placeholder_preserving_style(ph, new_text: str) -> None:
+    """
+    Remplace le texte d'un placeholder en préservant le style XML du premier run
+    (police, taille, couleur schemeClr, gras, italique, effets).
+    Gère le texte multi-paragraphes (séparés par \\n).
+    """
+    if not new_text:
+        return
+
+    import lxml.etree as _etree
+    tf    = ph.text_frame
+    txBody = tf._txBody
+
+    # Capturer le style du premier run existant
+    rPr_xml = None
+    pPr_xml = None
+    if tf.paragraphs:
+        first_p = tf.paragraphs[0]
+        p_elem  = first_p._p
+        pPr     = p_elem.find(qn('a:pPr'))
+        if pPr is not None:
+            pPr_xml = copy.deepcopy(pPr)
+        if first_p.runs:
+            rPr = first_p.runs[0]._r.find(qn('a:rPr'))
+            if rPr is not None:
+                rPr_xml = copy.deepcopy(rPr)
+
+    # Vider le txBody de tous ses paragraphes
+    for p in list(txBody.findall(qn('a:p'))):
+        txBody.remove(p)
+
+    # Recréer les paragraphes avec le style capturé
+    paragraphs = new_text.split('\n')
+    for para_text in paragraphs:
+        p_elem = _etree.SubElement(txBody, qn('a:p'))
+        if pPr_xml is not None:
+            p_elem.insert(0, copy.deepcopy(pPr_xml))
+        r_elem = _etree.SubElement(p_elem, qn('a:r'))
+        if rPr_xml is not None:
+            r_elem.insert(0, copy.deepcopy(rPr_xml))
+        t_elem = _etree.SubElement(r_elem, qn('a:t'))
+        t_elem.text = para_text
+
+
+# Layouts V3 traités nativement (placeholders réels du template)
+_V4_NATIVE_TYPES = frozenset({
+    'cover_dark', 'cover_split',
+    'section',
+    'full_text', 'list_numbered', 'list_cards', 'image_split',
+    'two_col',
+    'closing_dark', 'closing_split',
+})
+
+
+def _create_slide_v4_native(prs: Presentation,
+                             layout_name: str,
+                             content: dict,
+                             layout_map: dict):
+    """
+    Crée une slide en utilisant le vrai layout du template.
+    Remplit les placeholders existants en préservant leur style XML.
+    Garantit showMasterSp='1' (logo visible).
+    """
+    import lxml.etree as _etree
+
+    # Choisir l'index de layout selon le type sémantique
+    if layout_name in ('cover_dark', 'cover_split'):
+        idx = layout_map['cover']
+    elif layout_name == 'section':
+        idx = layout_map['section']
+    elif layout_name in ('closing_dark', 'closing_split'):
+        # Closing → layout couverture (style cohérent) ou dernier layout
+        idx = layout_map.get('cover', len(prs.slide_layouts) - 1)
+    elif layout_name == 'two_col':
+        idx = layout_map['two_col']
+    else:
+        # full_text, list_*, image_split
+        idx = layout_map['content']
+
+    layout = prs.slide_layouts[idx]
+    slide  = prs.slides.add_slide(layout)
+
+    # Logo garanti
+    cSld = slide._element.find(qn('p:cSld'))
+    if cSld is not None:
+        cSld.set('showMasterSp', '1')
+
+    # Construire le texte de body selon le type
+    def _body_text() -> str:
+        if content.get('body'):
+            return content['body']
+        if content.get('subtitle'):
+            return content['subtitle']
+        if content.get('paragraphs'):
+            return '\n'.join(str(p) for p in content['paragraphs'])
+        if content.get('items'):
+            parts = []
+            for item in content['items']:
+                if isinstance(item, dict):
+                    t = item.get('title', '')
+                    b = item.get('body', '')
+                    parts.append(f'{t} — {b}' if b else t)
+                else:
+                    parts.append(str(item))
+            return '\n'.join(parts)
+        if content.get('points'):
+            return '\n'.join(str(p) for p in content['points'])
+        if content.get('cards'):
+            parts = []
+            for c in content['cards']:
+                if isinstance(c, dict):
+                    parts.append(c.get('title', '') + (': ' + c.get('body', '') if c.get('body') else ''))
+                else:
+                    parts.append(str(c))
+            return '\n'.join(parts)
+        return ''
+
+    # Remplir les placeholders
+    body_phs = []   # placeholders de contenu (idx≥1, hors subtitle/footer/date)
+    for ph in slide.placeholders:
+        idx_ph = ph.placeholder_format.idx
+        if idx_ph == 0:
+            _fill_placeholder_preserving_style(ph, content.get('title', ''))
+        elif idx_ph == 2:
+            # Subtitle (sur cover/section)
+            _fill_placeholder_preserving_style(ph, content.get('subtitle', ''))
+        elif idx_ph == 4:
+            # Footer
+            if content.get('footer'):
+                _fill_placeholder_preserving_style(ph, content['footer'])
+        elif idx_ph in (3, 5):
+            pass  # date, numéro de slide → laisser tel quel
+        else:
+            body_phs.append(ph)
+
+    # Distribuer les placeholders de body
+    if body_phs:
+        if layout_name == 'two_col' and content.get('col_a') and content.get('col_b'):
+            # Premier body = col_a, second = col_b
+            def _col_text(col):
+                parts = []
+                if col.get('title'):
+                    parts.append(col['title'])
+                parts.extend(str(i) for i in col.get('items', []))
+                return '\n'.join(parts)
+            _fill_placeholder_preserving_style(body_phs[0], _col_text(content['col_a']))
+            if len(body_phs) > 1:
+                _fill_placeholder_preserving_style(body_phs[1], _col_text(content['col_b']))
+        else:
+            _fill_placeholder_preserving_style(body_phs[0], _body_text())
+
+    return slide
+
+
+# ── Document ingestion ──────────────────────────────────────────────────────
+
+def extract_document_content(file_bytes: bytes, filename: str) -> str:
+    """
+    Extrait le texte brut d'un document uploadé.
+    Formats : PDF (PyMuPDF), DOCX (python-docx), TXT/MD, PPTX.
+    Tronqué à ~12 000 caractères pour rester dans les limites de tokens.
+    """
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'txt'
+    text = ''
+
+    try:
+        if ext in ('txt', 'md', 'csv'):
+            text = file_bytes.decode('utf-8', errors='ignore')
+
+        elif ext == 'pdf':
+            try:
+                import fitz  # PyMuPDF
+                doc = fitz.open(stream=file_bytes, filetype='pdf')
+                pages = []
+                for page in doc:
+                    pages.append(page.get_text())
+                text = '\n'.join(pages)
+            except ImportError:
+                log.warning('[doc] PyMuPDF non disponible — PDF ignoré')
+                text = ''
+
+        elif ext == 'docx':
+            try:
+                from docx import Document as _DocxDoc
+                doc  = _DocxDoc(io.BytesIO(file_bytes))
+                text = '\n'.join(p.text for p in doc.paragraphs if p.text.strip())
+            except ImportError:
+                log.warning('[doc] python-docx non disponible — DOCX ignoré')
+                text = ''
+
+        elif ext == 'pptx':
+            src_prs = Presentation(io.BytesIO(file_bytes))
+            parts   = []
+            for slide in src_prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, 'text_frame'):
+                        for para in shape.text_frame.paragraphs:
+                            t = para.text.strip()
+                            if t:
+                                parts.append(t)
+            text = '\n'.join(parts)
+
+    except Exception as e:
+        log.warning(f'[doc] Extraction échouée ({filename}): {e}')
+        text = ''
+
+    # Tronquer intelligemment (ne pas couper un mot)
+    MAX_CHARS = 12_000
+    if len(text) > MAX_CHARS:
+        cut = text[:MAX_CHARS].rfind('\n')
+        text = text[:cut if cut > MAX_CHARS * 0.8 else MAX_CHARS]
+
+    log.info(f'[doc] {filename} → {len(text)} caractères extraits')
+    return text.strip()
+
+
+# ── Planner V4 (async, avec contexte document) ─────────────────────────────
+
+_V4_PLANNER_SYSTEM = _V3_PLANNER_SYSTEM  # mêmes règles narratives
+
+_V4_DOC_INJECT = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DOCUMENT SOURCE (contenu à synthétiser) :
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{document_content}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INSTRUCTION : Synthétise ce document en présentation. Extrais les données
+clés, chiffres, arguments. Transforme en contenu visuel — ne recopie pas
+mot à mot. Adapte chaque slide au type de layout choisi.
+"""
+
+
+async def plan_presentation_v4(
+    prompt: str,
+    nb_slides: int,
+    palette: dict,
+    document_content: str = '',
+) -> dict:
+    """
+    Planifie la présentation V4 via AsyncAnthropic (non-bloquant).
+    Injecte le contenu du document si fourni.
+    """
+    async_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+
+    layouts_block = '\n'.join(
+        f'- {name}: {desc}'
+        for name, desc in LAYOUT_DESCRIPTIONS.items()
+    )
+
+    user_prompt = _V3_PLANNER_USER.format(
+        prompt        = prompt,
+        nb_slides     = nb_slides,
+        primary       = palette.get('primary', '1A3A6B'),
+        accent        = palette.get('accent',  'F0A500'),
+        font          = palette.get('font',    'Calibri'),
+        layouts_block = layouts_block,
+    )
+
+    if document_content:
+        user_prompt = user_prompt + '\n' + _V4_DOC_INJECT.format(
+            document_content=document_content
+        )
+
+    max_tokens = max(4000, nb_slides * 380)
+
+    for attempt in range(3):
+        msg = await async_client.messages.create(
+            model      = CLAUDE_MODEL,
+            max_tokens = max_tokens,
+            system     = _V4_PLANNER_SYSTEM,
+            messages   = [{'role': 'user', 'content': user_prompt}],
+        )
+        try:
+            plan = _parse_json_robust(msg.content[0].text.strip(), context='plan_v4')
+            log.info(f'[V4] Plan: {len(plan.get("slides",[]))} slides, '
+                     f'title="{plan.get("presentation_title","")[:60]}"')
+            return plan
+        except (ValueError, KeyError) as e:
+            log.warning(f'plan_presentation_v4 attempt {attempt+1}/3: {e}')
+            if attempt == 2:
+                raise
+    raise RuntimeError('plan_presentation_v4 : 3 tentatives échouées')
+
+
+async def run_pipeline_v4(
+    pptx_bytes: bytes,
+    prompt: str,
+    nb_slides: int,
+    document_content: str = '',
+) -> tuple:
+    """
+    Pipeline V4 — template-native generation.
+
+    Phase 1 : extraction charte + layout map
+    Phase 2 : planification narrative async (avec doc optionnel)
+    Phase 3 : création slides — native pour types simples,
+              layouts.py pour types complexes (kpi, timeline…)
+    Phase 4 : suppression slides originales + export
+    """
+    if not ANTHROPIC_API_KEY:
+        raise ValueError('Clé API Claude manquante.')
+
+    nb_slides = max(2, min(nb_slides, 30))
+
+    prs        = Presentation(io.BytesIO(pptx_bytes))
+    n_original = len(prs.slides)
+
+    # ── Phase 1 ──────────────────────────────────────────────
+    log.info(f'[V4] Phase 1 : analyse template ({nb_slides} slides)…')
+    brand      = extract_brand(prs)
+    palette    = _h2_extract_palette(brand)
+    layout_map = _map_layouts(prs)
+
+    # ── Phase 2 ──────────────────────────────────────────────
+    log.info('[V4] Phase 2 : planification narrative…')
+    plan       = await plan_presentation_v4(prompt, nb_slides, palette, document_content)
+    slides_plan = plan.get('slides', [])
+
+    # Compléter si Claude en a généré moins que demandé
+    fallback_layouts = ['full_text', 'list_numbered', 'two_col', 'kpi_row']
+    while len(slides_plan) < nb_slides:
+        fb = fallback_layouts[len(slides_plan) % len(fallback_layouts)]
+        slides_plan.append({
+            'layout':  fb,
+            'content': {
+                'title':      'Développement complémentaire',
+                'paragraphs': ['Contenu additionnel à personnaliser.'],
+                'footer':     plan.get('footer_text', ''),
+            },
+        })
+    slides_plan = slides_plan[:nb_slides]
+
+    # Garantie closing
+    closing_layouts = {'closing_dark', 'closing_split'}
+    if not slides_plan or slides_plan[-1].get('layout') not in closing_layouts:
+        closing_slide = {
+            'layout':  'closing_dark',
+            'content': {'title': 'Merci', 'subtitle': plan.get('footer_text', '')},
+        }
+        if len(slides_plan) >= nb_slides and slides_plan:
+            slides_plan[-1] = closing_slide
+        else:
+            slides_plan.append(closing_slide)
+
+    log.info(f'[V4] {len(slides_plan)} slides : {[s.get("layout") for s in slides_plan]}')
+
+    # ── Phase 3 ──────────────────────────────────────────────
+    log.info('[V4] Phase 3 : création des slides…')
+    success = 0
+    for sp in slides_plan:
+        layout_name = sp.get('layout', 'full_text')
+        content     = sp.get('content', {})
+
+        if not content.get('footer') and plan.get('footer_text'):
+            content['footer'] = plan['footer_text']
+
+        try:
+            if layout_name in _V4_NATIVE_TYPES:
+                _create_slide_v4_native(prs, layout_name, content, layout_map)
+            else:
+                layout_fn = LAYOUT_REGISTRY.get(layout_name) or LAYOUT_REGISTRY['full_text']
+                layout_fn(prs, content, palette)
+            success += 1
+            log.info(f'[V4] ✓ {layout_name}')
+        except Exception as e:
+            log.error(f'[V4] ✗ {layout_name} : {repr(e)}', exc_info=True)
+            try:
+                LAYOUT_REGISTRY['full_text'](prs, {
+                    'title':      content.get('title', ''),
+                    'paragraphs': [],
+                    'footer':     content.get('footer', ''),
+                }, palette)
+                success += 1
+            except Exception as e2:
+                log.error(f'[V4] ✗ fallback full_text : {repr(e2)}', exc_info=True)
+
+    log.info(f'[V4] Phase 3 terminée : {success}/{len(slides_plan)} OK')
+
+    # ── Phase 4 ──────────────────────────────────────────────
+    slides_added = len(prs.slides) - n_original
+    if slides_added == 0:
+        raise RuntimeError('[V4] Aucune slide créée')
+
+    xml_slides = prs.slides._sldIdLst
+    for sld_id in list(prs.slides._sldIdLst)[:n_original]:
+        xml_slides.remove(sld_id)
+    log.info(f'[V4] {n_original} slides originales supprimées — '
+             f'{len(prs.slides)} slides finales')
+
+    out = io.BytesIO()
+    prs.save(out)
+    out.seek(0)
+    return out.read(), plan, brand, palette
+
+
+# ══════════════════════════════════════════════════════════════
 # ROUTES NIVEAU 2
 # ══════════════════════════════════════════════════════════════
 
@@ -2921,24 +3378,41 @@ async def generate_presentation_v2(
     prompt:        str        = Form(...),
     nb_slides:     str        = Form(default='complet'),
     profile:       str        = Form(default='institutional'),
+    document:      UploadFile = File(default=None),
     authorization: str        = Form(default=None),
 ):
     """
-    Route V3 — pipeline layouts pré-testés (fiable, zéro génération de code).
-    nb_slides accepte : "Essentiel"→6 | "Complet"→10 | "Approfondi"→16 ou un entier.
+    Route V4 — template-native generation (V3 comme fallback).
+    nb_slides : "Essentiel"→6 | "Complet"→10 | "Approfondi"→16 ou entier.
     profile conservé pour compatibilité API future.
+    document : fichier source optionnel (PDF, DOCX, TXT, PPTX).
     """
     if not _is_pro(authorization):
         _quota(_ip(request))
 
-    n = _resolve_nb_slides(nb_slides)
+    n          = _resolve_nb_slides(nb_slides)
     pptx_bytes = await template.read()
 
+    doc_content = ''
+    if document is not None:
+        try:
+            doc_bytes   = await document.read()
+            doc_content = extract_document_content(doc_bytes, document.filename or 'doc')
+        except Exception as e:
+            log.warning(f'[/generate-v2] document extraction failed: {e}')
+
     try:
-        final_bytes, plan, brand, palette = run_pipeline_v3(pptx_bytes, prompt, n)
+        final_bytes, plan, brand, palette = await run_pipeline_v4(
+            pptx_bytes, prompt, n, doc_content
+        )
+        log.info('[/generate-v2] Pipeline V4 OK')
     except Exception as e:
-        log.error(f'[V3] Erreur pipeline : {e}', exc_info=True)
-        raise HTTPException(500, f'Erreur génération V3 : {e}')
+        log.warning(f'[/generate-v2] V4 échoué ({e}) → fallback V3')
+        try:
+            final_bytes, plan, brand, palette = run_pipeline_v3(pptx_bytes, prompt, n)
+        except Exception as e2:
+            log.error(f'[/generate-v2] V3 aussi échoué : {e2}', exc_info=True)
+            raise HTTPException(500, f'Erreur génération : {e2}')
 
     filename = f'visualcortex-{_safe_name(prompt)}.pptx'
     return StreamingResponse(
