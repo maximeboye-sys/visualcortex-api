@@ -1245,6 +1245,7 @@ async def generate_presentation(
         except Exception as e:
             log.warning(f'[/generate] document extraction failed: {e}')
 
+    import asyncio as _asyncio
     # V4 → V3 → L1
     try:
         final_bytes, plan, _, _pal = await run_pipeline_v4(pptx_bytes, prompt, n, doc_content)
@@ -1252,11 +1253,15 @@ async def generate_presentation(
     except Exception as e:
         log.warning(f'[/generate] V4 échoué ({e}) → fallback V3')
         try:
-            final_bytes, plan, _, _pal = run_pipeline_v3(pptx_bytes, prompt, n)
+            final_bytes, plan, _, _pal = await _asyncio.to_thread(
+                run_pipeline_v3, pptx_bytes, prompt, n
+            )
             log.info('[/generate] Pipeline V3 OK (fallback)')
         except Exception as e2:
             log.warning(f'[/generate] V3 échoué ({e2}) → fallback L1')
-            final_bytes, plan, _ = run_pipeline(pptx_bytes, prompt, n)
+            final_bytes, plan, _ = await _asyncio.to_thread(
+                run_pipeline, pptx_bytes, prompt, n
+            )
 
     filename = f"visualcortex-{_safe_name(prompt)}.pptx"
     return StreamingResponse(
@@ -3099,20 +3104,29 @@ def _create_slide_v4_native(prs: Presentation,
             body_phs.append(ph)
 
     # Distribuer les placeholders de body
+    def _col_text(col):
+        parts = []
+        if col.get('title'):
+            parts.append(col['title'])
+        parts.extend(str(i) for i in col.get('items', []))
+        return '\n'.join(parts)
+
     if body_phs:
         if layout_name == 'two_col' and content.get('col_a') and content.get('col_b'):
-            # Premier body = col_a, second = col_b
-            def _col_text(col):
-                parts = []
-                if col.get('title'):
-                    parts.append(col['title'])
-                parts.extend(str(i) for i in col.get('items', []))
-                return '\n'.join(parts)
             _fill_placeholder_preserving_style(body_phs[0], _col_text(content['col_a']))
             if len(body_phs) > 1:
+                # Template avec 2 placeholders body : remplir col_b normalement
                 _fill_placeholder_preserving_style(body_phs[1], _col_text(content['col_b']))
+            else:
+                # Template avec 1 seul placeholder body : concaténer les deux colonnes
+                combined = _col_text(content['col_a']) + '\n\n' + _col_text(content['col_b'])
+                _fill_placeholder_preserving_style(body_phs[0], combined)
         else:
             _fill_placeholder_preserving_style(body_phs[0], _body_text())
+    else:
+        # Aucun placeholder body disponible dans ce layout — contenu muet
+        log.warning(f'[V4] layout="{layout_name}" : aucun placeholder body '
+                    f'(placeholders: {[ph.placeholder_format.idx for ph in slide.placeholders]})')
 
     return slide
 
@@ -3205,8 +3219,6 @@ async def plan_presentation_v4(
     Planifie la présentation V4 via AsyncAnthropic (non-bloquant).
     Injecte le contenu du document si fourni.
     """
-    async_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-
     layouts_block = '\n'.join(
         f'- {name}: {desc}'
         for name, desc in LAYOUT_DESCRIPTIONS.items()
@@ -3228,22 +3240,23 @@ async def plan_presentation_v4(
 
     max_tokens = max(4000, nb_slides * 380)
 
-    for attempt in range(3):
-        msg = await async_client.messages.create(
-            model      = CLAUDE_MODEL,
-            max_tokens = max_tokens,
-            system     = _V4_PLANNER_SYSTEM,
-            messages   = [{'role': 'user', 'content': user_prompt}],
-        )
-        try:
-            plan = _parse_json_robust(msg.content[0].text.strip(), context='plan_v4')
-            log.info(f'[V4] Plan: {len(plan.get("slides",[]))} slides, '
-                     f'title="{plan.get("presentation_title","")[:60]}"')
-            return plan
-        except (ValueError, KeyError) as e:
-            log.warning(f'plan_presentation_v4 attempt {attempt+1}/3: {e}')
-            if attempt == 2:
-                raise
+    async with anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY) as async_client:
+        for attempt in range(3):
+            msg = await async_client.messages.create(
+                model      = CLAUDE_MODEL,
+                max_tokens = max_tokens,
+                system     = _V4_PLANNER_SYSTEM,
+                messages   = [{'role': 'user', 'content': user_prompt}],
+            )
+            try:
+                plan = _parse_json_robust(msg.content[0].text.strip(), context='plan_v4')
+                log.info(f'[V4] Plan: {len(plan.get("slides",[]))} slides, '
+                         f'title="{plan.get("presentation_title","")[:60]}"')
+                return plan
+            except (ValueError, KeyError) as e:
+                log.warning(f'plan_presentation_v4 attempt {attempt+1}/3: {e}')
+                if attempt == 2:
+                    raise
     raise RuntimeError('plan_presentation_v4 : 3 tentatives échouées')
 
 
@@ -3407,9 +3420,12 @@ async def generate_presentation_v2(
         )
         log.info('[/generate-v2] Pipeline V4 OK')
     except Exception as e:
+        import asyncio as _asyncio
         log.warning(f'[/generate-v2] V4 échoué ({e}) → fallback V3')
         try:
-            final_bytes, plan, brand, palette = run_pipeline_v3(pptx_bytes, prompt, n)
+            final_bytes, plan, brand, palette = await _asyncio.to_thread(
+                run_pipeline_v3, pptx_bytes, prompt, n
+            )
         except Exception as e2:
             log.error(f'[/generate-v2] V3 aussi échoué : {e2}', exc_info=True)
             raise HTTPException(500, f'Erreur génération : {e2}')
