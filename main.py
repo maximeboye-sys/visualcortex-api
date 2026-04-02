@@ -1641,10 +1641,22 @@ def _h2_extract_palette(brand: dict) -> dict:
         if not palette.get('dark'): palette['dark'] = '1A1A1A'
         palette['light'] = 'F0F4FA'
 
+    # ── Couleur de fond des slides claires : lt1 du thème ────────────────────
+    raw_lt1 = tc.get('lt1', 'FFFFFF') if tc else 'FFFFFF'
+    # Exclure les valeurs invalides ou trop sombres (lt1 doit être clair)
+    try:
+        h = raw_lt1.lstrip('#')
+        if len(h) == 6 and _lum(h) > 180:
+            palette['bg'] = h.upper()
+        else:
+            palette['bg'] = 'FFFFFF'
+    except Exception:
+        palette['bg'] = 'FFFFFF'
+
     log.info(f"[palette] primary=#{palette['primary']} secondary=#{palette['secondary']} "
              f"accent=#{palette['accent']} light=#{palette['light']} "
              f"dark=#{palette['dark']} text=#{palette['text']} "
-             f"chromatic={chromatic[:4]} font={palette['font']}")
+             f"bg=#{palette['bg']} chromatic={chromatic[:4]} font={palette['font']}")
     return palette
 
 

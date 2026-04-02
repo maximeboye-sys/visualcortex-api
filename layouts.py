@@ -218,7 +218,7 @@ def cover_split(prs: Presentation, content: dict, palette: dict):
 
     _rect(slide, 0,  0, sp, H, palette['primary'])
     _rect(slide, 0, H*0.78, sp, H*0.22, palette['accent'])
-    _rect(slide, sp, 0, W - sp, H, 'FFFFFF')
+    _rect(slide, sp, 0, W - sp, H, palette.get('bg', 'FFFFFF'))
 
     _txt(slide, content.get('title', ''),
          sp + W*0.04, H*0.27, W - sp - W*0.08, H*0.32,
@@ -304,7 +304,7 @@ def kpi_row(prs: Presentation, content: dict, palette: dict):
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, 'FFFFFF')
+    _rect(slide, 0, 0, W, H, palette.get('bg', 'FFFFFF'))
     _rect(slide, 0, 0, W, H*0.01, palette['primary'])
 
     _txt(slide, content.get('title', ''),
@@ -345,7 +345,7 @@ def timeline_h(prs: Presentation, content: dict, palette: dict):
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, 'FFFFFF')
+    _rect(slide, 0, 0, W, H, palette.get('bg', 'FFFFFF'))
     _rect(slide, 0, 0, W, H*0.01, palette['primary'])
 
     _txt(slide, content.get('title', ''),
@@ -400,7 +400,7 @@ def two_col(prs: Presentation, content: dict, palette: dict):
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, 'FFFFFF')
+    _rect(slide, 0, 0, W, H, palette.get('bg', 'FFFFFF'))
     _rect(slide, 0, 0, W, H*0.01, palette['primary'])
 
     _txt(slide, content.get('title', ''),
@@ -464,7 +464,7 @@ def list_numbered(prs: Presentation, content: dict, palette: dict):
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, 'FFFFFF')
+    _rect(slide, 0, 0, W, H, palette.get('bg', 'FFFFFF'))
     _rect(slide, 0, 0, W, H*0.01, palette['primary'])
 
     _txt(slide, content.get('title', ''),
@@ -548,7 +548,7 @@ def image_split(prs: Presentation, content: dict, palette: dict):
 
     _rect(slide, 0,  0,  sp, H, palette['primary'])
     _rect(slide, 0,  H*0.72, sp, H*0.28, palette['secondary'])
-    _rect(slide, sp, 0,  W - sp, H, 'FFFFFF')
+    _rect(slide, sp, 0,  W - sp, H, palette.get('bg', 'FFFFFF'))
 
     _txt(slide, content.get('title', ''),
          W*0.04, H*0.28, sp - W*0.08, H*0.38,
@@ -576,7 +576,7 @@ def full_text(prs: Presentation, content: dict, palette: dict):
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, 'FFFFFF')
+    _rect(slide, 0, 0, W, H, palette.get('bg', 'FFFFFF'))
     _rect(slide, 0, 0, W, H*0.01, palette['primary'])
     _rect(slide, 0, 0, W*0.01, H, palette['primary'])
 
@@ -610,7 +610,7 @@ def stat_hero(prs: Presentation, content: dict, palette: dict):
     slide, W, H = _blank(prs)
     f = palette.get('font', 'Calibri')
 
-    _rect(slide, 0, 0, W, H, 'FFFFFF')
+    _rect(slide, 0, 0, W, H, palette.get('bg', 'FFFFFF'))
     _rect(slide, 0, 0,        W, H*0.01, palette['primary'])
     _rect(slide, 0, H - H*0.01, W, H*0.01, palette['primary'])
 
@@ -666,7 +666,7 @@ def closing_split(prs: Presentation, content: dict, palette: dict):
 
     _rect(slide, 0,  0,  sp, H, palette['primary'])
     _rect(slide, 0,  H*0.76, sp, H*0.24, palette['accent'])
-    _rect(slide, sp, 0,  W - sp, H, 'FFFFFF')
+    _rect(slide, sp, 0,  W - sp, H, palette.get('bg', 'FFFFFF'))
 
     _txt(slide, content.get('title', ''),
          W*0.04, H*0.24, sp - W*0.09, H*0.40,
