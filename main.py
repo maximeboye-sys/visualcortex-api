@@ -1197,12 +1197,13 @@ async def generate_preview(
         else {"used": _quota(_ip(request))[0], "total": FREE_QUOTA_PER_IP, "plan": "free"}
     )
 
+    import asyncio as _aio
     n          = _resolve_nb_slides(nb_slides)
     pptx_bytes = await template.read()
     prs        = Presentation(io.BytesIO(pptx_bytes))
     brand      = extract_brand(prs)
     palette    = _h2_extract_palette(brand)
-    plan       = plan_presentation_v3(prompt, n, palette)
+    plan       = await _aio.to_thread(plan_presentation_v3, prompt, n, palette)
 
     return {
         "success":            True,
@@ -1240,8 +1241,13 @@ async def generate_presentation(
     doc_content = ''
     if document is not None:
         try:
-            doc_bytes   = await document.read()
+            doc_bytes = await document.read()
+            _doc_mb   = len(doc_bytes) / (1024 * 1024)
+            if _doc_mb > 20:
+                raise HTTPException(400, f'Document trop volumineux ({_doc_mb:.1f} MB, max 20 MB)')
             doc_content = extract_document_content(doc_bytes, document.filename or 'doc')
+        except HTTPException:
+            raise
         except Exception as e:
             log.warning(f'[/generate] document extraction failed: {e}')
 
@@ -1302,55 +1308,72 @@ def _sse(event: str, data: dict) -> str:
 async def generate_stream(
     request:       Request,
     template:      UploadFile = File(...),
-    prompt:        str        = Form(...),
+    prompt:        str        = Form(default=''),
     nb_slides:     int        = Form(default=8),
+    document:      UploadFile = File(default=None),
     authorization: str        = Form(default=None),
 ):
     """
-    Génération avec progression SSE.
+    Génération avec progression SSE (V4).
     Event final "done" contient le fichier PPTX encodé en base64.
+    prompt peut être vide si un document source est fourni.
     """
     if not _is_pro(authorization):
         _quota(_ip(request))
 
     pptx_bytes = await template.read()
 
-    async def _stream():
-        import asyncio, base64 as _b64
-        loop = asyncio.get_event_loop()
+    # Extraction document optionnel
+    doc_content = ''
+    if document is not None:
+        try:
+            doc_bytes = await document.read()
+            _doc_mb   = len(doc_bytes) / (1024 * 1024)
+            if _doc_mb > 20:
+                raise ValueError(f'Document trop volumineux ({_doc_mb:.1f} MB, max 20 MB)')
+            doc_content = extract_document_content(doc_bytes, document.filename or 'doc')
+        except Exception as e:
+            log.warning(f'[/generate-stream] document extraction failed: {e}')
 
+    # Prompt par défaut si document fourni sans texte libre
+    prompt_val = prompt.strip()
+    if not prompt_val:
+        prompt_val = (
+            'Crée une présentation structurée synthétisant ce document.'
+            if doc_content else 'Présentation'
+        )
+
+    async def _stream():
+        import asyncio as _aio, base64 as _b64
         try:
             yield _sse("start", {"nb_slides": nb_slides})
 
-            # Phase 1+2 : brand + planning V3
+            # Phase 1 : extraction brand (rapide, sync)
             prs_tmp = Presentation(io.BytesIO(pptx_bytes))
             brand   = extract_brand(prs_tmp)
             palette = _h2_extract_palette(brand)
-            plan    = await loop.run_in_executor(
-                None,
-                lambda: plan_presentation_v3(prompt, nb_slides, palette)
-            )
+
+            # Phase 2 : planning V4 async (non-bloquant)
+            plan = await plan_presentation_v4(prompt_val, nb_slides, palette, doc_content)
             yield _sse("planned", {"title": plan.get("presentation_title", "")})
 
-            # Phase 3 : application layouts (dans un thread)
+            # Phase 3+4 : création slides + export
             yield _sse("generated", {})
             yield _sse("hydrating", {})
 
             try:
-                final_bytes, _plan, _brand, _pal = await loop.run_in_executor(
-                    None,
-                    lambda: run_pipeline_v3(pptx_bytes, prompt, nb_slides)
+                final_bytes, _plan, _brand, _pal = await run_pipeline_v4(
+                    pptx_bytes, prompt_val, nb_slides, doc_content
                 )
-                log.info("[/generate-stream] Pipeline V3 OK")
-            except Exception as e_v3:
-                log.warning(f"[/generate-stream] V3 échoué ({e_v3}) → fallback L1")
-                final_bytes, _plan, _ = await loop.run_in_executor(
-                    None,
-                    lambda: run_pipeline(pptx_bytes, prompt, nb_slides)
+                log.info("[/generate-stream] Pipeline V4 OK")
+            except Exception as e_v4:
+                log.warning(f"[/generate-stream] V4 échoué ({e_v4}) → fallback V3")
+                final_bytes, _plan, _brand, _pal = await _aio.to_thread(
+                    run_pipeline_v3, pptx_bytes, prompt_val, nb_slides
                 )
 
             b64      = _b64.b64encode(final_bytes).decode()
-            filename = f"visualcortex-{_safe_name(prompt)}.pptx"
+            filename = f"visualcortex-{_safe_name(prompt_val)}.pptx"
             yield _sse("done", {"file_b64": b64, "filename": filename})
 
         except Exception as e:
@@ -3409,8 +3432,13 @@ async def generate_presentation_v2(
     doc_content = ''
     if document is not None:
         try:
-            doc_bytes   = await document.read()
+            doc_bytes = await document.read()
+            _doc_mb   = len(doc_bytes) / (1024 * 1024)
+            if _doc_mb > 20:
+                raise HTTPException(400, f'Document trop volumineux ({_doc_mb:.1f} MB, max 20 MB)')
             doc_content = extract_document_content(doc_bytes, document.filename or 'doc')
+        except HTTPException:
+            raise
         except Exception as e:
             log.warning(f'[/generate-v2] document extraction failed: {e}')
 
