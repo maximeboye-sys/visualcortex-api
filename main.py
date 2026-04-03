@@ -2968,12 +2968,16 @@ def _map_layouts(prs: Presentation) -> dict:
         ph_idxs = {ph.placeholder_format.idx for ph in layout.placeholders}
 
         if any(k in n for k in ['title slide', 'titre de présentation', 'couverture',
-                                  'cover', 'garde', 'page de titre']):
+                                  'cover', 'garde', 'page de titre', 'couv', 'home',
+                                  'front', 'première', 'accueil']):
             layout_map.setdefault('cover', idx)
-        elif any(k in n for k in ['section', 'chapter', 'chapitre', 'séparateur', 'header']):
+        elif any(k in n for k in ['section', 'chapter', 'chapitre', 'séparateur',
+                                   'header', 'separator', 'divider', 'break',
+                                   'transition', 'intertitre']):
             layout_map.setdefault('section', idx)
         elif any(k in n for k in ['two content', '2 contenus', 'comparison',
-                                   'comparaison', 'deux', 'two col']):
+                                   'comparaison', 'deux', 'two col', '2 col',
+                                   'dual', 'compare', 'côte à côte']):
             layout_map.setdefault('two_col', idx)
         elif any(k in n for k in ['blank', 'vide', 'vierge', 'empty']):
             layout_map.setdefault('blank', idx)
@@ -3035,12 +3039,16 @@ def _fill_placeholder_preserving_style(ph, new_text: str) -> None:
         t_elem.text = para_text
 
 
-# Layouts V3 traités nativement (placeholders réels du template)
+# Tous les types sont maintenant traités nativement via les vrais layouts du template
 _V4_NATIVE_TYPES = frozenset({
     'cover_dark', 'cover_split',
     'section',
     'full_text', 'list_numbered', 'list_cards', 'image_split',
     'two_col',
+    'kpi_grid', 'kpi_row',
+    'timeline_h',
+    'quote_dark',
+    'stat_hero',
     'closing_dark', 'closing_split',
 })
 
@@ -3053,21 +3061,24 @@ def _create_slide_v4_native(prs: Presentation,
     Crée une slide en utilisant le vrai layout du template.
     Remplit les placeholders existants en préservant leur style XML.
     Garantit showMasterSp='1' (logo visible).
+
+    Tous les types de slides passent ici — y compris KPI, timeline, quote, stat.
+    Le contenu complexe est mis en forme comme du texte structuré dans les
+    placeholders natifs du template, ce qui garantit la cohérence visuelle.
     """
     import lxml.etree as _etree
 
-    # Choisir l'index de layout selon le type sémantique
+    # ── Choisir le layout template selon le type sémantique ──────────────────
     if layout_name in ('cover_dark', 'cover_split'):
         idx = layout_map['cover']
-    elif layout_name == 'section':
+    elif layout_name in ('section', 'quote_dark'):
         idx = layout_map['section']
     elif layout_name in ('closing_dark', 'closing_split'):
-        # Closing → layout couverture (style cohérent) ou dernier layout
         idx = layout_map.get('cover', len(prs.slide_layouts) - 1)
     elif layout_name == 'two_col':
         idx = layout_map['two_col']
     else:
-        # full_text, list_*, image_split
+        # full_text, list_*, image_split, kpi_*, timeline_h, stat_hero
         idx = layout_map['content']
 
     layout = prs.slide_layouts[idx]
@@ -3078,78 +3089,133 @@ def _create_slide_v4_native(prs: Presentation,
     if cSld is not None:
         cSld.set('showMasterSp', '1')
 
-    # Construire le texte de body selon le type
+    # ── Formater le texte de body selon le type de slide ─────────────────────
     def _body_text() -> str:
+        # Types simples
         if content.get('body'):
             return content['body']
         if content.get('subtitle'):
             return content['subtitle']
         if content.get('paragraphs'):
             return '\n'.join(str(p) for p in content['paragraphs'])
+        if content.get('points'):
+            return '\n'.join(f'• {p}' for p in content['points'])
         if content.get('items'):
             parts = []
             for item in content['items']:
                 if isinstance(item, dict):
                     t = item.get('title', '')
                     b = item.get('body', '')
-                    parts.append(f'{t} — {b}' if b else t)
+                    parts.append(f'• {t}' + (f'\n  {b}' if b else ''))
                 else:
-                    parts.append(str(item))
+                    parts.append(f'• {item}')
             return '\n'.join(parts)
-        if content.get('points'):
-            return '\n'.join(str(p) for p in content['points'])
         if content.get('cards'):
             parts = []
             for c in content['cards']:
                 if isinstance(c, dict):
-                    parts.append(c.get('title', '') + (': ' + c.get('body', '') if c.get('body') else ''))
+                    t = c.get('title', '')
+                    b = c.get('body', '')
+                    parts.append(f'▸ {t}' + (f'\n  {b}' if b else ''))
                 else:
-                    parts.append(str(c))
+                    parts.append(f'▸ {c}')
             return '\n'.join(parts)
+
+        # KPI grid / row → valeur + label alignés
+        if content.get('kpis'):
+            parts = []
+            for kpi in content['kpis']:
+                val = kpi.get('value', '')
+                lbl = kpi.get('label', '')
+                sub = kpi.get('sublabel', '')
+                line = f'{val}  —  {lbl}'
+                if sub:
+                    line += f'  ({sub})'
+                parts.append(line)
+            return '\n'.join(parts)
+
+        # Timeline → jalons chronologiques
+        if content.get('steps'):
+            parts = []
+            for step in content['steps']:
+                date  = step.get('date', '')
+                title = step.get('title', '')
+                body  = step.get('body', '')
+                line  = f'{date}  →  {title}'
+                if body:
+                    line += f'\n     {body}'
+                parts.append(line)
+            return '\n'.join(parts)
+
+        # Quote → citation + auteur
+        if content.get('quote'):
+            text = f'« {content["quote"]} »'
+            if content.get('author'):
+                text += f'\n\n— {content["author"]}'
+            return text
+
+        # Stat hero → valeur + label + contexte
+        if content.get('value'):
+            parts = [str(content['value'])]
+            if content.get('label'):
+                parts.append(content['label'])
+            if content.get('context'):
+                parts.append(content['context'])
+            return '\n'.join(parts)
+
         return ''
 
-    # Remplir les placeholders
-    body_phs = []   # placeholders de contenu (idx≥1, hors subtitle/footer/date)
+    def _title_text() -> str:
+        """Titre adapté selon le type : stat_hero affiche la valeur dans le titre."""
+        if layout_name == 'stat_hero' and content.get('value'):
+            return str(content.get('value', ''))
+        return content.get('title', '')
+
+    def _subtitle_text() -> str:
+        if layout_name == 'stat_hero':
+            return content.get('label', '') or content.get('subtitle', '')
+        if layout_name == 'quote_dark':
+            return ''  # quote va dans body
+        return content.get('subtitle', '')
+
+    # ── Remplir les placeholders ──────────────────────────────────────────────
+    body_phs = []
     for ph in slide.placeholders:
         idx_ph = ph.placeholder_format.idx
         if idx_ph == 0:
-            _fill_placeholder_preserving_style(ph, content.get('title', ''))
+            _fill_placeholder_preserving_style(ph, _title_text())
         elif idx_ph == 2:
-            # Subtitle (sur cover/section)
-            _fill_placeholder_preserving_style(ph, content.get('subtitle', ''))
+            _fill_placeholder_preserving_style(ph, _subtitle_text())
         elif idx_ph == 4:
-            # Footer
             if content.get('footer'):
                 _fill_placeholder_preserving_style(ph, content['footer'])
         elif idx_ph in (3, 5):
-            pass  # date, numéro de slide → laisser tel quel
+            pass  # date, numéro → laisser
         else:
             body_phs.append(ph)
 
-    # Distribuer les placeholders de body
+    # ── Distribuer les body placeholders ─────────────────────────────────────
     def _col_text(col):
         parts = []
         if col.get('title'):
             parts.append(col['title'])
-        parts.extend(str(i) for i in col.get('items', []))
+        for i in col.get('items', []):
+            parts.append(f'• {i}')
         return '\n'.join(parts)
 
     if body_phs:
         if layout_name == 'two_col' and content.get('col_a') and content.get('col_b'):
             _fill_placeholder_preserving_style(body_phs[0], _col_text(content['col_a']))
             if len(body_phs) > 1:
-                # Template avec 2 placeholders body : remplir col_b normalement
                 _fill_placeholder_preserving_style(body_phs[1], _col_text(content['col_b']))
             else:
-                # Template avec 1 seul placeholder body : concaténer les deux colonnes
                 combined = _col_text(content['col_a']) + '\n\n' + _col_text(content['col_b'])
                 _fill_placeholder_preserving_style(body_phs[0], combined)
         else:
             _fill_placeholder_preserving_style(body_phs[0], _body_text())
     else:
-        # Aucun placeholder body disponible dans ce layout — contenu muet
         log.warning(f'[V4] layout="{layout_name}" : aucun placeholder body '
-                    f'(placeholders: {[ph.placeholder_format.idx for ph in slide.placeholders]})')
+                    f'(ph: {[ph.placeholder_format.idx for ph in slide.placeholders]})')
 
     return slide
 
