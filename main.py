@@ -4372,6 +4372,321 @@ def layout_waterfall_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+# ── V4 Matrices & Diagrammes ─────────────────────────────────────────────────
+
+def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Matrice 2×2. Chaque quadrant : rounded_rect #F5F5F5 + bordure haute colorée.
+    Axes labels en dehors de la grille. Items bullet dans chaque quadrant.
+    content: {title, quadrants:[{label,body}]×4, axes:{x,y}, footer}
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent3', '40A900'),
+        theme.get('accent4', 'F66A00'),
+        accent1,
+        theme.get('accent2', 'ED0000'),
+    ])
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    quadrants = content.get('quadrants', [])
+    axes      = content.get('axes', {})
+
+    # Grille : 2×2 dans la zone contenu
+    margin_l = 0.65
+    margin_r = 0.45
+    y_top    = 1.6
+    y_bot    = H - 0.55
+    gap      = 0.1
+    ax_lbl_w = 0.55   # largeur réservée pour axe Y (gauche)
+    ax_lbl_h = 0.35   # hauteur réservée pour axe X (bas)
+
+    grid_x = margin_l + ax_lbl_w
+    grid_w = W - grid_x - margin_r
+    grid_y = y_top
+    grid_h = y_bot - ax_lbl_h - y_top
+
+    cell_w = (grid_w - gap) / 2
+    cell_h = (grid_h - gap) / 2
+
+    # Axe Y (label vertical à gauche de la grille)
+    y_axis = axes.get('y', '')
+    if y_axis:
+        # Simuler texte vertical : 2 textbox empilés
+        _h2_text(slide, y_axis,
+                 left=margin_l, top=grid_y + cell_h / 4,
+                 width=ax_lbl_w - 0.05, height=grid_h / 2,
+                 font=font, size_pt=10, color=dk1,
+                 bold=False, align='right')
+
+    # Axe X (label horizontal sous la grille)
+    x_axis = axes.get('x', '')
+    if x_axis:
+        _h2_text(slide, x_axis,
+                 left=grid_x + grid_w / 4, top=y_bot - ax_lbl_h,
+                 width=grid_w / 2, height=ax_lbl_h,
+                 font=font, size_pt=10, color=dk1,
+                 bold=False, align='center')
+
+    # 4 quadrants (ordre : TL, TR, BL, BR)
+    positions = [
+        (grid_x,               grid_y),
+        (grid_x + cell_w + gap, grid_y),
+        (grid_x,               grid_y + cell_h + gap),
+        (grid_x + cell_w + gap, grid_y + cell_h + gap),
+    ]
+    for i, pos in enumerate(positions):
+        if i >= len(quadrants):
+            break
+        q   = quadrants[i] if isinstance(quadrants[i], dict) else {'label': str(quadrants[i])}
+        cx, cy = pos
+        color  = accents[i % len(accents)]
+        label  = q.get('label', '')
+        body   = q.get('body', '')
+        items  = q.get('items', [])
+
+        _h2_rounded_rect(slide, left=cx, top=cy,
+                          width=cell_w, height=cell_h,
+                          color='F5F5F5', radius=0.04)
+        _h2_rect(slide, left=cx, top=cy, width=cell_w, height=0.07, color=color)
+
+        pad = 0.18
+        _h2_text(slide, label,
+                 left=cx + pad, top=cy + 0.13,
+                 width=cell_w - pad * 2, height=0.38,
+                 font=font, size_pt=12, color=dk1,
+                 bold=True, align='left')
+
+        # Contenu (body ou items)
+        txt = body
+        if not txt and items:
+            txt = '\n'.join(f'• {it}' for it in items)
+        if txt:
+            _h2_text(slide, txt,
+                     left=cx + pad, top=cy + 0.57,
+                     width=cell_w - pad * 2, height=cell_h - 0.65,
+                     font=font, size_pt=10, color='444444',
+                     bold=False, align='left', line_spacing=1.2)
+
+    return slide
+
+
+def layout_swot_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Analyse SWOT : 4 quadrants colorés (vert/rouge/bleu/orange).
+    Header couleur + items bullet dans chaque quadrant.
+    content: {title, strengths:[str], weaknesses:[str],
+              opportunities:[str], threats:[str], footer}
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', 'Analyse SWOT'),
+                                    content.get('footer', ''), tp)
+
+    quadrant_defs = [
+        ('Forces',        'strengths',    '40A900', 'FAFFED'),
+        ('Faiblesses',    'weaknesses',   'ED0000', 'FFF5F5'),
+        ('Opportunités',  'opportunities','009CEA', 'F0F8FF'),
+        ('Menaces',       'threats',      'F66A00', 'FFF8F0'),
+    ]
+
+    y_top  = 1.6
+    y_bot  = H - 0.55
+    gap    = 0.12
+    x_left = 0.55
+    x_right = W - 0.45
+    grid_w = x_right - x_left
+    grid_h = y_bot - y_top
+    cell_w = (grid_w - gap) / 2
+    cell_h = (grid_h - gap) / 2
+    head_h = 0.45
+
+    positions = [
+        (x_left,               y_top),
+        (x_left + cell_w + gap, y_top),
+        (x_left,               y_top + cell_h + gap),
+        (x_left + cell_w + gap, y_top + cell_h + gap),
+    ]
+
+    for (label, key, hdr_color, bg_color), (cx, cy) in zip(quadrant_defs, positions):
+        items = content.get(key, [])
+
+        # Fond du quadrant
+        _h2_rounded_rect(slide, left=cx, top=cy,
+                          width=cell_w, height=cell_h,
+                          color=bg_color, radius=0.04)
+        # Header coloré
+        _h2_rect(slide, left=cx, top=cy, width=cell_w, height=head_h, color=hdr_color)
+        _h2_text(slide, label,
+                 left=cx + 0.15, top=cy + 0.06,
+                 width=cell_w - 0.3, height=head_h - 0.1,
+                 font=font, size_pt=13, color='FFFFFF',
+                 bold=True, align='left')
+
+        # Items bullet
+        txt = '\n'.join(f'• {it}' for it in items[:8])
+        if txt:
+            _h2_text(slide, txt,
+                     left=cx + 0.18, top=cy + head_h + 0.1,
+                     width=cell_w - 0.3, height=cell_h - head_h - 0.15,
+                     font=font, size_pt=10, color='333333',
+                     bold=False, align='left', line_spacing=1.25)
+
+    return slide
+
+
+def layout_proscons_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Deux colonnes Pour / Contre.
+    Gauche : accent3 (vert) — POUR. Droite : accent2 (rouge) — CONTRE.
+    content: {title, pros:[str], cons:[str], footer}
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accent2 = theme.get('accent2', 'ED0000')
+    accent3 = theme.get('accent3', '40A900')
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    pros = content.get('pros', [])
+    cons = content.get('cons', [])
+
+    y_top   = 1.6
+    y_bot   = H - 0.55
+    gap     = 0.3
+    x_left  = 0.55
+    col_w   = (W - x_left - 0.45 - gap) / 2
+    head_h  = 0.52
+    item_h  = 0.46
+
+    for col_idx, (items, color, bg, label) in enumerate([
+        (pros, accent3, 'EAFAF1', '✓  POUR'),
+        (cons, accent2, 'FDEDEC', '✗  CONTRE'),
+    ]):
+        cx = x_left + col_idx * (col_w + gap)
+
+        # Header
+        _h2_rect(slide, left=cx, top=y_top, width=col_w, height=head_h, color=color)
+        _h2_text(slide, label,
+                 left=cx + 0.18, top=y_top + 0.08,
+                 width=col_w - 0.3, height=head_h - 0.1,
+                 font=font, size_pt=14, color='FFFFFF',
+                 bold=True, align='left')
+
+        # Items avec fond alternéavailable_h = y_bot - (y_top + head_h) - 0.05
+        n = min(len(items), int(available_h / item_h))
+        for j, item in enumerate(items[:n]):
+            iy     = y_top + head_h + j * item_h
+            bg_row = bg if j % 2 == 0 else 'FFFFFF'
+            _h2_rect(slide, left=cx, top=iy, width=col_w, height=item_h - 0.04, color=bg_row)
+            _h2_rect(slide, left=cx, top=iy, width=0.07, height=item_h - 0.04, color=color)
+            _h2_text(slide, str(item),
+                     left=cx + 0.16, top=iy + 0.05,
+                     width=col_w - 0.22, height=item_h - 0.1,
+                     font=font, size_pt=11, color=dk1,
+                     bold=False, align='left', line_spacing=1.1)
+
+    return slide
+
+
+def layout_table_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Tableau natif PowerPoint.
+    Header : fond accent1 + texte blanc. Lignes alternées #F5F5F5 / #FFFFFF.
+    content: {title, headers:[str], rows:[[str]], footer}
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    headers = content.get('headers', [])
+    rows    = content.get('rows', [])
+    if not headers and not rows:
+        return slide
+
+    n_cols = max(len(headers), max((len(r) for r in rows), default=0))
+    n_rows = len(rows) + 1  # +1 pour l'en-tête
+    if n_cols == 0 or n_rows == 0:
+        return slide
+
+    # Dimensions
+    t_left = 0.55
+    t_top  = 1.65
+    t_w    = W - t_left - 0.45
+    t_h    = min(H - 0.65 - t_top, n_rows * 0.52 + 0.1)
+    row_h  = t_h / n_rows
+
+    from pptx.util import Emu as _Emu
+    table_shape = slide.shapes.add_table(
+        n_rows, n_cols,
+        Inches(t_left), Inches(t_top), Inches(t_w), Inches(t_h),
+    )
+    tbl = table_shape.table
+
+    # Largeurs de colonnes égales
+    col_w_emu = int(Inches(t_w) / n_cols)
+    for col in tbl.columns:
+        col.width = col_w_emu
+
+    def _set_cell(r, c, text, bg_hex, fg_hex, bold=False, size_pt=11):
+        cell = tbl.cell(r, c)
+        cell.text = str(text) if text is not None else ''
+        # Fond
+        try:
+            fill = cell.fill
+            fill.solid()
+            fill.fore_color.rgb = _h2_parse_hex(bg_hex)
+        except Exception:
+            pass
+        # Texte
+        try:
+            para = cell.text_frame.paragraphs[0]
+            run  = para.runs[0] if para.runs else para.add_run()
+            run.font.name  = font
+            run.font.size  = Pt(size_pt)
+            run.font.bold  = bold
+            run.font.color.rgb = _h2_parse_hex(fg_hex)
+        except Exception:
+            pass
+
+    # Ligne d'en-tête
+    for c, hdr in enumerate(headers[:n_cols]):
+        _set_cell(0, c, hdr, accent1, 'FFFFFF', bold=True, size_pt=12)
+
+    # Lignes de données
+    for r, row in enumerate(rows[:n_rows - 1]):
+        bg = 'F5F5F5' if r % 2 == 0 else 'FFFFFF'
+        for c in range(n_cols):
+            val = row[c] if c < len(row) else ''
+            _set_cell(r + 1, c, val, bg, dk1, bold=False, size_pt=11)
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -4909,8 +5224,7 @@ async def run_pipeline_v4(
                 layout_section_v4(prs, content, tp)
             elif layout_name in ('closing', 'closing_dark', 'closing_split'):
                 layout_closing_v4(prs, content, tp)
-            elif layout_name in ('full_text', 'image_split', 'agenda',
-                                  'highlight_box', 'pros_cons', 'before_after'):
+            elif layout_name in ('full_text', 'image_split', 'agenda', 'highlight_box'):
                 layout_fulltext_v4(prs, content, tp)
             elif layout_name in ('kpi_grid', 'kpi_row', 'kpi_native'):
                 layout_kpi_grid_v4(prs, content, tp)
@@ -4920,7 +5234,7 @@ async def run_pipeline_v4(
                 layout_list_numbered_v4(prs, content, tp)
             elif layout_name in ('list_cards',):
                 layout_list_cards_v4(prs, content, tp)
-            elif layout_name in ('two_col', 'pros_cons', 'before_after'):
+            elif layout_name in ('two_col', 'before_after'):
                 layout_twocol_v4(prs, content, tp)
             elif layout_name in ('stat_hero',):
                 layout_stathero_v4(prs, content, tp)
@@ -4938,6 +5252,14 @@ async def run_pipeline_v4(
                 layout_piechart_v4(prs, content, tp)
             elif layout_name in ('waterfall',):
                 layout_waterfall_v4(prs, content, tp)
+            elif layout_name in ('matrix_2x2', 'matrix'):
+                layout_matrix_v4(prs, content, tp)
+            elif layout_name in ('swot',):
+                layout_swot_v4(prs, content, tp)
+            elif layout_name in ('pros_cons',):
+                layout_proscons_v4(prs, content, tp)
+            elif layout_name in ('table',):
+                layout_table_v4(prs, content, tp)
 
             # ── Routing V3 fallback (programmatic shapes) ────────────────────
             else:
