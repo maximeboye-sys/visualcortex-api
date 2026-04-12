@@ -1348,22 +1348,21 @@ async def generate_stream(
         try:
             yield _sse("start", {"nb_slides": nb_slides})
 
-            # Phase 1 : extraction brand (rapide, sync)
+            # Phase 1 : analyze template (rapide, sync via thread)
             prs_tmp = Presentation(io.BytesIO(pptx_bytes))
-            brand   = extract_brand(prs_tmp)
-            palette = _h2_extract_palette(brand)
+            tp_tmp  = await _aio.to_thread(analyze_template_v4, prs_tmp)
 
-            # Phase 2 : planning V4 async (non-bloquant)
-            plan = await plan_presentation_v4(prompt_val, nb_slides, palette, doc_content)
+            # Phase 2 : planning V4 async (non-bloquant, une seule fois)
+            plan = await plan_presentation_v4(prompt_val, nb_slides, tp_tmp, doc_content)
             yield _sse("planned", {"title": plan.get("presentation_title", "")})
 
-            # Phase 3+4 : création slides + export
+            # Phase 3+4 : création slides + export (plan pré-fourni → pas de double-appel)
             yield _sse("generated", {})
             yield _sse("hydrating", {})
 
             try:
                 final_bytes, _plan, _brand, _pal = await run_pipeline_v4(
-                    pptx_bytes, prompt_val, nb_slides, doc_content
+                    pptx_bytes, prompt_val, nb_slides, doc_content, plan=plan
                 )
                 log.info("[/generate-stream] Pipeline V4 OK")
             except Exception as e_v4:
@@ -4372,6 +4371,260 @@ def layout_waterfall_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Graphique radar (RADAR_MARKERS) natif PowerPoint.
+    content: {title, axes:[str], series:[{name, values:[n]}], footer}
+    """
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+
+    slide = _blank_v4(prs, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    axes   = content.get('axes', [])
+    series = content.get('series', [])
+    if not axes or not series:
+        return slide
+
+    chart_data = CategoryChartData()
+    chart_data.categories = [str(a) for a in axes]
+    for s in series:
+        vals = tuple(float(v) if v is not None else 0.0 for v in s.get('values', []))
+        chart_data.add_series(s.get('name', ''), vals)
+
+    chart_shape = slide.shapes.add_chart(
+        XL_CHART_TYPE.RADAR_MARKERS,
+        Inches(1.5), Inches(1.6), Inches(10.0), Inches(5.2),
+        chart_data,
+    )
+    chart  = chart_shape.chart
+    colors = _chart_series_colors(tp.get('theme', {}))
+
+    for i, ser in enumerate(chart.series):
+        c = _h2_parse_hex(colors[i % len(colors)])
+        try:
+            ser.format.line.color.rgb = c
+            ser.format.line.width = Pt(2.0)
+        except Exception:
+            pass
+
+    if len(series) > 1:
+        chart.has_legend = True
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.include_in_layout = False
+    else:
+        chart.has_legend = False
+
+    return slide
+
+
+def layout_pyramid_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Pyramide hiérarchique (niveaux du haut vers le bas).
+    Triangles/trapèzes de largeur croissante, couleur dégradée.
+    content: {title, levels:[{label, body}], footer}
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    accent1 = theme.get('accent1', '009CEA')
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    levels = content.get('levels', [])
+    n = min(len(levels), 5)
+    if n == 0:
+        return slide
+
+    # Zone contenu
+    y_start = 1.6
+    y_end   = H - 0.6
+    level_h = (y_end - y_start) / n - 0.06
+
+    # Largeurs croissantes du haut vers le bas
+    min_w = W * 0.2
+    max_w = W - 1.2
+
+    try:
+        r0 = int(accent1[0:2], 16)
+        g0 = int(accent1[2:4], 16)
+        b0 = int(accent1[4:6], 16)
+    except Exception:
+        r0, g0, b0 = 0, 156, 234
+
+    for i, level in enumerate(levels[:n]):
+        ratio = min_w / max_w + i * (1.0 - min_w / max_w) / max(n - 1, 1)
+        lw    = max_w * ratio
+        lx    = (W - lw) / 2
+        ly    = y_start + i * (level_h + 0.06)
+
+        # Couleur de plus en plus foncée
+        dark  = 0.85 - i * 0.15 / max(n - 1, 1)
+        color = f'{int(r0 * dark):02X}{int(g0 * dark):02X}{int(b0 * dark):02X}'
+
+        _h2_rect(slide, left=lx, top=ly, width=lw, height=level_h, color=color)
+
+        label = level.get('label', '') if isinstance(level, dict) else str(level)
+        body  = level.get('body', '')  if isinstance(level, dict) else ''
+        txt   = f'{label}  —  {body}' if body else label
+
+        _h2_text(slide, txt,
+                 left=lx + 0.2, top=ly + (level_h - 0.38) / 2,
+                 width=lw - 0.4, height=0.38,
+                 font=font, size_pt=12, color='FFFFFF',
+                 bold=True, align='center')
+
+    return slide
+
+
+def layout_cycle_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Cycle / roue avec étapes circulaires.
+    Cercles accent_cycle disposés en cercle avec flèches entre eux.
+    content: {title, steps:[{title, body}], footer}
+    """
+    import math
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent3', '40A900'),
+        theme.get('accent4', 'F66A00'),
+        theme.get('accent1', '009CEA'),
+    ])
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    steps = content.get('steps', [])
+    n = min(len(steps), 6)
+    if n == 0:
+        return slide
+
+    # Centre du cycle dans la zone contenu
+    cx_center = W / 2
+    cy_center = (1.6 + H - 0.6) / 2
+    orbit_r   = min((W - 2.0) / 2, (H - 2.2) / 2) * 0.85
+    node_r    = 0.55
+
+    for i, step in enumerate(steps[:n]):
+        angle = -math.pi / 2 + i * 2 * math.pi / n
+        nx    = cx_center + orbit_r * math.cos(angle)
+        ny    = cy_center + orbit_r * math.sin(angle)
+        color = accents[i % len(accents)]
+
+        title = step.get('title', '') if isinstance(step, dict) else str(step)
+        body  = step.get('body', '')  if isinstance(step, dict) else ''
+
+        # Cercle
+        _h2_circle(slide, cx=nx, cy=ny, r=node_r, color=color)
+
+        # Numéro
+        _h2_text(slide, str(i + 1),
+                 left=nx - node_r, top=ny - node_r,
+                 width=node_r * 2, height=node_r * 0.7,
+                 font=font, size_pt=11, color='FFFFFF',
+                 bold=True, align='center')
+
+        # Label sous le cercle (ou dessus selon position)
+        label_y = ny + node_r + 0.05
+        if label_y + 0.7 > H - 0.6:
+            label_y = ny - node_r - 0.7
+
+        _h2_text(slide, title,
+                 left=nx - 1.1, top=label_y,
+                 width=2.2, height=0.55,
+                 font=font, size_pt=11, color=dk1,
+                 bold=True, align='center', line_spacing=1.1)
+
+        # Flèche vers le prochain nœud (arc simplifié)
+        if n > 1:
+            next_angle = angle + 2 * math.pi / n
+            mx = cx_center + orbit_r * math.cos(angle + math.pi / n)
+            my = cy_center + orbit_r * math.sin(angle + math.pi / n)
+            # Simple point de passage — flèche ▶ orientée
+            _h2_text(slide, '▸',
+                     left=mx - 0.15, top=my - 0.15,
+                     width=0.3, height=0.3,
+                     font=font, size_pt=12, color=color,
+                     bold=True, align='center')
+
+    return slide
+
+
+def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Roadmap avec phases et jalons.
+    Bande temporelle accent1 + phases distinctes + jalons listés.
+    content: {title, phases:[{label, milestones:[str]}], footer}
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent3', '40A900'),
+        theme.get('accent4', 'F66A00'),
+        accent1,
+    ])
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    phases = content.get('phases', [])
+    n = min(len(phases), 5)
+    if n == 0:
+        return slide
+
+    # Bande de frise
+    y_band   = 2.5
+    band_h   = 0.5
+    x_start  = 0.6
+    x_end    = W - 0.5
+    band_w   = x_end - x_start
+    phase_w  = band_w / n
+
+    # Bande de fond (axe du temps)
+    _h2_rect(slide, left=x_start, top=y_band, width=band_w, height=band_h, color='E8EEF5')
+
+    for i, phase in enumerate(phases[:n]):
+        label      = phase.get('label', '') if isinstance(phase, dict) else str(phase)
+        milestones = phase.get('milestones', []) if isinstance(phase, dict) else []
+        color      = accents[i % len(accents)]
+        px         = x_start + i * phase_w
+
+        # Bloc de phase sur la bande
+        _h2_rect(slide, left=px + 0.04, top=y_band, width=phase_w - 0.08, height=band_h, color=color)
+        _h2_text(slide, label,
+                 left=px + 0.1, top=y_band + 0.06,
+                 width=phase_w - 0.18, height=band_h - 0.1,
+                 font=font, size_pt=11, color='FFFFFF',
+                 bold=True, align='center')
+
+        # Jalons sous la bande
+        for j, ms in enumerate(milestones[:4]):
+            my = y_band + band_h + 0.15 + j * 0.55
+            _h2_rect(slide, left=px + 0.08, top=my + 0.1, width=0.07, height=0.07, color=color)
+            _h2_text(slide, str(ms),
+                     left=px + 0.22, top=my,
+                     width=phase_w - 0.3, height=0.48,
+                     font=font, size_pt=10, color=dk1,
+                     bold=False, align='left', line_spacing=1.1)
+
+    return slide
+
+
 # ── V4 Matrices & Diagrammes ─────────────────────────────────────────────────
 
 def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
@@ -5075,20 +5328,25 @@ mot à mot. Adapte chaque slide au type de layout choisi.
 async def plan_presentation_v4(
     prompt: str,
     nb_slides: int,
-    palette: dict,
+    tp: dict,
     document_content: str = '',
 ) -> dict:
     """
     Planifie la présentation V4 via AsyncAnthropic (non-bloquant).
-    Utilise le catalogue complet de 30 layouts.
-    Injecte le contenu du document si fourni.
+    tp : template profile (theme, font, layout_map…) issu d'analyze_template_v4.
+    Accepte aussi un dict palette simple pour compatibilité descendante.
     """
+    theme   = tp.get('theme', tp)     # compat : tp peut être un palette dict legacy
+    primary = theme.get('accent1') or tp.get('primary', '1A3A6B')
+    accent  = theme.get('accent2') or tp.get('accent',  'F0A500')
+    font    = tp.get('font') or tp.get('font', 'Calibri')
+
     user_prompt = _V4_PLANNER_USER.format(
-        prompt   = prompt,
+        prompt    = prompt,
         nb_slides = nb_slides,
-        primary  = palette.get('primary', '1A3A6B'),
-        accent   = palette.get('accent',  'F0A500'),
-        font     = palette.get('font',    'Calibri'),
+        primary   = primary,
+        accent    = accent,
+        font      = font,
     )
 
     if document_content:
@@ -5096,7 +5354,7 @@ async def plan_presentation_v4(
             document_content=document_content
         )
 
-    max_tokens = max(4000, nb_slides * 420)
+    max_tokens = max(5000, nb_slides * 500)
 
     async with anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY) as async_client:
         for attempt in range(3):
@@ -5123,14 +5381,17 @@ async def run_pipeline_v4(
     prompt: str,
     nb_slides: int,
     document_content: str = '',
+    plan: dict = None,
 ) -> tuple:
     """
     Pipeline V4 — template-native generation.
 
     Phase 1 : analyze_template_v4 → tp (theme, layout_map, logo_zone, font…)
-    Phase 2 : planification narrative async (catalogue 30 layouts)
-    Phase 3 : création slides — native (placeholders template) ou V3 fallback
+    Phase 2 : planification narrative async — sauté si plan déjà fourni
+    Phase 3 : création slides — native (layout_*_v4) ou V3 fallback
     Phase 4 : suppression slides originales + export
+
+    plan : plan pré-calculé optionnel (évite le double-appel depuis /generate-stream)
     """
     if not ANTHROPIC_API_KEY:
         raise ValueError('Clé API Claude manquante.')
@@ -5156,8 +5417,11 @@ async def run_pipeline_v4(
     brand = extract_brand(prs)  # conservé pour compatibilité valeur de retour
 
     # ── Phase 2 ──────────────────────────────────────────────
-    log.info('[V4] Phase 2 : planification narrative…')
-    plan        = await plan_presentation_v4(prompt, nb_slides, palette, document_content)
+    if plan is None:
+        log.info('[V4] Phase 2 : planification narrative…')
+        plan = await plan_presentation_v4(prompt, nb_slides, tp, document_content)
+    else:
+        log.info('[V4] Phase 2 : plan pré-calculé fourni — skip')
     slides_plan = plan.get('slides', [])
 
     # Compléter si Claude en a généré moins que demandé
@@ -5191,21 +5455,12 @@ async def run_pipeline_v4(
     # ── Phase 3 ──────────────────────────────────────────────
     log.info('[V4] Phase 3 : création des slides…')
 
-    # Alias V3 → fonction layouts.py pour types non-natifs
+    # Alias V3 → fonction layouts.py pour types sans implémentation V4 native
+    # (pyramid, cycle, roadmap → V3 si disponible, sinon fulltext fallback)
     _V3_ALIAS = {
-        'bar_chart':    'bar_chart',
-        'line_chart':   'line_chart',
-        'pie_chart':    'pie_chart',
-        'stacked_bar':  'stacked_bar',
-        'waterfall':    'waterfall',
-        'radar':        'radar',
-        'process_flow': 'process_flow',
-        'funnel':       'funnel',
-        'matrix_2x2':   'matrix_2x2',
-        'swot':         'swot',
-        'pyramid':      'pyramid',
-        'cycle':        'cycle',
-        'roadmap':      'roadmap',
+        'pyramid': 'pyramid',
+        'cycle':   'cycle',
+        'roadmap': 'roadmap',
     }
 
     success = 0
@@ -5260,8 +5515,16 @@ async def run_pipeline_v4(
                 layout_proscons_v4(prs, content, tp)
             elif layout_name in ('table',):
                 layout_table_v4(prs, content, tp)
+            elif layout_name in ('radar',):
+                layout_radar_v4(prs, content, tp)
+            elif layout_name in ('pyramid',):
+                layout_pyramid_v4(prs, content, tp)
+            elif layout_name in ('cycle',):
+                layout_cycle_v4(prs, content, tp)
+            elif layout_name in ('roadmap',):
+                layout_roadmap_v4(prs, content, tp)
 
-            # ── Routing V3 fallback (programmatic shapes) ────────────────────
+            # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
                 fn_key = _V3_ALIAS.get(layout_name, layout_name)
                 layout_fn = LAYOUT_REGISTRY.get(fn_key) or LAYOUT_REGISTRY.get(layout_name)
