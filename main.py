@@ -3375,6 +3375,336 @@ def layout_closing_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+# ── V4 Hybrid Layout Functions (Blank + shapes) ─────────────────────────────
+
+def _blank_v4(prs: Presentation, tp: dict):
+    """
+    Crée une slide vide (layout blank) :
+    - Supprime tous les placeholders résiduels
+    - Garantit showMasterSp='1' (logo visible)
+    Retourne slide.
+    """
+    blank_idx = tp['layout_map']['blank']
+    layout    = prs.slide_layouts[min(blank_idx, len(prs.slide_layouts) - 1)]
+    slide     = prs.slides.add_slide(layout)
+
+    # Supprimer placeholders résiduels
+    sp_tree = slide.shapes._spTree
+    for ph in list(slide.placeholders):
+        try:
+            sp_tree.remove(ph._element)
+        except Exception:
+            pass
+
+    cSld = slide._element.find(qn('p:cSld'))
+    if cSld is not None:
+        cSld.set('showMasterSp', '1')
+    return slide
+
+
+def layout_quote_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Citation mise en avant sur fond blanc.
+    Barre verticale accent2 + grande citation en accent1 + auteur en gris.
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    accent1 = theme.get('accent1', '009CEA')
+    accent2 = theme.get('accent2', 'ED0000')
+    H       = tp.get('H', 7.5)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    quote  = content.get('quote', '')
+    author = content.get('author', '')
+
+    # Calcul de la zone de citation (contenu entre y=1.5" et y=6.7")
+    # Centre verticalement dans l'espace disponible
+    n_lines    = max(1, len(quote) // 60 + 1)
+    quote_h    = min(2.5, 0.45 * n_lines)
+    quote_y    = max(1.8, (H - 0.8 - quote_h) / 2)
+    author_y   = quote_y + quote_h + 0.25
+
+    # Barre verticale accent2 à gauche de la citation
+    bar_x = 1.1
+    _h2_rect(slide, left=bar_x, top=quote_y - 0.1,
+             width=0.07, height=quote_h + 0.2, color=accent2)
+
+    # Citation
+    _h2_text(slide, f'\u00ab {quote} \u00bb',
+             left=bar_x + 0.25, top=quote_y,
+             width=10.3, height=quote_h + 0.3,
+             font=font, size_pt=22, color=accent1,
+             bold=False, italic=True, align='left',
+             line_spacing=1.3)
+
+    # Auteur
+    if author:
+        _h2_text(slide, f'\u2014 {author}',
+                 left=bar_x + 0.25, top=author_y,
+                 width=10.3, height=0.45,
+                 font=font, size_pt=13, color='666666',
+                 bold=False, align='left')
+
+    return slide
+
+
+def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Liste numérotée avec cercles colorés.
+    3-5 items : cercle (accent_cycle) + numéro blanc + titre bold + body.
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent3', '40A900'),
+        theme.get('accent4', 'F66A00'),
+        theme.get('accent1', '009CEA'),
+    ])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    items = content.get('items', content.get('points', []))
+    if not items:
+        return slide
+
+    # Zone de contenu : y=1.5" → y=7.0"
+    n       = min(len(items), 5)
+    y_start = 1.55
+    y_end   = 6.85
+    step    = (y_end - y_start) / max(n, 1)
+    r_circ  = 0.26
+    x_circ  = 1.0
+    x_text  = x_circ + r_circ + 0.3
+
+    for i in range(n):
+        item  = items[i]
+        color = accents[i % len(accents)]
+        cy    = y_start + i * step + r_circ
+
+        # Cercle coloré
+        _h2_circle(slide, cx=x_circ, cy=cy, r=r_circ, color=color)
+        # Numéro blanc centré dans le cercle
+        _h2_text(slide, str(i + 1),
+                 left=x_circ - r_circ, top=cy - r_circ - 0.05,
+                 width=r_circ * 2, height=r_circ * 2 + 0.1,
+                 font=font, size_pt=14, color='FFFFFF',
+                 bold=True, align='center')
+
+        # Titre + body
+        if isinstance(item, dict):
+            title_txt = item.get('title', str(item))
+            body_txt  = item.get('body', '')
+        else:
+            title_txt = str(item)
+            body_txt  = ''
+
+        _h2_text(slide, title_txt,
+                 left=x_text, top=cy - r_circ,
+                 width=10.4 - x_text, height=0.38,
+                 font=font, size_pt=13, color=dk1,
+                 bold=True, align='left')
+        if body_txt:
+            _h2_text(slide, body_txt,
+                     left=x_text, top=cy - r_circ + 0.4,
+                     width=10.4 - x_text, height=0.36,
+                     font=font, size_pt=11, color='555555',
+                     bold=False, align='left', line_spacing=1.1)
+
+    return slide
+
+
+def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Grille 2×2 de cartes.
+    Chaque carte : fond #F5F5F5 + bordure haute colorée (accent_cycle) + titre + body.
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent3', '40A900'),
+        theme.get('accent4', 'F66A00'),
+        theme.get('accent1', '009CEA'),
+        theme.get('accent2', 'ED0000'),
+    ])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    cards = content.get('cards', content.get('items', []))
+    if not cards:
+        return slide
+
+    # Grille 2×2 — 4 cartes max
+    n       = min(len(cards), 4)
+    card_w  = 5.8
+    card_h  = 2.35
+    gap     = 0.3
+    x_cols  = [0.6, 0.6 + card_w + gap]
+    y_rows  = [1.55, 1.55 + card_h + gap]
+
+    for i in range(n):
+        col = i % 2
+        row = i // 2
+        cx  = x_cols[col]
+        cy  = y_rows[row]
+        color = accents[i % len(accents)]
+
+        card = cards[i]
+        if isinstance(card, dict):
+            title_txt = card.get('title', '')
+            body_txt  = card.get('body', '')
+        else:
+            title_txt = str(card)
+            body_txt  = ''
+
+        # Fond de carte
+        _h2_rounded_rect(slide, left=cx, top=cy,
+                          width=card_w, height=card_h,
+                          color='F5F5F5', radius=0.04)
+        # Bordure haute colorée
+        _h2_rect(slide, left=cx, top=cy, width=card_w, height=0.07, color=color)
+
+        pad = 0.2
+        # Titre
+        _h2_text(slide, title_txt,
+                 left=cx + pad, top=cy + 0.15,
+                 width=card_w - pad * 2, height=0.42,
+                 font=font, size_pt=13, color=dk1,
+                 bold=True, align='left')
+        # Body
+        if body_txt:
+            _h2_text(slide, body_txt,
+                     left=cx + pad, top=cy + 0.62,
+                     width=card_w - pad * 2, height=card_h - 0.75,
+                     font=font, size_pt=10, color='444444',
+                     bold=False, align='left', line_spacing=1.2)
+
+    return slide
+
+
+def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Deux colonnes avec headers colorés (accent1 / accent3) et items alternés.
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accent3 = theme.get('accent3', '40A900')
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    col_a = content.get('col_a', {})
+    col_b = content.get('col_b', {})
+    if not col_a and not col_b:
+        return slide
+
+    col_w   = 5.6
+    gap     = 0.5
+    x_a     = 0.6
+    x_b     = x_a + col_w + gap
+    y_head  = 1.55
+    head_h  = 0.48
+    item_h  = 0.5
+    y_items = y_head + head_h + 0.12
+
+    for x_col, col, color in ((x_a, col_a, accent1), (x_b, col_b, accent3)):
+        label = col.get('title', '') if isinstance(col, dict) else ''
+        items = col.get('items', []) if isinstance(col, dict) else []
+
+        # Header coloré
+        _h2_rect(slide, left=x_col, top=y_head, width=col_w, height=head_h, color=color)
+        _h2_text(slide, label,
+                 left=x_col + 0.15, top=y_head + 0.05,
+                 width=col_w - 0.3, height=head_h - 0.1,
+                 font=font, size_pt=13, color='FFFFFF',
+                 bold=True, align='left')
+
+        # Items avec fonds alternés + bordure gauche colorée
+        for j, item in enumerate(items[:8]):
+            item_txt = str(item) if not isinstance(item, dict) else item.get('title', str(item))
+            bg_color = 'EEEEEE' if j % 2 == 0 else 'F8F8F8'
+            iy = y_items + j * item_h
+
+            _h2_rect(slide, left=x_col, top=iy, width=col_w, height=item_h - 0.04, color=bg_color)
+            _h2_rect(slide, left=x_col, top=iy, width=0.06, height=item_h - 0.04, color=color)
+            _h2_text(slide, item_txt,
+                     left=x_col + 0.14, top=iy + 0.06,
+                     width=col_w - 0.2, height=item_h - 0.1,
+                     font=font, size_pt=11, color=dk1,
+                     bold=False, align='left')
+
+    return slide
+
+
+def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Grande statistique centrée, impactante.
+    value en accent1/54pt, label en dk1/18pt, context en gris/12pt.
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accent2 = theme.get('accent2', 'ED0000')
+    W       = tp.get('W', 13.33)
+    H       = tp.get('H', 7.5)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    value   = str(content.get('value', ''))
+    label   = content.get('label', '')
+    context = content.get('context', '')
+
+    # Centrer verticalement dans la zone contenu (1.5" → 7.0")
+    y_center = (1.5 + 6.8) / 2
+    val_h    = 1.1
+    val_y    = y_center - val_h / 2 - (0.4 if label else 0)
+
+    # Grande valeur
+    _h2_text(slide, value,
+             left=0.5, top=val_y,
+             width=W - 1.0, height=val_h,
+             font=font, size_pt=64, color=accent1,
+             bold=True, align='center')
+
+    # Ligne sous la valeur (décorative)
+    if label:
+        line_w = min(3.0, len(value) * 0.55 + 0.5)
+        _h2_rect(slide, left=(W - line_w) / 2, top=val_y + val_h,
+                 width=line_w, height=0.045, color=accent2)
+
+    # Label
+    if label:
+        _h2_text(slide, label,
+                 left=0.5, top=val_y + val_h + 0.1,
+                 width=W - 1.0, height=0.55,
+                 font=font, size_pt=18, color=dk1,
+                 bold=False, align='center')
+
+    # Contexte
+    if context:
+        _h2_text(slide, context,
+                 left=1.5, top=val_y + val_h + (0.75 if label else 0.15),
+                 width=W - 3.0, height=0.6,
+                 font=font, size_pt=12, color='666666',
+                 bold=False, align='center', line_spacing=1.2)
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -3905,20 +4235,28 @@ async def run_pipeline_v4(
             content['footer'] = plan['footer_text']
 
         try:
-            # ── Routing V4 natifs (layout functions dédiées) ─────────────────
+            # ── Routing V4 — layout functions dédiées ────────────────────────
             if layout_name in ('cover', 'cover_dark', 'cover_split'):
                 layout_cover_v4(prs, content, tp)
             elif layout_name == 'section':
                 layout_section_v4(prs, content, tp)
             elif layout_name in ('closing', 'closing_dark', 'closing_split'):
                 layout_closing_v4(prs, content, tp)
-            elif layout_name in ('full_text', 'list_numbered', 'list_cards',
-                                  'image_split', 'two_col', 'timeline_h', 'timeline',
-                                  'quote_dark', 'quote', 'stat_hero',
-                                  'agenda', 'highlight_box', 'pros_cons', 'before_after'):
+            elif layout_name in ('full_text', 'image_split', 'agenda',
+                                  'highlight_box', 'pros_cons', 'before_after'):
                 layout_fulltext_v4(prs, content, tp)
             elif layout_name in ('kpi_grid', 'kpi_row', 'kpi_native'):
                 layout_kpi_native_v4(prs, content, tp)
+            elif layout_name in ('quote', 'quote_dark'):
+                layout_quote_v4(prs, content, tp)
+            elif layout_name in ('list_numbered',):
+                layout_list_numbered_v4(prs, content, tp)
+            elif layout_name in ('list_cards',):
+                layout_list_cards_v4(prs, content, tp)
+            elif layout_name in ('two_col', 'pros_cons', 'before_after'):
+                layout_twocol_v4(prs, content, tp)
+            elif layout_name in ('stat_hero',):
+                layout_stathero_v4(prs, content, tp)
 
             # ── Routing V3 fallback (programmatic shapes) ────────────────────
             else:
