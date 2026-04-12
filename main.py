@@ -4058,6 +4058,320 @@ def layout_funnel_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+# ── V4 Graphiques natifs PowerPoint ─────────────────────────────────────────
+
+def _chart_series_colors(theme: dict) -> list:
+    """Retourne la liste des couleurs accent du thème pour les séries."""
+    return [
+        theme.get('accent1', '009CEA'),
+        theme.get('accent3', '40A900'),
+        theme.get('accent4', 'F66A00'),
+        theme.get('accent2', 'ED0000'),
+        theme.get('accent5', '7030A0'),
+        theme.get('accent6', '0070C0'),
+    ]
+
+
+def h2_bar_chart(slide, left: float, top: float, width: float, height: float,
+                 categories: list, series: list, font: str, theme: dict):
+    """
+    Graphique COLUMN_CLUSTERED natif PowerPoint.
+    series = [{name, values:[n]}, ...]
+    Couleurs des séries = accent1/accent3/accent4.
+    Légende en bas si >1 série. Data labels dk1 9pt.
+    """
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+
+    chart_data = CategoryChartData()
+    chart_data.categories = [str(c) for c in (categories or [])]
+    for s in (series or []):
+        vals = tuple(float(v) if v is not None else 0.0 for v in s.get('values', []))
+        chart_data.add_series(s.get('name', ''), vals)
+
+    chart_shape = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED,
+        Inches(left), Inches(top), Inches(width), Inches(height),
+        chart_data,
+    )
+    chart = chart_shape.chart
+    colors = _chart_series_colors(theme)
+
+    for i, ser in enumerate(chart.series):
+        ser.format.fill.solid()
+        ser.format.fill.fore_color.rgb = _h2_parse_hex(colors[i % len(colors)])
+
+    plot = chart.plots[0]
+    plot.has_data_labels = True
+    try:
+        plot.data_labels.font.size = Pt(9)
+        plot.data_labels.font.color.rgb = _h2_parse_hex(theme.get('dk1', '374649'))
+    except Exception:
+        pass
+
+    if len(series) > 1:
+        chart.has_legend = True
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.include_in_layout = False
+    else:
+        chart.has_legend = False
+
+    return chart_shape
+
+
+def layout_barchart_v4(prs: Presentation, content: dict, tp: dict):
+    """Slide graphique barres groupées (COLUMN_CLUSTERED)."""
+    slide = _blank_v4(prs, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    categories = content.get('categories', [])
+    series     = content.get('series', [])
+    if not categories or not series:
+        return slide
+
+    h2_bar_chart(slide,
+                 left=0.5, top=1.6, width=12.0, height=5.0,
+                 categories=categories, series=series,
+                 font=tp.get('font', 'Calibri'), theme=tp.get('theme', {}))
+    return slide
+
+
+def h2_line_chart(slide, left: float, top: float, width: float, height: float,
+                  categories: list, series: list, font: str, theme: dict):
+    """
+    Graphique LINE_MARKERS natif PowerPoint.
+    Lignes 2.5 pt, couleurs thème, légende en bas si >1 série.
+    """
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+
+    chart_data = CategoryChartData()
+    chart_data.categories = [str(c) for c in (categories or [])]
+    for s in (series or []):
+        vals = tuple(float(v) if v is not None else 0.0 for v in s.get('values', []))
+        chart_data.add_series(s.get('name', ''), vals)
+
+    chart_shape = slide.shapes.add_chart(
+        XL_CHART_TYPE.LINE_MARKERS,
+        Inches(left), Inches(top), Inches(width), Inches(height),
+        chart_data,
+    )
+    chart = chart_shape.chart
+    colors = _chart_series_colors(theme)
+
+    for i, ser in enumerate(chart.series):
+        c = _h2_parse_hex(colors[i % len(colors)])
+        try:
+            ser.format.line.color.rgb = c
+            ser.format.line.width = Pt(2.5)
+        except Exception:
+            pass
+        try:
+            ser.marker.format.fill.solid()
+            ser.marker.format.fill.fore_color.rgb = c
+            ser.marker.size = 7
+        except Exception:
+            pass
+
+    plot = chart.plots[0]
+    plot.has_data_labels = False
+
+    if len(series) > 1:
+        chart.has_legend = True
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.include_in_layout = False
+    else:
+        chart.has_legend = False
+
+    return chart_shape
+
+
+def layout_linechart_v4(prs: Presentation, content: dict, tp: dict):
+    """Slide graphique en lignes (LINE_MARKERS)."""
+    slide = _blank_v4(prs, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    categories = content.get('categories', [])
+    series     = content.get('series', [])
+    if not categories or not series:
+        return slide
+
+    h2_line_chart(slide,
+                  left=0.5, top=1.6, width=12.0, height=5.0,
+                  categories=categories, series=series,
+                  font=tp.get('font', 'Calibri'), theme=tp.get('theme', {}))
+    return slide
+
+
+def h2_pie_chart(slide, left: float, top: float, width: float, height: float,
+                 slices: list, font: str, theme: dict, doughnut: bool = False):
+    """
+    Graphique PIE ou DOUGHNUT natif PowerPoint.
+    slices = [{label, value}, ...]
+    Couleurs par segment = accent_cycle. Labels avec pourcentages.
+    """
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+
+    if not slices:
+        return None
+
+    chart_data = CategoryChartData()
+    chart_data.categories = [str(s.get('label', '')) for s in slices]
+    chart_data.add_series('', tuple(float(s.get('value', 0)) for s in slices))
+
+    chart_type = XL_CHART_TYPE.DOUGHNUT if doughnut else XL_CHART_TYPE.PIE
+
+    chart_shape = slide.shapes.add_chart(
+        chart_type,
+        Inches(left), Inches(top), Inches(width), Inches(height),
+        chart_data,
+    )
+    chart = chart_shape.chart
+
+    # Couleurs des segments
+    colors = _chart_series_colors(theme)
+    try:
+        for i, point in enumerate(chart.series[0].points):
+            point.format.fill.solid()
+            point.format.fill.fore_color.rgb = _h2_parse_hex(colors[i % len(colors)])
+    except Exception:
+        pass
+
+    # Data labels avec pourcentages
+    plot = chart.plots[0]
+    plot.has_data_labels = True
+    try:
+        dl = plot.data_labels
+        dl.number_format = '0%'
+        dl.font.size = Pt(10)
+        dl.font.color.rgb = _h2_parse_hex('FFFFFF')
+    except Exception:
+        pass
+
+    # Légende
+    chart.has_legend = True
+    chart.legend.position = XL_LEGEND_POSITION.RIGHT
+    chart.legend.include_in_layout = False
+
+    return chart_shape
+
+
+def layout_piechart_v4(prs: Presentation, content: dict, tp: dict):
+    """Slide graphique camembert / anneau."""
+    slide = _blank_v4(prs, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    slices   = content.get('slices', [])
+    doughnut = bool(content.get('doughnut', False))
+    if not slices:
+        return slide
+
+    h2_pie_chart(slide,
+                 left=1.5, top=1.6, width=10.0, height=5.2,
+                 slices=slices, font=tp.get('font', 'Calibri'),
+                 theme=tp.get('theme', {}), doughnut=doughnut)
+    return slide
+
+
+def h2_waterfall_chart(slide, left: float, top: float, width: float, height: float,
+                       items: list, font: str, theme: dict):
+    """
+    Cascade financière (waterfall) via COLUMN_STACKED.
+    Série base invisible + positifs en accent3 (vert) + négatifs en accent2 (rouge).
+    items = [{label, value}, ...]
+    """
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+
+    if not items:
+        return None
+
+    accent1 = theme.get('accent1', '009CEA')
+    accent2 = theme.get('accent2', 'ED0000')
+    accent3 = theme.get('accent3', '40A900')
+
+    labels = [str(it.get('label', '')) for it in items]
+    raw    = [float(it.get('value', 0)) for it in items]
+
+    # Calcul base, gains, pertes
+    base_vals = []
+    gain_vals = []
+    loss_vals = []
+    running = 0.0
+
+    for v in raw:
+        if v >= 0:
+            base_vals.append(running)
+            gain_vals.append(v)
+            loss_vals.append(0.0)
+            running += v
+        else:
+            running += v
+            base_vals.append(running)
+            gain_vals.append(0.0)
+            loss_vals.append(abs(v))
+
+    chart_data = CategoryChartData()
+    chart_data.categories = labels
+    chart_data.add_series('Base',    tuple(base_vals))
+    chart_data.add_series('Hausse',  tuple(gain_vals))
+    chart_data.add_series('Baisse',  tuple(loss_vals))
+
+    chart_shape = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_STACKED,
+        Inches(left), Inches(top), Inches(width), Inches(height),
+        chart_data,
+    )
+    chart = chart_shape.chart
+
+    series_list = list(chart.series)
+    if len(series_list) >= 3:
+        # Série base : invisible (fond blanc)
+        series_list[0].format.fill.solid()
+        series_list[0].format.fill.fore_color.rgb = _h2_parse_hex('FFFFFF')
+        series_list[0].format.line.fill.background()
+
+        # Hausse : accent3 (vert)
+        series_list[1].format.fill.solid()
+        series_list[1].format.fill.fore_color.rgb = _h2_parse_hex(accent3)
+
+        # Baisse : accent2 (rouge)
+        series_list[2].format.fill.solid()
+        series_list[2].format.fill.fore_color.rgb = _h2_parse_hex(accent2)
+
+    # Data labels visibles sur les séries Hausse et Baisse
+    for i, ser in enumerate(series_list[1:], 1):
+        try:
+            ser.data_labels.font.size = Pt(9)
+            ser.data_labels.font.color.rgb = _h2_parse_hex('FFFFFF')
+        except Exception:
+            pass
+
+    chart.has_legend = False
+    return chart_shape
+
+
+def layout_waterfall_v4(prs: Presentation, content: dict, tp: dict):
+    """Slide cascade financière (waterfall)."""
+    slide = _blank_v4(prs, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    items = content.get('items', [])
+    if not items:
+        return slide
+
+    h2_waterfall_chart(slide,
+                       left=0.5, top=1.6, width=12.0, height=5.0,
+                       items=items, font=tp.get('font', 'Calibri'),
+                       theme=tp.get('theme', {}))
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -4616,6 +4930,14 @@ async def run_pipeline_v4(
                 layout_processflow_v4(prs, content, tp)
             elif layout_name in ('funnel',):
                 layout_funnel_v4(prs, content, tp)
+            elif layout_name in ('bar_chart', 'stacked_bar'):
+                layout_barchart_v4(prs, content, tp)
+            elif layout_name in ('line_chart',):
+                layout_linechart_v4(prs, content, tp)
+            elif layout_name in ('pie_chart',):
+                layout_piechart_v4(prs, content, tp)
+            elif layout_name in ('waterfall',):
+                layout_waterfall_v4(prs, content, tp)
 
             # ── Routing V3 fallback (programmatic shapes) ────────────────────
             else:
