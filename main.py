@@ -3194,6 +3194,187 @@ def _add_template_header_and_footer(slide, title: str, footer_text: str, tp: dic
                  bold=False, align='left')
 
 
+# ── V4 Native Layout Functions ──────────────────────────────────────────────
+
+
+def _add_slide_native(prs: Presentation, layout_idx: int):
+    """
+    Crée une slide sur le layout template à l'index donné.
+    Garantit showMasterSp='1' (logo visible).
+    Retourne (slide, ph_map) où ph_map = {idx: placeholder}.
+    """
+    layout = prs.slide_layouts[min(layout_idx, len(prs.slide_layouts) - 1)]
+    slide  = prs.slides.add_slide(layout)
+    cSld   = slide._element.find(qn('p:cSld'))
+    if cSld is not None:
+        cSld.set('showMasterSp', '1')
+    ph_map = {ph.placeholder_format.idx: ph for ph in slide.placeholders}
+    return slide, ph_map
+
+
+def _ph_fill(ph_map: dict, idx: int, text: str) -> bool:
+    """Remplit ph[idx] si présent. Retourne True si rempli."""
+    if idx in ph_map and text:
+        _fill_preserving_style(ph_map[idx], str(text))
+        return True
+    return False
+
+
+def layout_cover_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Slide de couverture sur le layout natif 'cover'.
+    ph[0] = titre principal
+    ph[1] = sous-titre / tagline
+    ph[14] = footer (si présent dans le layout)
+    """
+    idx   = tp['layout_map']['cover']
+    slide, ph_map = _add_slide_native(prs, idx)
+
+    _ph_fill(ph_map, 0, content.get('title', ''))
+    _ph_fill(ph_map, 1, content.get('subtitle', ''))
+    _ph_fill(ph_map, 14, content.get('footer', ''))
+
+    # Fallback : si ph[1] absent, essayer ph[2]
+    if 1 not in ph_map:
+        _ph_fill(ph_map, 2, content.get('subtitle', ''))
+
+    return slide
+
+
+def layout_section_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Slide séparateur de section sur le layout natif 'section'.
+    ph[13] = numéro de section ("01", "02"…)
+    ph[0]  = titre de section
+    ph[1]  = sous-titre / description (si présent)
+    """
+    idx   = tp['layout_map']['section']
+    slide, ph_map = _add_slide_native(prs, idx)
+
+    number = str(content.get('number', ''))
+    if not number:
+        # Auto-numérotation par position dans les slides existantes
+        number = f'{len(prs.slides):02d}'
+
+    _ph_fill(ph_map, 13, number)
+    _ph_fill(ph_map, 0,  content.get('title', ''))
+    _ph_fill(ph_map, 1,  content.get('subtitle', ''))
+
+    # Fallbacks si indices non standards
+    if 13 not in ph_map:
+        _ph_fill(ph_map, 12, number) or _ph_fill(ph_map, 11, number)
+
+    return slide
+
+
+def layout_fulltext_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Slide de texte riche sur le layout natif 'text'.
+    ph[0]  = titre
+    ph[13] = corps (multi-paragraphes joints avec \\n)
+    Fallback : ph[1] si ph[13] absent.
+    """
+    idx   = tp['layout_map']['text']
+    slide, ph_map = _add_slide_native(prs, idx)
+
+    # Construire le corps depuis toutes les sources possibles
+    body = content.get('body', '')
+    if not body:
+        paras = content.get('paragraphs', [])
+        if paras:
+            body = '\n'.join(str(p) for p in paras)
+    if not body:
+        body = content.get('subtitle', '')
+
+    _ph_fill(ph_map, 0, content.get('title', ''))
+
+    # Essayer ph[13] en priorité (corps principal Cortex_1), sinon ph[1]
+    if not _ph_fill(ph_map, 13, body):
+        _ph_fill(ph_map, 1, body)
+
+    _ph_fill(ph_map, 14, content.get('footer', ''))
+
+    return slide
+
+
+def layout_kpi_native_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Slide KPI sur le layout natif 'kpi' (si disponible dans le template).
+    Cortex_1 : ph[0]=titre, ph[18/20/25]=valeurs KPI, ph[19/21/26]=libellés.
+    Fallback vers layout kpi_grid V3 si pas de layout KPI natif.
+    """
+    kpi_idx = tp['layout_map'].get('kpi')
+    # Si kpi == text ou cover c'est un fallback heuristique, pas un vrai layout KPI
+    # → détecter en vérifiant si on a des ph ≥ 18
+    has_native_kpi = False
+    if kpi_idx is not None and kpi_idx != tp['layout_map'].get('text'):
+        probe_layout = prs.slide_layouts[kpi_idx]
+        probe_ph_idxs = {ph.placeholder_format.idx for ph in probe_layout.placeholders}
+        has_native_kpi = bool(probe_ph_idxs & {18, 19, 20, 21, 25, 26})
+
+    kpis = content.get('kpis', [])
+
+    if has_native_kpi:
+        slide, ph_map = _add_slide_native(prs, kpi_idx)
+        _ph_fill(ph_map, 0, content.get('title', ''))
+
+        # Triplets value/label pour 3 KPIs max
+        ph_pairs = [(18, 19), (20, 21), (25, 26)]
+        for i, (val_idx, lbl_idx) in enumerate(ph_pairs):
+            if i < len(kpis):
+                kpi = kpis[i] if isinstance(kpis[i], dict) else {'value': kpis[i]}
+                _ph_fill(ph_map, val_idx, str(kpi.get('value', '')))
+                lbl = kpi.get('label', '')
+                if kpi.get('sublabel'):
+                    lbl += f'\n{kpi["sublabel"]}'
+                _ph_fill(ph_map, lbl_idx, lbl)
+
+        _ph_fill(ph_map, 14, content.get('footer', ''))
+        return slide
+    else:
+        # Fallback V3 kpi_grid (programmatic)
+        palette = {
+            'primary': tp['theme'].get('accent1', '009CEA'),
+            'accent':  tp['theme'].get('accent2', 'ED0000'),
+            'dark':    tp['theme'].get('dk1', '374649'),
+            'bg':      tp['theme'].get('lt1', 'FFFFFF'),
+            'font':    tp['font'],
+        }
+        LAYOUT_REGISTRY['kpi_grid'](prs, content, palette)
+        return prs.slides[-1]
+
+
+def layout_closing_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Slide de clôture sur le layout natif 'closing'.
+    ph[0] = titre ("Merci", "Questions ?")
+    Textbox additionnel pour subtitle/sources si fourni.
+    """
+    idx   = tp['layout_map']['closing']
+    slide, ph_map = _add_slide_native(prs, idx)
+
+    _ph_fill(ph_map, 0, content.get('title', 'Merci'))
+
+    # Sous-titre : essayer ph[1] puis ph[2]
+    subtitle = content.get('subtitle', '') or content.get('body', '')
+    if not _ph_fill(ph_map, 1, subtitle):
+        _ph_fill(ph_map, 2, subtitle)
+
+    # Si aucun placeholder subtitle disponible, ajouter textbox
+    if subtitle and 1 not in ph_map and 2 not in ph_map:
+        font   = tp.get('font', 'Calibri')
+        accent1 = tp['theme'].get('accent1', '009CEA')
+        H = tp.get('H', 7.5)
+        _h2_text(slide, subtitle,
+                 left=1.5, top=H * 0.5, width=10.0, height=1.5,
+                 font=font, size_pt=16, color=accent1,
+                 bold=False, align='center')
+
+    _ph_fill(ph_map, 14, content.get('footer', ''))
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -3724,27 +3905,40 @@ async def run_pipeline_v4(
             content['footer'] = plan['footer_text']
 
         try:
-            if layout_name in _V4_NATIVE_TYPES:
-                _create_slide_v4_native(prs, layout_name, content, layout_map, tp)
+            # ── Routing V4 natifs (layout functions dédiées) ─────────────────
+            if layout_name in ('cover', 'cover_dark', 'cover_split'):
+                layout_cover_v4(prs, content, tp)
+            elif layout_name == 'section':
+                layout_section_v4(prs, content, tp)
+            elif layout_name in ('closing', 'closing_dark', 'closing_split'):
+                layout_closing_v4(prs, content, tp)
+            elif layout_name in ('full_text', 'list_numbered', 'list_cards',
+                                  'image_split', 'two_col', 'timeline_h', 'timeline',
+                                  'quote_dark', 'quote', 'stat_hero',
+                                  'agenda', 'highlight_box', 'pros_cons', 'before_after'):
+                layout_fulltext_v4(prs, content, tp)
+            elif layout_name in ('kpi_grid', 'kpi_row', 'kpi_native'):
+                layout_kpi_native_v4(prs, content, tp)
+
+            # ── Routing V3 fallback (programmatic shapes) ────────────────────
             else:
-                # Chercher dans LAYOUT_REGISTRY (V3) — avec alias si nécessaire
                 fn_key = _V3_ALIAS.get(layout_name, layout_name)
                 layout_fn = LAYOUT_REGISTRY.get(fn_key) or LAYOUT_REGISTRY.get(layout_name)
                 if layout_fn:
                     layout_fn(prs, content, palette)
                 else:
-                    # Fallback ultime : native full_text
-                    _create_slide_v4_native(prs, 'full_text', content, layout_map, tp)
+                    layout_fulltext_v4(prs, content, tp)
+
             success += 1
             log.info(f'[V4] ✓ {layout_name}')
         except Exception as e:
             log.error(f'[V4] ✗ {layout_name} : {repr(e)}', exc_info=True)
             try:
-                _create_slide_v4_native(prs, 'full_text', {
-                    'title':      content.get('title', ''),
-                    'body':       content.get('body', ''),
-                    'footer':     content.get('footer', ''),
-                }, layout_map, tp)
+                layout_fulltext_v4(prs, {
+                    'title':  content.get('title', ''),
+                    'body':   content.get('body', ''),
+                    'footer': content.get('footer', ''),
+                }, tp)
                 success += 1
             except Exception as e2:
                 log.error(f'[V4] ✗ fallback full_text : {repr(e2)}', exc_info=True)
