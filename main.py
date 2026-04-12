@@ -3039,8 +3039,164 @@ def _fill_placeholder_preserving_style(ph, new_text: str) -> None:
         t_elem.text = para_text
 
 
-# Tous les types sont maintenant traités nativement via les vrais layouts du template
+# ── V4 Foundation Helpers ───────────────────────────────────────────────────
+
+
+def analyze_template_v4(prs: Presentation) -> dict:
+    """
+    Analyse complète du template en un seul appel.
+    Retourne un template profile `tp` utilisé par toutes les fonctions V4.
+    Couvre : couleurs thème, layout_map, logo_zone, font, accent_cycle, W, H.
+    """
+    import re as _re2, zipfile as _zf2, io as _io2
+
+    # ── Couleurs thème depuis ZIP ────────────────────────────────────────────
+    theme: dict = {}
+    try:
+        buf = _io2.BytesIO()
+        prs.save(buf)
+        buf.seek(0)
+        with _zf2.ZipFile(buf) as zf:
+            theme_files = sorted([n for n in zf.namelist()
+                                   if _re2.search(r'ppt/theme/theme\d*\.xml$', n, _re2.I)])
+            if theme_files:
+                xml = zf.read(theme_files[0]).decode('utf-8', errors='ignore')
+                for slot in ['dk1', 'lt1', 'dk2', 'lt2',
+                             'accent1', 'accent2', 'accent3',
+                             'accent4', 'accent5', 'accent6']:
+                    m = _re2.search(
+                        rf'<a:{slot}[^>]*>\s*<a:srgbClr val="([0-9A-Fa-f]{{6}})"', xml)
+                    if m:
+                        theme[slot] = m.group(1).upper()
+                        continue
+                    m = _re2.search(
+                        rf'<a:{slot}[^>]*>\s*<a:sysClr[^>]*lastClr="([0-9A-Fa-f]{{6}})"', xml)
+                    if m:
+                        theme[slot] = m.group(1).upper()
+    except Exception as e:
+        log.warning(f'[V4] analyze_template_v4 theme: {e}')
+
+    # ── Layout map ──────────────────────────────────────────────────────────
+    layout_map: dict = {}
+    for idx, layout in enumerate(prs.slide_layouts):
+        n = layout.name.lower()
+        ph_idxs = {ph.placeholder_format.idx for ph in layout.placeholders}
+        if any(k in n for k in ['couverture', 'cover', 'titre de pré', 'garde', 'home', 'accueil', 'front']):
+            layout_map.setdefault('cover', idx)
+        elif any(k in n for k in ['ouverture', 'section', 'chapter', 'séparateur', 'separator', 'intertitre', 'transition']):
+            layout_map.setdefault('section', idx)
+        elif any(k in n for k in ['chiffres', 'kpi', 'metrics', 'stats']):
+            layout_map.setdefault('kpi', idx)
+        elif any(k in n for k in ['merci', 'closing', 'thank', 'fin', 'end']):
+            layout_map.setdefault('closing', idx)
+        elif any(k in n for k in ['vide', 'blank', 'vierge', 'empty']):
+            layout_map.setdefault('blank', idx)
+        elif any(k in n for k in ['two content', '2 contenus', 'comparison', 'deux', 'two col', '2 col', 'dual', 'compare']):
+            layout_map.setdefault('two_col', idx)
+        elif any(k in n for k in ['texte', 'text', 'contenu', 'content']) or (0 in ph_idxs and 1 in ph_idxs):
+            layout_map.setdefault('text', idx)
+
+    n_layouts = len(prs.slide_layouts)
+    layout_map.setdefault('cover',   0)
+    layout_map.setdefault('blank',   n_layouts - 1)
+    layout_map.setdefault('text',    min(1, n_layouts - 1))
+    layout_map.setdefault('section', layout_map['cover'])
+    layout_map.setdefault('kpi',     layout_map['text'])
+    layout_map.setdefault('closing', layout_map['cover'])
+    layout_map.setdefault('two_col', layout_map['text'])
+    layout_map.setdefault('content', layout_map['text'])  # backward compat
+
+    # ── Logo zone (premier shape picture du master) ──────────────────────────
+    logo_zone = None
+    try:
+        for shape in prs.slide_masters[0].shapes:
+            if shape.shape_type == 13:  # MSO_SHAPE_TYPE.PICTURE
+                logo_zone = {
+                    'left':   shape.left   / 914400.0,
+                    'top':    shape.top    / 914400.0,
+                    'right':  (shape.left + shape.width)  / 914400.0,
+                    'bottom': (shape.top  + shape.height) / 914400.0,
+                }
+                break
+    except Exception:
+        pass
+
+    # ── Font (première police non-'+' du master) ─────────────────────────────
+    font = 'Calibri'
+    try:
+        import lxml.etree as _etree2
+        master_xml = _etree2.tostring(prs.slide_masters[0]._element).decode('utf-8', errors='ignore')
+        for m in _re2.findall(r'typeface="([^"]+)"', master_xml):
+            if m and not m.startswith('+') and len(m) < 64:
+                font = m
+                break
+    except Exception:
+        pass
+
+    W = prs.slide_width  / 914400.0
+    H = prs.slide_height / 914400.0
+
+    accent1 = theme.get('accent1', '009CEA')
+    accent2 = theme.get('accent2', 'ED0000')
+    accent3 = theme.get('accent3', '40A900')
+    accent4 = theme.get('accent4', 'F66A00')
+
+    tp = {
+        'theme':        theme,
+        'layout_map':   layout_map,
+        'logo_zone':    logo_zone,
+        'font':         font,
+        'accent_cycle': [accent3, accent4, accent1],
+        'W':            W,
+        'H':            H,
+    }
+    log.info(f'[V4] tp: theme={list(theme.items())[:4]}, lmap={layout_map}, font={font}')
+    return tp
+
+
+def _fill_preserving_style(ph, new_text: str) -> None:
+    """
+    Alias de _fill_placeholder_preserving_style.
+    Remplace le texte d'un placeholder en préservant police/taille/couleur du template.
+    """
+    _fill_placeholder_preserving_style(ph, new_text)
+
+
+def _add_template_header_and_footer(slide, title: str, footer_text: str, tp: dict) -> None:
+    """
+    Applique le pattern DNA Visual Cortex sur une slide vide :
+      - Titre   : accent1, 28 pt bold, (0.6", 0.2"), max 10.4" large
+      - Ligne rouge : accent2, épaisseur 0.04", y=1.15"
+      - Footer  : ligne #DDDDDD à y=(H-0.4") + texte #AAAAAA 9 pt
+    Ne dépasse pas x=10.8" pour préserver la zone logo.
+    """
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    accent1 = theme.get('accent1', '009CEA')
+    accent2 = theme.get('accent2', 'ED0000')
+    H       = tp.get('H', 7.5)
+
+    # Titre
+    _h2_text(slide, title,
+             left=0.6, top=0.2, width=10.2, height=0.9,
+             font=font, size_pt=28, color=accent1,
+             bold=True, align='left')
+
+    # Ligne rouge
+    _h2_rect(slide, left=0.6, top=1.15, width=10.4, height=0.04, color=accent2)
+
+    # Footer
+    _h2_rect(slide, left=0.0, top=H - 0.4, width=13.33, height=0.003, color='DDDDDD')
+    if footer_text:
+        _h2_text(slide, footer_text,
+                 left=0.6, top=H - 0.38, width=10.4, height=0.32,
+                 font=font, size_pt=9, color='AAAAAA',
+                 bold=False, align='left')
+
+
+# Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
+    # Anciens noms (compat V3)
     'cover_dark', 'cover_split',
     'section',
     'full_text', 'list_numbered', 'list_cards', 'image_split',
@@ -3050,32 +3206,47 @@ _V4_NATIVE_TYPES = frozenset({
     'quote_dark',
     'stat_hero',
     'closing_dark', 'closing_split',
+    # Nouveaux noms V4 (planner mis à jour)
+    'cover', 'closing',
+    'timeline', 'quote',
+    'agenda', 'highlight_box',
+    'pros_cons', 'before_after',
 })
 
 
 def _create_slide_v4_native(prs: Presentation,
                              layout_name: str,
                              content: dict,
-                             layout_map: dict):
+                             layout_map: dict,
+                             tp: dict = None):
     """
     Crée une slide en utilisant le vrai layout du template.
     Remplit les placeholders existants en préservant leur style XML.
     Garantit showMasterSp='1' (logo visible).
-
-    Tous les types de slides passent ici — y compris KPI, timeline, quote, stat.
-    Le contenu complexe est mis en forme comme du texte structuré dans les
-    placeholders natifs du template, ce qui garantit la cohérence visuelle.
+    Accepte anciens noms (cover_dark, timeline_h…) et nouveaux noms V4 (cover, timeline…).
     """
     import lxml.etree as _etree
 
+    # Normalisation nouveaux noms → sémantique interne
+    _NAME_ALIAS = {
+        'cover':   ('cover', None),
+        'closing': ('closing', None),
+        'timeline': ('timeline_h', None),
+        'quote':    ('quote_dark', None),
+        'agenda':   ('full_text', None),
+        'highlight_box': ('full_text', None),
+        'pros_cons':     ('two_col', None),
+        'before_after':  ('two_col', None),
+    }
+
     # ── Choisir le layout template selon le type sémantique ──────────────────
-    if layout_name in ('cover_dark', 'cover_split'):
+    if layout_name in ('cover', 'cover_dark', 'cover_split'):
         idx = layout_map['cover']
-    elif layout_name in ('section', 'quote_dark'):
+    elif layout_name in ('section', 'quote_dark', 'quote'):
         idx = layout_map['section']
-    elif layout_name in ('closing_dark', 'closing_split'):
-        idx = layout_map.get('cover', len(prs.slide_layouts) - 1)
-    elif layout_name == 'two_col':
+    elif layout_name in ('closing', 'closing_dark', 'closing_split'):
+        idx = layout_map.get('closing', layout_map['cover'])
+    elif layout_name in ('two_col', 'pros_cons', 'before_after'):
         idx = layout_map['two_col']
     else:
         # full_text, list_*, image_split, kpi_*, timeline_h, stat_hero
@@ -3163,6 +3334,53 @@ def _create_slide_v4_native(prs: Presentation,
                 parts.append(content['context'])
             return '\n'.join(parts)
 
+        # pros_cons → pour / contre
+        if content.get('pros') or content.get('cons'):
+            parts = []
+            if content.get('pros'):
+                parts.append('✓ POUR')
+                for p in content['pros']:
+                    parts.append(f'  + {p}')
+            if content.get('cons'):
+                parts.append('✗ CONTRE')
+                for c in content['cons']:
+                    parts.append(f'  − {c}')
+            return '\n'.join(parts)
+
+        # before_after → avant / après
+        if content.get('before') or content.get('after'):
+            parts = []
+            b = content.get('before', {})
+            a = content.get('after', {})
+            if isinstance(b, dict):
+                parts.append(f"AVANT : {b.get('title','')}")
+                for i in b.get('items', []):
+                    parts.append(f'  • {i}')
+            if isinstance(a, dict):
+                parts.append(f"\nAPRÈS : {a.get('title','')}")
+                for i in a.get('items', []):
+                    parts.append(f'  • {i}')
+            return '\n'.join(parts)
+
+        # agenda → sommaire numéroté
+        if content.get('agenda_items') or (content.get('items') and layout_name == 'agenda'):
+            items = content.get('agenda_items') or content.get('items', [])
+            parts = []
+            for i, item in enumerate(items, 1):
+                if isinstance(item, dict):
+                    parts.append(f'{item.get("number", i)}.  {item.get("label", "")}')
+                else:
+                    parts.append(f'{i}.  {item}')
+            return '\n'.join(parts)
+
+        # highlight_box → highlight (grande police) + body
+        if content.get('highlight'):
+            parts = [content['highlight']]
+            if content.get('body'):
+                parts.append('')
+                parts.append(content['body'])
+            return '\n'.join(parts)
+
         return ''
 
     def _title_text() -> str:
@@ -3174,7 +3392,7 @@ def _create_slide_v4_native(prs: Presentation,
     def _subtitle_text() -> str:
         if layout_name == 'stat_hero':
             return content.get('label', '') or content.get('subtitle', '')
-        if layout_name == 'quote_dark':
+        if layout_name in ('quote_dark', 'quote'):
             return ''  # quote va dans body
         return content.get('subtitle', '')
 
@@ -3284,9 +3502,72 @@ def extract_document_content(file_bytes: bytes, filename: str) -> str:
 
 # ── Planner V4 (async, avec contexte document) ─────────────────────────────
 
-_V4_PLANNER_SYSTEM = _V3_PLANNER_SYSTEM  # mêmes règles narratives
+_V4_PLANNER_SYSTEM = """
+Tu es un consultant senior en communication visuelle. Tu génères des plans de présentation
+PowerPoint en JSON strict. Chaque slide a un layout choisi dans le catalogue fourni et un
+contenu précis adapté au layout. Règle absolue : au moins 1 slide avec un graphique
+(bar_chart, line_chart, pie_chart, stacked_bar, waterfall, ou radar) et au moins 1 slide
+avec un diagramme structurel (process_flow, funnel, matrix_2x2, swot, pyramid, cycle,
+ou roadmap) dans toute présentation de 6 slides ou plus.
+""".strip()
+
+_V4_PLANNER_USER = """
+SUJET : {prompt}
+NOMBRE DE SLIDES : {nb_slides}
+COULEUR PRINCIPALE : #{primary}  |  ACCENT : #{accent}  |  POLICE : {font}
+
+CATALOGUE DES LAYOUTS (choisir UNIQUEMENT parmi ces noms) :
+cover          — Slide de couverture (title, subtitle)
+section        — Slide séparateur de section (title, subtitle)
+closing        — Slide de clôture / merci (title, subtitle)
+full_text      — Corps de texte riche (title, body)
+list_numbered  — Liste numérotée (title, items:[str])
+list_cards     — Grille de cartes (title, cards:[{{title,body}}])
+two_col        — Deux colonnes (title, col_a:{{title,items}}, col_b:{{title,items}})
+kpi_grid       — Grille de KPIs (title, kpis:[{{value,label,sublabel}}])
+stat_hero      — Grande statistique (value, label, context, footer)
+bar_chart      — Graphique en barres groupées (title, categories:[str], series:[{{name,values:[n]}}], footer)
+line_chart     — Graphique en lignes (title, categories:[str], series:[{{name,values:[n]}}], footer)
+pie_chart      — Graphique circulaire (title, slices:[{{label,value}}], footer)
+stacked_bar    — Barres empilées (title, categories:[str], series:[{{name,values:[n]}}], footer)
+waterfall      — Cascade financière (title, items:[{{label,value}}], footer)
+radar          — Graphique radar (title, axes:[str], series:[{{name,values:[n]}}], footer)
+timeline       — Frise chronologique (title, steps:[{{date,title,body}}])
+process_flow   — Flux de processus (title, steps:[{{title,body}}])
+funnel         — Entonnoir (title, steps:[{{label,value}}])
+matrix_2x2     — Matrice 2×2 (title, quadrants:[{{label,body}}] ×4, axes:{{x,y}})
+swot           — Analyse SWOT (title, strengths:[str], weaknesses:[str], opportunities:[str], threats:[str])
+pyramid        — Pyramide (title, levels:[{{label,body}}] du haut vers bas)
+cycle          — Cycle / roue (title, steps:[{{title,body}}])
+roadmap        — Roadmap (title, phases:[{{label,milestones:[str]}}])
+quote          — Citation mise en avant (title, quote, author)
+pros_cons      — Pour / Contre (title, pros:[str], cons:[str])
+before_after   — Avant / Après (title, before:{{title,items:[str]}}, after:{{title,items:[str]}})
+highlight_box  — Encadré fort (title, highlight, body)
+agenda         — Sommaire / Agenda (title, items:[{{number,label}}])
+
+RÈGLES :
+1. La première slide est toujours "cover", la dernière "closing".
+2. Pour {nb_slides} ≥ 6 : inclure au moins 1 graphique ET 1 diagramme structurel.
+3. Le contenu JSON de chaque slide doit correspondre EXACTEMENT aux champs du layout choisi.
+4. footer_text = baseline de la société (ex : "Confidentiel — NomSociété 2025").
+5. Répondre UNIQUEMENT avec le JSON ci-dessous, sans commentaire ni markdown.
+
+FORMAT DE RÉPONSE :
+{{
+  "presentation_title": "...",
+  "footer_text": "...",
+  "slides": [
+    {{
+      "layout": "<nom_du_layout>",
+      "content": {{ ... }}
+    }}
+  ]
+}}
+""".strip()
 
 _V4_DOC_INJECT = """
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DOCUMENT SOURCE (contenu à synthétiser) :
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3306,28 +3587,23 @@ async def plan_presentation_v4(
 ) -> dict:
     """
     Planifie la présentation V4 via AsyncAnthropic (non-bloquant).
+    Utilise le catalogue complet de 30 layouts.
     Injecte le contenu du document si fourni.
     """
-    layouts_block = '\n'.join(
-        f'- {name}: {desc}'
-        for name, desc in LAYOUT_DESCRIPTIONS.items()
-    )
-
-    user_prompt = _V3_PLANNER_USER.format(
-        prompt        = prompt,
-        nb_slides     = nb_slides,
-        primary       = palette.get('primary', '1A3A6B'),
-        accent        = palette.get('accent',  'F0A500'),
-        font          = palette.get('font',    'Calibri'),
-        layouts_block = layouts_block,
+    user_prompt = _V4_PLANNER_USER.format(
+        prompt   = prompt,
+        nb_slides = nb_slides,
+        primary  = palette.get('primary', '1A3A6B'),
+        accent   = palette.get('accent',  'F0A500'),
+        font     = palette.get('font',    'Calibri'),
     )
 
     if document_content:
-        user_prompt = user_prompt + '\n' + _V4_DOC_INJECT.format(
+        user_prompt = user_prompt + _V4_DOC_INJECT.format(
             document_content=document_content
         )
 
-    max_tokens = max(4000, nb_slides * 380)
+    max_tokens = max(4000, nb_slides * 420)
 
     async with anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY) as async_client:
         for attempt in range(3):
@@ -3358,10 +3634,9 @@ async def run_pipeline_v4(
     """
     Pipeline V4 — template-native generation.
 
-    Phase 1 : extraction charte + layout map
-    Phase 2 : planification narrative async (avec doc optionnel)
-    Phase 3 : création slides — native pour types simples,
-              layouts.py pour types complexes (kpi, timeline…)
+    Phase 1 : analyze_template_v4 → tp (theme, layout_map, logo_zone, font…)
+    Phase 2 : planification narrative async (catalogue 30 layouts)
+    Phase 3 : création slides — native (placeholders template) ou V3 fallback
     Phase 4 : suppression slides originales + export
     """
     if not ANTHROPIC_API_KEY:
@@ -3373,18 +3648,27 @@ async def run_pipeline_v4(
     n_original = len(prs.slides)
 
     # ── Phase 1 ──────────────────────────────────────────────
-    log.info(f'[V4] Phase 1 : analyse template ({nb_slides} slides)…')
-    brand      = extract_brand(prs)
-    palette    = _h2_extract_palette(brand)
-    layout_map = _map_layouts(prs)
+    log.info(f'[V4] Phase 1 : analyze_template_v4 ({nb_slides} slides demandées)…')
+    tp         = analyze_template_v4(prs)
+    layout_map = tp['layout_map']
+
+    # Palette V3-compat pour fallback layouts.py
+    palette = {
+        'primary': tp['theme'].get('accent1', '009CEA'),
+        'accent':  tp['theme'].get('accent2', 'ED0000'),
+        'dark':    tp['theme'].get('dk1', '374649'),
+        'bg':      tp['theme'].get('lt1', 'FFFFFF'),
+        'font':    tp['font'],
+    }
+    brand = extract_brand(prs)  # conservé pour compatibilité valeur de retour
 
     # ── Phase 2 ──────────────────────────────────────────────
     log.info('[V4] Phase 2 : planification narrative…')
-    plan       = await plan_presentation_v4(prompt, nb_slides, palette, document_content)
+    plan        = await plan_presentation_v4(prompt, nb_slides, palette, document_content)
     slides_plan = plan.get('slides', [])
 
     # Compléter si Claude en a généré moins que demandé
-    fallback_layouts = ['full_text', 'list_numbered', 'two_col', 'kpi_row']
+    fallback_layouts = ['full_text', 'list_numbered', 'two_col', 'kpi_grid']
     while len(slides_plan) < nb_slides:
         fb = fallback_layouts[len(slides_plan) % len(fallback_layouts)]
         slides_plan.append({
@@ -3397,11 +3681,11 @@ async def run_pipeline_v4(
         })
     slides_plan = slides_plan[:nb_slides]
 
-    # Garantie closing
-    closing_layouts = {'closing_dark', 'closing_split'}
-    if not slides_plan or slides_plan[-1].get('layout') not in closing_layouts:
+    # Garantie closing (V4 ou V3 nom)
+    _closing_names = {'closing', 'closing_dark', 'closing_split'}
+    if not slides_plan or slides_plan[-1].get('layout') not in _closing_names:
         closing_slide = {
-            'layout':  'closing_dark',
+            'layout':  'closing',
             'content': {'title': 'Merci', 'subtitle': plan.get('footer_text', '')},
         }
         if len(slides_plan) >= nb_slides and slides_plan:
@@ -3413,6 +3697,24 @@ async def run_pipeline_v4(
 
     # ── Phase 3 ──────────────────────────────────────────────
     log.info('[V4] Phase 3 : création des slides…')
+
+    # Alias V3 → fonction layouts.py pour types non-natifs
+    _V3_ALIAS = {
+        'bar_chart':    'bar_chart',
+        'line_chart':   'line_chart',
+        'pie_chart':    'pie_chart',
+        'stacked_bar':  'stacked_bar',
+        'waterfall':    'waterfall',
+        'radar':        'radar',
+        'process_flow': 'process_flow',
+        'funnel':       'funnel',
+        'matrix_2x2':   'matrix_2x2',
+        'swot':         'swot',
+        'pyramid':      'pyramid',
+        'cycle':        'cycle',
+        'roadmap':      'roadmap',
+    }
+
     success = 0
     for sp in slides_plan:
         layout_name = sp.get('layout', 'full_text')
@@ -3423,20 +3725,26 @@ async def run_pipeline_v4(
 
         try:
             if layout_name in _V4_NATIVE_TYPES:
-                _create_slide_v4_native(prs, layout_name, content, layout_map)
+                _create_slide_v4_native(prs, layout_name, content, layout_map, tp)
             else:
-                layout_fn = LAYOUT_REGISTRY.get(layout_name) or LAYOUT_REGISTRY['full_text']
-                layout_fn(prs, content, palette)
+                # Chercher dans LAYOUT_REGISTRY (V3) — avec alias si nécessaire
+                fn_key = _V3_ALIAS.get(layout_name, layout_name)
+                layout_fn = LAYOUT_REGISTRY.get(fn_key) or LAYOUT_REGISTRY.get(layout_name)
+                if layout_fn:
+                    layout_fn(prs, content, palette)
+                else:
+                    # Fallback ultime : native full_text
+                    _create_slide_v4_native(prs, 'full_text', content, layout_map, tp)
             success += 1
             log.info(f'[V4] ✓ {layout_name}')
         except Exception as e:
             log.error(f'[V4] ✗ {layout_name} : {repr(e)}', exc_info=True)
             try:
-                LAYOUT_REGISTRY['full_text'](prs, {
+                _create_slide_v4_native(prs, 'full_text', {
                     'title':      content.get('title', ''),
-                    'paragraphs': [],
+                    'body':       content.get('body', ''),
                     'footer':     content.get('footer', ''),
-                }, palette)
+                }, layout_map, tp)
                 success += 1
             except Exception as e2:
                 log.error(f'[V4] ✗ fallback full_text : {repr(e2)}', exc_info=True)
