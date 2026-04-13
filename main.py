@@ -2954,46 +2954,6 @@ def run_pipeline_v3(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
 # PIPELINE V4 — TEMPLATE-NATIVE GENERATION
 # ══════════════════════════════════════════════════════════════
 
-def _map_layouts(prs: Presentation) -> dict:
-    """
-    Analyse les slide_layouts du template et produit un mapping
-    type sémantique → index de layout.
-    Retourne au minimum : cover, section, content, two_col, blank.
-    """
-    layout_map: dict = {}
-
-    for idx, layout in enumerate(prs.slide_layouts):
-        n = layout.name.lower()
-        ph_idxs = {ph.placeholder_format.idx for ph in layout.placeholders}
-
-        if any(k in n for k in ['title slide', 'titre de présentation', 'couverture',
-                                  'cover', 'garde', 'page de titre', 'couv', 'home',
-                                  'front', 'première', 'accueil']):
-            layout_map.setdefault('cover', idx)
-        elif any(k in n for k in ['section', 'chapter', 'chapitre', 'séparateur',
-                                   'header', 'separator', 'divider', 'break',
-                                   'transition', 'intertitre']):
-            layout_map.setdefault('section', idx)
-        elif any(k in n for k in ['two content', '2 contenus', 'comparison',
-                                   'comparaison', 'deux', 'two col', '2 col',
-                                   'dual', 'compare', 'côte à côte']):
-            layout_map.setdefault('two_col', idx)
-        elif any(k in n for k in ['blank', 'vide', 'vierge', 'empty']):
-            layout_map.setdefault('blank', idx)
-        elif 0 in ph_idxs and 1 in ph_idxs:
-            layout_map.setdefault('content', idx)
-
-    n_layouts = len(prs.slide_layouts)
-    if 'cover'   not in layout_map: layout_map['cover']   = 0
-    if 'blank'   not in layout_map: layout_map['blank']   = n_layouts - 1
-    if 'content' not in layout_map: layout_map['content'] = min(1, n_layouts - 1)
-    if 'section' not in layout_map: layout_map['section'] = layout_map['cover']
-    if 'two_col' not in layout_map: layout_map['two_col'] = layout_map['content']
-
-    log.info(f'[V4] layout_map={layout_map}')
-    return layout_map
-
-
 def _fill_placeholder_preserving_style(ph, new_text: str) -> None:
     """
     Remplace le texte d'un placeholder en préservant le style XML du premier run
@@ -3294,53 +3254,6 @@ def layout_fulltext_v4(prs: Presentation, content: dict, tp: dict):
     _ph_fill(ph_map, 14, content.get('footer', ''))
 
     return slide
-
-
-def layout_kpi_native_v4(prs: Presentation, content: dict, tp: dict):
-    """
-    Slide KPI sur le layout natif 'kpi' (si disponible dans le template).
-    Cortex_1 : ph[0]=titre, ph[18/20/25]=valeurs KPI, ph[19/21/26]=libellés.
-    Fallback vers layout kpi_grid V3 si pas de layout KPI natif.
-    """
-    kpi_idx = tp['layout_map'].get('kpi')
-    # Si kpi == text ou cover c'est un fallback heuristique, pas un vrai layout KPI
-    # → détecter en vérifiant si on a des ph ≥ 18
-    has_native_kpi = False
-    if kpi_idx is not None and kpi_idx != tp['layout_map'].get('text'):
-        probe_layout = prs.slide_layouts[kpi_idx]
-        probe_ph_idxs = {ph.placeholder_format.idx for ph in probe_layout.placeholders}
-        has_native_kpi = bool(probe_ph_idxs & {18, 19, 20, 21, 25, 26})
-
-    kpis = content.get('kpis', [])
-
-    if has_native_kpi:
-        slide, ph_map = _add_slide_native(prs, kpi_idx)
-        _ph_fill(ph_map, 0, content.get('title', ''))
-
-        # Triplets value/label pour 3 KPIs max
-        ph_pairs = [(18, 19), (20, 21), (25, 26)]
-        for i, (val_idx, lbl_idx) in enumerate(ph_pairs):
-            if i < len(kpis):
-                kpi = kpis[i] if isinstance(kpis[i], dict) else {'value': kpis[i]}
-                _ph_fill(ph_map, val_idx, str(kpi.get('value', '')))
-                lbl = kpi.get('label', '')
-                if kpi.get('sublabel'):
-                    lbl += f'\n{kpi["sublabel"]}'
-                _ph_fill(ph_map, lbl_idx, lbl)
-
-        _ph_fill(ph_map, 14, content.get('footer', ''))
-        return slide
-    else:
-        # Fallback V3 kpi_grid (programmatic)
-        palette = {
-            'primary': tp['theme'].get('accent1', '009CEA'),
-            'accent':  tp['theme'].get('accent2', 'ED0000'),
-            'dark':    tp['theme'].get('dk1', '374649'),
-            'bg':      tp['theme'].get('lt1', 'FFFFFF'),
-            'font':    tp['font'],
-        }
-        LAYOUT_REGISTRY['kpi_grid'](prs, content, palette)
-        return prs.slides[-1]
 
 
 def layout_closing_v4(prs: Presentation, content: dict, tp: dict):
@@ -5663,7 +5576,7 @@ async def run_pipeline_v4(
         'bg':      tp['theme'].get('lt1', 'FFFFFF'),
         'font':    tp['font'],
     }
-    brand = extract_brand(prs)  # conservé pour compatibilité valeur de retour
+    brand = extract_brand(prs)
 
     # ── Phase 2 ──────────────────────────────────────────────
     if plan is None:
@@ -5688,7 +5601,7 @@ async def run_pipeline_v4(
     slides_plan = slides_plan[:nb_slides]
 
     # Garantie closing (V4 ou V3 nom)
-    _closing_names = {'closing', 'closing_dark', 'closing_split'}
+    _closing_names = {'closing'}
     if not slides_plan or slides_plan[-1].get('layout') not in _closing_names:
         closing_slide = {
             'layout':  'closing',
@@ -5738,7 +5651,7 @@ async def run_pipeline_v4(
                 layout_list_numbered_v4(prs, content, tp)
             elif layout_name in ('list_cards',):
                 layout_list_cards_v4(prs, content, tp)
-            elif layout_name in ('two_col', 'before_after'):
+            elif layout_name in ('two_col',):
                 layout_twocol_v4(prs, content, tp)
             elif layout_name in ('stat_hero',):
                 layout_stathero_v4(prs, content, tp)
@@ -5748,7 +5661,7 @@ async def run_pipeline_v4(
                 layout_processflow_v4(prs, content, tp)
             elif layout_name in ('funnel',):
                 layout_funnel_v4(prs, content, tp)
-            elif layout_name in ('bar_chart', 'stacked_bar'):
+            elif layout_name in ('bar_chart',):
                 layout_barchart_v4(prs, content, tp)
             elif layout_name in ('line_chart',):
                 layout_linechart_v4(prs, content, tp)
