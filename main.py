@@ -4625,6 +4625,255 @@ def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+# ── V4 Layouts bonus ─────────────────────────────────────────────────────────
+
+def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Barres empilées 100 % (COLUMN_STACKED_100).
+    Idéal pour parts de marché, répartition, compositions.
+    content: {title, categories:[str], series:[{name, values:[n]}], footer}
+    """
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+
+    slide = _blank_v4(prs, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    categories = content.get('categories', [])
+    series     = content.get('series', [])
+    if not categories or not series:
+        return slide
+
+    chart_data = CategoryChartData()
+    chart_data.categories = [str(c) for c in categories]
+    for s in series:
+        vals = tuple(float(v) if v is not None else 0.0 for v in s.get('values', []))
+        chart_data.add_series(s.get('name', ''), vals)
+
+    chart_shape = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_STACKED_100,
+        Inches(0.5), Inches(1.6), Inches(12.0), Inches(5.0),
+        chart_data,
+    )
+    chart  = chart_shape.chart
+    colors = _chart_series_colors(tp.get('theme', {}))
+
+    for i, ser in enumerate(chart.series):
+        ser.format.fill.solid()
+        ser.format.fill.fore_color.rgb = _h2_parse_hex(colors[i % len(colors)])
+
+    plot = chart.plots[0]
+    plot.has_data_labels = True
+    try:
+        plot.data_labels.number_format = '0%'
+        plot.data_labels.font.size = Pt(9)
+        plot.data_labels.font.color.rgb = _h2_parse_hex('FFFFFF')
+    except Exception:
+        pass
+
+    chart.has_legend = True
+    chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+    chart.legend.include_in_layout = False
+
+    return slide
+
+
+def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Avant / Après : deux colonnes avec flèche centrale.
+    Colonne gauche (gris) = Avant. Colonne droite (accent1) = Après.
+    content: {title, before:{title,items:[str]}, after:{title,items:[str]}, footer}
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    before = content.get('before', {})
+    after  = content.get('after', {})
+
+    y_top    = 1.6
+    y_bot    = H - 0.55
+    col_h    = y_bot - y_top
+    arrow_w  = 0.8
+    col_w    = (W - 0.55 - 0.45 - arrow_w) / 2
+    x_before = 0.55
+    x_arrow  = x_before + col_w
+    x_after  = x_arrow + arrow_w
+    head_h   = 0.52
+    item_h   = 0.50
+
+    for cx, col, hdr_color, bg_color, label_prefix in [
+        (x_before, before, '888888', 'F4F4F4', 'AVANT'),
+        (x_after,  after,  accent1,  'EBF5FF', 'APRÈS'),
+    ]:
+        col_title = col.get('title', label_prefix) if isinstance(col, dict) else label_prefix
+        items     = col.get('items', []) if isinstance(col, dict) else []
+
+        # Header
+        _h2_rect(slide, left=cx, top=y_top, width=col_w, height=head_h, color=hdr_color)
+        _h2_text(slide, col_title,
+                 left=cx + 0.15, top=y_top + 0.07,
+                 width=col_w - 0.3, height=head_h - 0.1,
+                 font=font, size_pt=13, color='FFFFFF',
+                 bold=True, align='left')
+
+        # Fond de colonne
+        _h2_rect(slide, left=cx, top=y_top + head_h,
+                 width=col_w, height=col_h - head_h, color=bg_color)
+
+        # Items
+        n = min(len(items), int((col_h - head_h - 0.1) / item_h))
+        for j, item in enumerate(items[:n]):
+            iy = y_top + head_h + 0.1 + j * item_h
+            _h2_rect(slide, left=cx, top=iy, width=0.06,
+                     height=item_h - 0.06, color=hdr_color)
+            _h2_text(slide, str(item),
+                     left=cx + 0.15, top=iy + 0.06,
+                     width=col_w - 0.22, height=item_h - 0.1,
+                     font=font, size_pt=11, color=dk1,
+                     bold=False, align='left', line_spacing=1.1)
+
+    # Flèche centrale ▶
+    arr_y = (y_top + y_bot) / 2
+    _h2_text(slide, '▶',
+             left=x_arrow + 0.1, top=arr_y - 0.3,
+             width=arrow_w - 0.2, height=0.6,
+             font=font, size_pt=28, color=accent1,
+             bold=True, align='center')
+
+    return slide
+
+
+def layout_highlight_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Message encadré fort.
+    Grand encadré accent1 centré avec le message principal en blanc.
+    Titre au-dessus, body en dessous si fourni.
+    content: {title, highlight, body, footer}
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accent2 = theme.get('accent2', 'ED0000')
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp)
+
+    highlight = content.get('highlight', '')
+    body      = content.get('body', '')
+
+    # Zone centrale
+    box_y = 2.0
+    box_h = 2.4 if body else 2.8
+    box_x = 1.0
+    box_w = W - 2.0
+
+    # Rectangle principal accent1
+    _h2_rounded_rect(slide, left=box_x, top=box_y,
+                      width=box_w, height=box_h, color=accent1, radius=0.06)
+
+    # Ligne décorative accent2 à gauche
+    _h2_rect(slide, left=box_x, top=box_y, width=0.12, height=box_h, color=accent2)
+
+    # Texte highlight en grand, blanc, centré verticalement
+    n_lines = max(1, len(highlight) // 55 + 1)
+    txt_sz  = max(16, min(28, int(40 / n_lines)))
+    txt_h   = min(box_h - 0.4, n_lines * (txt_sz * 0.022 + 0.1))
+    txt_y   = box_y + (box_h - txt_h) / 2
+
+    _h2_text(slide, highlight,
+             left=box_x + 0.3, top=txt_y,
+             width=box_w - 0.5, height=txt_h,
+             font=font, size_pt=txt_sz, color='FFFFFF',
+             bold=True, align='left', line_spacing=1.25)
+
+    # Corps optionnel sous l'encadré
+    if body:
+        _h2_text(slide, body,
+                 left=box_x, top=box_y + box_h + 0.3,
+                 width=box_w, height=H - 0.7 - (box_y + box_h + 0.3),
+                 font=font, size_pt=12, color=dk1,
+                 bold=False, align='left', line_spacing=1.3)
+
+    return slide
+
+
+def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Sommaire / Agenda numéroté.
+    Numéros décorés accent_cycle + labels + ligne séparatrice.
+    content: {title, items:[{number,label}] ou [str], footer}
+    """
+    slide  = _blank_v4(prs, tp)
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent3', '40A900'),
+        theme.get('accent4', 'F66A00'),
+        theme.get('accent1', '009CEA'),
+    ])
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    _add_template_header_and_footer(slide, content.get('title', 'Sommaire'),
+                                    content.get('footer', ''), tp)
+
+    items = content.get('items', content.get('agenda_items', []))
+    n = min(len(items), 8)
+    if n == 0:
+        return slide
+
+    # Zone contenu
+    y_start = 1.65
+    y_end   = H - 0.55
+    step_h  = (y_end - y_start) / n
+    num_w   = 0.6
+    x_num   = 0.6
+    x_text  = x_num + num_w + 0.25
+
+    for i in range(n):
+        item   = items[i]
+        number = item.get('number', i + 1) if isinstance(item, dict) else i + 1
+        label  = item.get('label', '') if isinstance(item, dict) else str(item)
+        color  = accents[i % len(accents)]
+        iy     = y_start + i * step_h
+
+        # Numéro coloré dans cercle
+        _h2_circle(slide, cx=x_num + num_w / 2, cy=iy + step_h / 2, r=num_w / 2 - 0.02, color=color)
+        _h2_text(slide, str(number),
+                 left=x_num, top=iy + step_h / 2 - 0.22,
+                 width=num_w, height=0.44,
+                 font=font, size_pt=14, color='FFFFFF',
+                 bold=True, align='center')
+
+        # Label
+        _h2_text(slide, label,
+                 left=x_text, top=iy + (step_h - 0.42) / 2,
+                 width=W - x_text - 0.5, height=0.42,
+                 font=font, size_pt=16, color=dk1,
+                 bold=False, align='left')
+
+        # Ligne séparatrice (sauf dernier)
+        if i < n - 1:
+            _h2_rect(slide, left=x_num, top=iy + step_h - 0.012,
+                     width=W - x_num - 0.5, height=0.012, color='EEEEEE')
+
+    return slide
+
+
 # ── V4 Matrices & Diagrammes ─────────────────────────────────────────────────
 
 def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
@@ -5237,7 +5486,7 @@ def extract_document_content(file_bytes: bytes, filename: str) -> str:
         text = ''
 
     # Tronquer intelligemment (ne pas couper un mot)
-    MAX_CHARS = 12_000
+    MAX_CHARS = 15_000
     if len(text) > MAX_CHARS:
         cut = text[:MAX_CHARS].rfind('\n')
         text = text[:cut if cut > MAX_CHARS * 0.8 else MAX_CHARS]
@@ -5479,7 +5728,7 @@ async def run_pipeline_v4(
                 layout_section_v4(prs, content, tp)
             elif layout_name in ('closing', 'closing_dark', 'closing_split'):
                 layout_closing_v4(prs, content, tp)
-            elif layout_name in ('full_text', 'image_split', 'agenda', 'highlight_box'):
+            elif layout_name in ('full_text', 'image_split'):
                 layout_fulltext_v4(prs, content, tp)
             elif layout_name in ('kpi_grid', 'kpi_row', 'kpi_native'):
                 layout_kpi_grid_v4(prs, content, tp)
@@ -5523,6 +5772,14 @@ async def run_pipeline_v4(
                 layout_cycle_v4(prs, content, tp)
             elif layout_name in ('roadmap',):
                 layout_roadmap_v4(prs, content, tp)
+            elif layout_name in ('stacked_bar',):
+                layout_stackedbar_v4(prs, content, tp)
+            elif layout_name in ('before_after',):
+                layout_beforeafter_v4(prs, content, tp)
+            elif layout_name in ('highlight_box',):
+                layout_highlight_v4(prs, content, tp)
+            elif layout_name in ('agenda',):
+                layout_agenda_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
