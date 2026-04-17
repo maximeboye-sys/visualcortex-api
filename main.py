@@ -3154,14 +3154,13 @@ def _add_template_header_and_footer(slide, title: str, footer_text: str, tp: dic
     """
     Applique le pattern DNA Visual Cortex sur une slide vide :
       - Titre   : accent1, 28 pt bold, (0.6", 0.2"), max 10.4" large
-      - Ligne rouge : accent2, épaisseur 0.04", y=1.15"
+      - Ligne   : accent1, épaisseur 0.04", y=1.15"  (même couleur que le titre)
       - Footer  : ligne #DDDDDD à y=(H-0.4") + texte #AAAAAA 9 pt
     Ne dépasse pas x=10.8" pour préserver la zone logo.
     """
     font    = tp.get('font', 'Calibri')
     theme   = tp.get('theme', {})
     accent1 = theme.get('accent1', '009CEA')
-    accent2 = theme.get('accent2', 'ED0000')
     H       = tp.get('H', 7.5)
 
     # Titre
@@ -3170,8 +3169,8 @@ def _add_template_header_and_footer(slide, title: str, footer_text: str, tp: dic
              font=font, size_pt=28, color=accent1,
              bold=True, align='left')
 
-    # Ligne rouge
-    _h2_rect(slide, left=0.6, top=1.15, width=10.4, height=0.04, color=accent2)
+    # Ligne de séparation : même couleur que le titre (accent1)
+    _h2_rect(slide, left=0.6, top=1.15, width=10.4, height=0.04, color=accent1)
 
     # Footer
     _h2_rect(slide, left=0.0, top=H - 0.4, width=13.33, height=0.003, color='DDDDDD')
@@ -5453,33 +5452,30 @@ def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
     axes      = content.get('axes', {})
 
     # Grille : 2×2 dans la zone contenu
-    margin_l = _LY.CL + 0.05
-    margin_r = W - _LY.CR + 0.05
     y_top    = _LY.CT
     y_bot    = _LY.CB
     gap      = _LY.GAP_SM
-    ax_lbl_w = 0.55   # largeur réservée pour axe Y (gauche)
-    ax_lbl_h = 0.35   # hauteur réservée pour axe X (bas)
+    ax_lbl_w = 1.10   # largeur réservée pour label axe Y
+    ax_lbl_h = 0.38   # hauteur réservée pour label axe X
 
-    grid_x = margin_l + ax_lbl_w
-    grid_w = W - grid_x - margin_r
+    grid_x = _LY.CL + ax_lbl_w
+    grid_w = _LY.CR - grid_x
     grid_y = y_top
     grid_h = y_bot - ax_lbl_h - y_top
 
     cell_w = (grid_w - gap) / 2
     cell_h = (grid_h - gap) / 2
 
-    # Axe Y (label vertical à gauche de la grille)
+    # Axe Y — label centré sur la hauteur de la grille, aligné à droite
     y_axis = axes.get('y', '')
     if y_axis:
-        # Simuler texte vertical : 2 textbox empilés
         _h2_text(slide, y_axis,
-                 left=margin_l, top=grid_y + cell_h / 4,
-                 width=ax_lbl_w - 0.05, height=grid_h / 2,
+                 left=_LY.CL, top=grid_y + grid_h / 2 - 0.25,
+                 width=ax_lbl_w - 0.10, height=0.50,
                  font=font, size_pt=10, color=dk1,
                  bold=False, align='right')
 
-    # Axe X (label horizontal sous la grille)
+    # Axe X — label centré sous la grille
     x_axis = axes.get('x', '')
     if x_axis:
         _h2_text(slide, x_axis,
@@ -5505,9 +5501,10 @@ def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
         body   = q.get('body', '')
         items  = q.get('items', [])
 
+        # Fond palette template (pas de F5F5F5 hors palette)
         _h2_rounded_rect(slide, left=cx, top=cy,
                           width=cell_w, height=cell_h,
-                          color='F5F5F5', radius=0.04)
+                          color='EEEEEE', radius=0.04)
         _h2_rect(slide, left=cx, top=cy, width=cell_w, height=0.07, color=color)
 
         _h2_text(slide, label,
@@ -5516,7 +5513,7 @@ def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
                  font=font, size_pt=_LY.T_LABEL, color=dk1,
                  bold=True, align='left')
 
-        # Contenu (body ou items)
+        # Contenu (body ou items) — dk1 pour cohérence palette
         txt = body
         if not txt and items:
             txt = '\n'.join(f'• {it}' for it in items)
@@ -5524,7 +5521,7 @@ def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
             _h2_text(slide, txt,
                      left=cx + _LY.PAD, top=cy + 0.57,
                      width=cell_w - _LY.PAD * 2, height=cell_h - 0.65,
-                     font=font, size_pt=_LY.T_SMALL, color='444444',
+                     font=font, size_pt=_LY.T_SMALL, color=dk1,
                      bold=False, align='left', line_spacing=1.2)
 
     return slide
