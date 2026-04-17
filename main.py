@@ -4431,6 +4431,45 @@ def _chart_series_colors(theme: dict) -> list:
     ]
 
 
+# Zone analyse sous graphique : CT→CHART_BOT puis ANALYSIS_TOP→CB
+_CHART_H       = 3.50   # hauteur graphique (top = CT ≈ 1.60)
+_ANALYSIS_TOP  = _LY.CT + _CHART_H + 0.15   # ≈ 5.20"
+_ANALYSIS_H    = _LY.CB - _ANALYSIS_TOP      # ≈ 1.75"
+
+
+def _add_chart_analysis(slide, content: dict, tp: dict) -> None:
+    """
+    Bloc d'analyse / interprétation sous un graphique.
+    Cherche 'analysis' > 'interpretation' > 'insight' > 'body'.
+    Fond E8EEF5, rayure accent1 gauche, texte dk1.
+    N'affiche rien si aucun texte n'est trouvé.
+    """
+    analysis = (
+        content.get('analysis') or
+        content.get('interpretation') or
+        content.get('insight') or
+        content.get('body', '')
+    )
+    if not analysis:
+        return
+    font   = tp.get('font', 'Calibri')
+    theme  = tp.get('theme', {})
+    dk1    = theme.get('dk1', '374649')
+    accent = theme.get('accent1', '009CEA')
+    _h2_rounded_rect(slide,
+                     left=_LY.CL, top=_ANALYSIS_TOP,
+                     width=_LY.CW, height=_ANALYSIS_H,
+                     color='E8EEF5', radius=_LY.R_SM)
+    _h2_rect(slide,
+             left=_LY.CL, top=_ANALYSIS_TOP,
+             width=0.06, height=_ANALYSIS_H, color=accent)
+    _h2_text(slide, analysis,
+             left=_LY.CL + 0.18, top=_ANALYSIS_TOP + 0.12,
+             width=_LY.CW - 0.24, height=_ANALYSIS_H - 0.20,
+             font=font, size_pt=_LY.T_SMALL, color=dk1,
+             bold=False, align='left', line_spacing=1.2)
+
+
 def h2_bar_chart(slide, left: float, top: float, width: float, height: float,
                  categories: list, series: list, font: str, theme: dict):
     """
@@ -4479,7 +4518,7 @@ def h2_bar_chart(slide, left: float, top: float, width: float, height: float,
 
 
 def layout_barchart_v4(prs: Presentation, content: dict, tp: dict):
-    """Slide graphique barres groupées (COLUMN_CLUSTERED)."""
+    """Slide graphique barres groupées (COLUMN_CLUSTERED) + bloc analyse."""
     slide = _blank_v4(prs, tp)
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp)
@@ -4490,9 +4529,10 @@ def layout_barchart_v4(prs: Presentation, content: dict, tp: dict):
         return slide
 
     h2_bar_chart(slide,
-                 left=0.5, top=1.6, width=12.0, height=5.0,
+                 left=0.5, top=_LY.CT, width=12.0, height=_CHART_H,
                  categories=categories, series=series,
                  font=tp.get('font', 'Calibri'), theme=tp.get('theme', {}))
+    _add_chart_analysis(slide, content, tp)
     return slide
 
 
@@ -4547,7 +4587,7 @@ def h2_line_chart(slide, left: float, top: float, width: float, height: float,
 
 
 def layout_linechart_v4(prs: Presentation, content: dict, tp: dict):
-    """Slide graphique en lignes (LINE_MARKERS)."""
+    """Slide graphique en lignes (LINE_MARKERS) + bloc analyse."""
     slide = _blank_v4(prs, tp)
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp)
@@ -4558,9 +4598,10 @@ def layout_linechart_v4(prs: Presentation, content: dict, tp: dict):
         return slide
 
     h2_line_chart(slide,
-                  left=0.5, top=1.6, width=12.0, height=5.0,
+                  left=0.5, top=_LY.CT, width=12.0, height=_CHART_H,
                   categories=categories, series=series,
                   font=tp.get('font', 'Calibri'), theme=tp.get('theme', {}))
+    _add_chart_analysis(slide, content, tp)
     return slide
 
 
@@ -4619,7 +4660,7 @@ def h2_pie_chart(slide, left: float, top: float, width: float, height: float,
 
 
 def layout_piechart_v4(prs: Presentation, content: dict, tp: dict):
-    """Slide graphique camembert / anneau."""
+    """Slide graphique camembert / anneau + bloc analyse."""
     slide = _blank_v4(prs, tp)
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp)
@@ -4630,9 +4671,10 @@ def layout_piechart_v4(prs: Presentation, content: dict, tp: dict):
         return slide
 
     h2_pie_chart(slide,
-                 left=1.5, top=1.6, width=10.0, height=5.2,
+                 left=1.5, top=_LY.CT, width=10.0, height=_CHART_H,
                  slices=slices, font=tp.get('font', 'Calibri'),
                  theme=tp.get('theme', {}), doughnut=doughnut)
+    _add_chart_analysis(slide, content, tp)
     return slide
 
 
@@ -4715,7 +4757,7 @@ def h2_waterfall_chart(slide, left: float, top: float, width: float, height: flo
 
 
 def layout_waterfall_v4(prs: Presentation, content: dict, tp: dict):
-    """Slide cascade financière (waterfall)."""
+    """Slide cascade financière (waterfall) + bloc analyse."""
     slide = _blank_v4(prs, tp)
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp)
@@ -4725,16 +4767,17 @@ def layout_waterfall_v4(prs: Presentation, content: dict, tp: dict):
         return slide
 
     h2_waterfall_chart(slide,
-                       left=0.5, top=1.6, width=12.0, height=5.0,
+                       left=0.5, top=_LY.CT, width=12.0, height=_CHART_H,
                        items=items, font=tp.get('font', 'Calibri'),
                        theme=tp.get('theme', {}))
+    _add_chart_analysis(slide, content, tp)
     return slide
 
 
 def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Graphique radar (RADAR_MARKERS) natif PowerPoint.
-    content: {title, axes:[str], series:[{name, values:[n]}], footer}
+    Graphique radar (RADAR_MARKERS) natif PowerPoint + bloc analyse.
+    content: {title, axes:[str], series:[{name, values:[n]}], analysis, footer}
     """
     from pptx.chart.data import CategoryChartData
     from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
@@ -4756,7 +4799,7 @@ def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
 
     chart_shape = slide.shapes.add_chart(
         XL_CHART_TYPE.RADAR_MARKERS,
-        Inches(1.5), Inches(1.6), Inches(10.0), Inches(5.2),
+        Inches(1.5), Inches(_LY.CT), Inches(10.0), Inches(_CHART_H),
         chart_data,
     )
     chart  = chart_shape.chart
@@ -4777,6 +4820,7 @@ def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
     else:
         chart.has_legend = False
 
+    _add_chart_analysis(slide, content, tp)
     return slide
 
 
@@ -5018,7 +5062,7 @@ def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
 
     chart_shape = slide.shapes.add_chart(
         XL_CHART_TYPE.COLUMN_STACKED_100,
-        Inches(0.5), Inches(1.6), Inches(12.0), Inches(5.0),
+        Inches(0.5), Inches(_LY.CT), Inches(12.0), Inches(_CHART_H),
         chart_data,
     )
     chart  = chart_shape.chart
@@ -5041,6 +5085,7 @@ def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
     chart.legend.position = XL_LEGEND_POSITION.BOTTOM
     chart.legend.include_in_layout = False
 
+    _add_chart_analysis(slide, content, tp)
     return slide
 
 
@@ -6028,12 +6073,12 @@ list_cards     — Grille de cartes (title, cards:[{{title,body}}])
 two_col        — Deux colonnes (title, col_a:{{title,items}}, col_b:{{title,items}})
 kpi_grid       — Grille de KPIs (title, kpis:[{{value,label,sublabel}}])
 stat_hero      — Grande statistique (value, label, context, footer)
-bar_chart      — Graphique en barres groupées (title, categories:[str], series:[{{name,values:[n]}}], footer)
-line_chart     — Graphique en lignes (title, categories:[str], series:[{{name,values:[n]}}], footer)
-pie_chart      — Graphique circulaire (title, slices:[{{label,value}}], footer)
-stacked_bar    — Barres empilées (title, categories:[str], series:[{{name,values:[n]}}], footer)
-waterfall      — Cascade financière (title, items:[{{label,value}}], footer)
-radar          — Graphique radar (title, axes:[str], series:[{{name,values:[n]}}], footer)
+bar_chart      — Graphique en barres groupées (title, categories:[str], series:[{{name,values:[n]}}], analysis, footer)
+line_chart     — Graphique en lignes (title, categories:[str], series:[{{name,values:[n]}}], analysis, footer)
+pie_chart      — Graphique circulaire (title, slices:[{{label,value}}], analysis, footer)
+stacked_bar    — Barres empilées (title, categories:[str], series:[{{name,values:[n]}}], analysis, footer)
+waterfall      — Cascade financière (title, items:[{{label,value}}], analysis, footer)
+radar          — Graphique radar (title, axes:[str], series:[{{name,values:[n]}}], analysis, footer)
 timeline       — Frise chronologique (title, steps:[{{date,title,body}}])
 process_flow   — Flux de processus (title, steps:[{{title,body}}])
 funnel         — Entonnoir (title, steps:[{{label,value}}])
@@ -6057,6 +6102,7 @@ RÈGLES :
 5. Répondre UNIQUEMENT avec le JSON ci-dessous, sans commentaire ni markdown.
 6. Chaque slide DOIT inclure "style": 0, 1 ou 2 dans son "content" — varie librement pour maximiser la diversité visuelle.
 7. Inclure "presentation_seed" (entier aléatoire 1-999999) à la racine pour garantir l'unicité visuelle de chaque run.
+8. Tout slide de type graphique (bar_chart, line_chart, pie_chart, stacked_bar, waterfall, radar) DOIT inclure un champ "analysis" : phrase(s) d'interprétation ou d'analyse développée (2-3 phrases minimum). Un graphique sans "analysis" est invalide.
 
 FORMAT DE RÉPONSE :
 {{
