@@ -2777,7 +2777,7 @@ section                   →  {{"number":"01", "title":"..."}}
 kpi_grid                  →  {{"title":"...", "kpis":[{{"value":"47 %","label":"Part de marché","sublabel":"2023, source XYZ"}}], "footer":"..."}}
 kpi_row                   →  {{"title":"...", "kpis":[{{"value":"3,2 Md€","label":"CA 2023","sublabel":"vs 2,1 Md€ en 2022"}}], "footer":"..."}}
 timeline_h                →  {{"title":"...", "steps":[{{"date":"2021","title":"Lancement","body":"Déploiement initial dans 3 pays"}}], "footer":"..."}}
-two_col                   →  {{"title":"...", "col_a":{{"title":"POUR","items":["Argument 1","Argument 2"]}}, "col_b":{{"title":"CONTRE","items":["Limite 1","Limite 2"]}}, "footer":"..."}}
+two_col                   →  {{"title":"...", "col_a":{{"title":"POUR","subtitle":"sous-titre optionnel","items":["Argument 1","Argument 2"]}}, "col_b":{{"title":"CONTRE","subtitle":"sous-titre optionnel","items":["Limite 1","Limite 2"]}}, "footer":"..."}}
 quote_dark                →  {{"quote":"Citation percutante ≤ 20 mots", "author":"Prénom NOM, Titre — 2024", "footer":"..."}}
 list_numbered             →  {{"title":"...", "items":[{{"title":"Levier 1","body":"Explication concise en 15 mots max."}}], "footer":"..."}}
 list_cards                →  {{"title":"...", "cards":[{{"title":"Axe 1","body":"Description en 20 mots max."}}], "footer":"..."}}
@@ -3212,18 +3212,26 @@ def layout_cover_v4(prs: Presentation, content: dict, tp: dict):
     Slide de couverture sur le layout natif 'cover'.
     ph[0] = titre principal
     ph[1] = sous-titre / tagline
-    ph[14] = footer (si présent dans le layout)
+    Footer : textbox custom en bas (ph[14] évité car il peut chevaucher le subtitle).
     """
     idx   = tp['layout_map']['cover']
     slide, ph_map = _add_slide_native(prs, idx)
 
     _ph_fill(ph_map, 0, content.get('title', ''))
-    _ph_fill(ph_map, 1, content.get('subtitle', ''))
-    _ph_fill(ph_map, 14, content.get('footer', ''))
+    subtitle = content.get('subtitle', '')
+    if not _ph_fill(ph_map, 1, subtitle):
+        _ph_fill(ph_map, 2, subtitle)
 
-    # Fallback : si ph[1] absent, essayer ph[2]
-    if 1 not in ph_map:
-        _ph_fill(ph_map, 2, content.get('subtitle', ''))
+    # Footer en bas via textbox custom (ph[14] peut être mal positionné sur le layout cover)
+    footer = content.get('footer', '')
+    if footer:
+        font = tp.get('font', 'Calibri')
+        H    = tp.get('H', 7.5)
+        _h2_rect(slide, left=0.0, top=H - 0.4, width=13.33, height=0.003, color='DDDDDD')
+        _h2_text(slide, footer,
+                 left=0.6, top=H - 0.38, width=10.4, height=0.32,
+                 font=font, size_pt=9, color='AAAAAA',
+                 bold=False, align='left')
 
     return slide
 
@@ -3295,21 +3303,24 @@ def layout_closing_v4(prs: Presentation, content: dict, tp: dict):
 
     _ph_fill(ph_map, 0, content.get('title', 'Merci'))
 
-    # Sous-titre : essayer ph[1] puis ph[2]
+    # Sous-titre : toujours en textbox custom (ph[1]/ph[2] chevauche ph[0] sur ce layout)
     subtitle = content.get('subtitle', '') or content.get('body', '')
-    if not _ph_fill(ph_map, 1, subtitle):
-        _ph_fill(ph_map, 2, subtitle)
-
-    # Si aucun placeholder subtitle disponible, textbox positionné bas (y=4.5)
-    if subtitle and 1 not in ph_map and 2 not in ph_map:
-        font    = tp.get('font', 'Calibri')
-        accent1 = tp['theme'].get('accent1', '009CEA')
+    font    = tp.get('font', 'Calibri')
+    H       = tp.get('H', 7.5)
+    theme   = tp.get('theme', {})
+    accent1 = theme.get('accent1', '009CEA')
+    if subtitle:
         _h2_text(slide, subtitle,
-                 left=1.5, top=4.5, width=10.0, height=1.2,
-                 font=font, size_pt=16, color=accent1,
+                 left=1.5, top=4.2, width=10.0, height=1.5,
+                 font=font, size_pt=18, color=accent1,
                  bold=False, align='center')
 
-    _ph_fill(ph_map, 14, content.get('footer', ''))
+    # Footer custom en bas (ph[14] peut être mal positionné sur ce layout)
+    footer = content.get('footer', '')
+    if footer:
+        _h2_rect(slide, left=0.0, top=H - 0.4, width=13.33, height=0.003, color='DDDDDD')
+        _h2_text(slide, footer, left=0.6, top=H - 0.38, width=10.4, height=0.32,
+                 font=font, size_pt=9, color='AAAAAA', bold=False, align='left')
 
     return slide
 
@@ -3742,21 +3753,35 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
     x_a     = _LY.CL
     x_b     = _LY.CL + _LY.COL_W + _LY.COL_GAP
     y_head  = _LY.CT
-    y_items = y_head + _LY.HEAD_H + _LY.GAP_SM
     cols    = [(x_a, col_a, accent1), (x_b, col_b, accent3)]
+
+    # Détecter si une colonne a un sous-titre pour ajuster l'espace header
+    any_subtitle = any(
+        bool((c.get('subtitle', '') if isinstance(c, dict) else ''))
+        for _, c, _ in cols
+    )
+    head_h  = _LY.HEAD_H + (0.32 if any_subtitle else 0)
+    y_items = y_head + head_h + _LY.GAP_SM
 
     if v == 0:
         # Variante 0 : header rectangulaire coloré + fonds alternés
         for x_col, col, color in cols:
-            label = col.get('title', '') if isinstance(col, dict) else ''
-            items = col.get('items', []) if isinstance(col, dict) else []
+            label    = col.get('title', '') if isinstance(col, dict) else ''
+            subtitle = col.get('subtitle', '') if isinstance(col, dict) else ''
+            items    = col.get('items', []) if isinstance(col, dict) else []
             _h2_rect(slide, left=x_col, top=y_head,
-                     width=_LY.COL_W, height=_LY.HEAD_H, color=color)
+                     width=_LY.COL_W, height=head_h, color=color)
             _h2_text(slide, label,
                      left=x_col + _LY.PAD, top=y_head + 0.07,
                      width=_LY.COL_W - _LY.PAD * 2, height=_LY.HEAD_H - 0.1,
                      font=font, size_pt=_LY.T_HEADER, color='FFFFFF',
                      bold=True, align='left')
+            if subtitle:
+                _h2_text(slide, subtitle,
+                         left=x_col + _LY.PAD, top=y_head + _LY.HEAD_H - 0.02,
+                         width=_LY.COL_W - _LY.PAD * 2, height=0.30,
+                         font=font, size_pt=_LY.T_SMALL, color='FFFFFF',
+                         bold=False, italic=True, align='left')
             for j, item in enumerate(items[:8]):
                 item_txt = item.get('title', str(item)) if isinstance(item, dict) else str(item)
                 bg_color = 'EEEEEE' if j % 2 == 0 else 'F8F8F8'
@@ -3773,8 +3798,9 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
         # Variante 1 : fond palette pleine hauteur + puce ronde colorée + items aérés
         bg_cols = ['E8EEF5', 'EBF9F3']
         for ci, (x_col, col, color) in enumerate(cols):
-            label = col.get('title', '') if isinstance(col, dict) else ''
-            items = col.get('items', []) if isinstance(col, dict) else []
+            label    = col.get('title', '') if isinstance(col, dict) else ''
+            subtitle = col.get('subtitle', '') if isinstance(col, dict) else ''
+            items    = col.get('items', []) if isinstance(col, dict) else []
             col_h = _LY.CB - y_head
             _h2_rounded_rect(slide, left=x_col, top=y_head,
                               width=_LY.COL_W, height=col_h,
@@ -3784,7 +3810,13 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
                      width=_LY.COL_W - _LY.PAD * 2, height=_LY.HEAD_H - 0.1,
                      font=font, size_pt=_LY.T_HEADER, color=color,
                      bold=True, align='left')
-            _h2_rect(slide, left=x_col + _LY.PAD, top=y_head + _LY.HEAD_H - 0.05,
+            if subtitle:
+                _h2_text(slide, subtitle,
+                         left=x_col + _LY.PAD, top=y_head + _LY.HEAD_H - 0.02,
+                         width=_LY.COL_W - _LY.PAD * 2, height=0.30,
+                         font=font, size_pt=_LY.T_SMALL, color=color,
+                         bold=False, italic=True, align='left')
+            _h2_rect(slide, left=x_col + _LY.PAD, top=y_head + head_h - 0.05,
                      width=_LY.COL_W - _LY.PAD * 2, height=0.03, color=color)
             item_h2 = (_LY.CB - y_items) / max(len(items[:8]), 1)
             for j, item in enumerate(items[:8]):
@@ -3800,8 +3832,9 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
     else:
         # Variante 2 : tiret accent gauche + titre coloré, fond blanc aéré
         for x_col, col, color in cols:
-            label = col.get('title', '') if isinstance(col, dict) else ''
-            items = col.get('items', []) if isinstance(col, dict) else []
+            label    = col.get('title', '') if isinstance(col, dict) else ''
+            subtitle = col.get('subtitle', '') if isinstance(col, dict) else ''
+            items    = col.get('items', []) if isinstance(col, dict) else []
             # Séparateur vertical (fin) au bord gauche de la colonne
             _h2_rect(slide, left=x_col, top=y_head,
                      width=0.05, height=_LY.CB - y_head, color=color)
@@ -3810,6 +3843,12 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
                      width=_LY.COL_W - 0.22, height=_LY.HEAD_H - 0.1,
                      font=font, size_pt=_LY.T_HEADER, color=color,
                      bold=True, align='left')
+            if subtitle:
+                _h2_text(slide, subtitle,
+                         left=x_col + 0.18, top=y_head + _LY.HEAD_H - 0.02,
+                         width=_LY.COL_W - 0.22, height=0.30,
+                         font=font, size_pt=_LY.T_SMALL, color=dk1,
+                         bold=False, italic=True, align='left')
             item_h2 = (_LY.CB - y_items) / max(len(items[:8]), 1)
             for j, item in enumerate(items[:8]):
                 item_txt = item.get('title', str(item)) if isinstance(item, dict) else str(item)
@@ -5121,8 +5160,13 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
     head_h  = _LY.HEAD_H
     item_h  = _LY.ITEM_H
 
+    before_items = before.get('items', []) if isinstance(before, dict) else []
+    after_items  = after.get('items',  []) if isinstance(after,  dict) else []
+    n_rows = min(max(len(before_items), len(after_items)),
+                 int((col_h - head_h - 0.10) / item_h))
+
     if v == 0:
-        # Variante 0 : header coloré + fond palette
+        # Variante 0 : header coloré + fond palette + flèches ↔ par ligne
         for cx, col, hdr_color, bg_color, lbl in [
             (x_bef, before, '888888', 'EEEEEE', 'AVANT'),
             (x_aft,  after,  accent1,  'E8EEF5', 'APRÈS'),
@@ -5137,8 +5181,7 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
                      bold=True, align='left')
             _h2_rect(slide, left=cx, top=y_top + head_h,
                      width=col_w, height=col_h - head_h, color=bg_color)
-            n_items = min(len(items), int((col_h - head_h - 0.1) / item_h))
-            for j, item in enumerate(items[:n_items]):
+            for j, item in enumerate(items[:n_rows]):
                 iy = y_top + head_h + 0.10 + j * item_h
                 _h2_rect(slide, left=cx, top=iy, width=0.06,
                          height=item_h - 0.06, color=hdr_color)
@@ -5147,12 +5190,14 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
                          width=col_w - 0.22, height=item_h - 0.10,
                          font=font, size_pt=11, color=dk1,
                          bold=False, align='left', line_spacing=1.1)
-        arr_y = (y_top + y_bot) / 2
-        _h2_text(slide, '▶',
-                 left=x_arr + 0.10, top=arr_y - 0.30,
-                 width=arrow_w - 0.20, height=0.60,
-                 font=font, size_pt=28, color=accent1,
-                 bold=True, align='center')
+        # Flèche ↔ centrée verticalement sur chaque ligne d'item
+        for j in range(n_rows):
+            iy = y_top + head_h + 0.10 + j * item_h
+            _h2_text(slide, '↔',
+                     left=x_arr + 0.05, top=iy + (item_h - 0.40) / 2,
+                     width=arrow_w - 0.10, height=0.40,
+                     font=font, size_pt=20, color=accent1,
+                     bold=True, align='center')
     else:
         # Variante 1 : colonnes fond palette, icônes ✗ (avant) et ✓ (après)
         for cx, col, bg_color, icon, icon_color, lbl in [
@@ -5161,7 +5206,6 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
         ]:
             col_title = col.get('title', lbl) if isinstance(col, dict) else lbl
             items     = col.get('items', []) if isinstance(col, dict) else []
-            # Titre coloré + trait
             title_color = '888888' if lbl == 'AVANT' else accent1
             _h2_text(slide, col_title,
                      left=cx + _LY.PAD, top=y_top + 0.06,
@@ -5170,12 +5214,10 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
                      bold=True, align='left')
             _h2_rect(slide, left=cx + _LY.PAD, top=y_top + head_h - 0.04,
                      width=col_w - _LY.PAD * 2, height=0.04, color=title_color)
-            # Fond colonne
             _h2_rounded_rect(slide, left=cx, top=y_top + head_h,
                               width=col_w, height=col_h - head_h,
                               color=bg_color, radius=_LY.R_SM)
-            n_items = min(len(items), int((col_h - head_h - 0.1) / item_h))
-            for j, item in enumerate(items[:n_items]):
+            for j, item in enumerate(items[:n_rows]):
                 iy = y_top + head_h + 0.10 + j * item_h
                 _h2_text(slide, icon,
                          left=cx + 0.10, top=iy + 0.04,
@@ -5187,12 +5229,14 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
                          width=col_w - 0.48, height=item_h - 0.10,
                          font=font, size_pt=11, color=dk1,
                          bold=False, align='left', line_spacing=1.1)
-        arr_y = (y_top + y_bot) / 2
-        _h2_text(slide, '→',
-                 left=x_arr + 0.05, top=arr_y - 0.32,
-                 width=arrow_w - 0.10, height=0.64,
-                 font=font, size_pt=30, color=accent1,
-                 bold=True, align='center')
+        # Flèche ↔ centrée verticalement sur chaque ligne d'item
+        for j in range(n_rows):
+            iy = y_top + head_h + 0.10 + j * item_h
+            _h2_text(slide, '↔',
+                     left=x_arr + 0.05, top=iy + (item_h - 0.40) / 2,
+                     width=arrow_w - 0.10, height=0.40,
+                     font=font, size_pt=20, color=accent1,
+                     bold=True, align='center')
 
     return slide
 
@@ -6067,7 +6111,7 @@ closing        — Slide de clôture / merci (title, subtitle)
 full_text      — Corps de texte riche (title, body)
 list_numbered  — Liste numérotée (title, items:[str])
 list_cards     — Grille de cartes (title, cards:[{{title,body}}])
-two_col        — Deux colonnes (title, col_a:{{title,items}}, col_b:{{title,items}})
+two_col        — Deux colonnes (title, col_a:{{title,subtitle?,items}}, col_b:{{title,subtitle?,items}})
 kpi_grid       — Grille de KPIs (title, kpis:[{{value,label,sublabel}}])
 stat_hero      — Grande statistique (value, label, context, footer)
 bar_chart      — Graphique en barres groupées (title, categories:[str], series:[{{name,values:[n]}}], analysis, footer)
