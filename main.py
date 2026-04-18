@@ -2780,6 +2780,7 @@ timeline_h                →  {{"title":"...", "steps":[{{"date":"2021","title"
 two_col                   →  {{"title":"...", "section_label":"ANALYSE", "col_a":{{"title":"POUR","subtitle":"sous-titre optionnel","items":["Argument 1","Argument 2"]}}, "col_b":{{"title":"CONTRE","subtitle":"sous-titre optionnel","items":["Limite 1","Limite 2"]}}, "footer":"..."}}
 col3                      →  {{"title":"...", "section_label":"STRATÉGIE", "subtitle":"Trois axes prioritaires", "columns":[{{"icon":"⚡","label":"CAPEX","title":"INVESTISSEMENTS","subtitle":"Déficit potentiel","items":["Point 1","Point 2"],"stat_value":"-28%","stat_label":"BAISSE MONDIALE"}}], "footer":"..."}}
 conclusion                →  {{"title":"...", "section_label":"SYNTHÈSE", "subtitle":"...", "cards":[{{"icon":"🌐","title":"AXE 1","body":"..."}}], "sidebar_title":"Vision", "sidebar_quote":"Citation...", "sidebar_cta":"QUESTIONS & ÉCHANGES", "footer":"..."}}
+entity                    →  {{"title":"...", "section_label":"COMPARAISON", "subtitle":"Analyse comparative", "entities":[{{"icon":"🇺🇸","name":"États-Unis","badge":"LEADER","items":["Point 1","Point 2"],"stat_value":"34%","stat_label":"PART MONDIALE"}}], "footer":"..."}}
 quote                     →  {{"section_label":"LE GRAND ENTRETIEN", "category":"LE GRAND ENTRETIEN", "quote":"Citation percutante ≤ 20 mots", "author":"Prénom NOM, Titre — 2024", "source":"Source — Date", "footer":"..."}}
 list_numbered             →  {{"title":"...", "section_label":"ANALYSE", "subtitle":"...", "items":[{{"title":"Levier 1","body":"Explication concise en 15 mots max."}}], "footer":"..."}}
 list_cards                →  {{"title":"...", "section_label":"ANALYSE", "subtitle":"...", "cards":[{{"icon":"📊","label":"KPI","title":"Axe 1","subtitle":"Sous-axe","body":"Description en 20 mots max.","stat_value":"47%","stat_label":"PART DE MARCHÉ"}}], "footer":"..."}}
@@ -3789,10 +3790,12 @@ def _card_data(card) -> tuple:
 
 def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Cartes — 3 variantes visuelles déterministes.
+    Cartes — 5 variantes visuelles déterministes.
     v0 : grille 2×2 — barre accent top + icon + title + body/items + stat bas.
     v1 : colonnes verticales pleine hauteur — bande colorée + icon + title + body/items + stat.
     v2 : bandeaux horizontaux — rayure accent gauche + icon + title + body.
+    v3 : spotlight icons — grand icon centré + fond EBF9F3 + title + body, 2-3 cartes larges.
+    v4 : steps flow — connecteur horizontal + numéro circulaire + title + body.
     card schema: {icon?, label?, title, subtitle?, body?, items?:[str], stat_value?, stat_label?}
     """
     slide   = _blank_v4(prs, tp)
@@ -3815,7 +3818,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
         return slide
 
     n = min(len(cards), 4)
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     def _has_stat(card):
         d = _card_data(card)
@@ -3946,11 +3949,6 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
             _h2_rect(slide, left=_LY.CL, top=cy, width=stripe_w, height=card_h, color=color)
             tx = _LY.CL + stripe_w + _LY.PAD
             tw = _LY.CW - stripe_w - _LY.PAD * 2
-            _h2_text(slide, title_txt,
-                     left=tx, top=cy + 0.10,
-                     width=tw, height=0.38,
-                     font=font, size_pt=_LY.T_TITLE, color=dk1, bold=True, align='left')
-            # Icon inline with title if present
             y_title = cy + 0.10
             if icon:
                 _h2_text(slide, icon,
@@ -3970,6 +3968,101 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
                          width=tw, height=card_h - 0.62,
                          font=font, size_pt=_LY.T_SMALL, color=dk1,
                          bold=False, align='left', line_spacing=1.2)
+        return slide
+
+    if v == 3:
+        # Variante 3 : spotlight icons — grand icon centré + fond palette + title + body
+        n3 = min(n, 3)
+        card_w = (_LY.CW - _LY.GAP_LG * (n3 - 1)) / n3
+        card_h = _LY.CB - _LY.CT
+        bgs    = ['E8EEF5', 'EEEEEE', 'EBF9F3']
+        for i in range(n3):
+            cx    = _LY.CL + i * (card_w + _LY.GAP_LG)
+            color = accents[i % len(accents)]
+            bg    = bgs[i % len(bgs)]
+            icon, label, title_txt, subtitle, body_txt, items, sv, sl = _card_data(cards[i])
+            _h2_rounded_rect(slide, left=cx, top=_LY.CT,
+                              width=card_w, height=card_h, color=bg, radius=_LY.R_SM)
+            _h2_rect(slide, left=cx, top=_LY.CT, width=card_w, height=0.07, color=color)
+            if label:
+                _h2_rounded_rect(slide, left=cx + card_w - 1.30, top=_LY.CT + 0.12,
+                                  width=1.10, height=0.24, color=color, radius=0.06)
+                _h2_text(slide, label, left=cx + card_w - 1.28, top=_LY.CT + 0.13,
+                         width=1.06, height=0.22,
+                         font=font, size_pt=7, color='FFFFFF', bold=True, align='center')
+            y_icon = _LY.CT + 0.22
+            if icon:
+                _h2_text(slide, icon, left=cx, top=y_icon, width=card_w, height=0.60,
+                         font=font, size_pt=28, color=color, bold=False, align='center')
+                y_icon += 0.64
+            else:
+                y_icon += 0.10
+            _h2_rect(slide, left=cx + _LY.PAD, top=y_icon,
+                     width=card_w - _LY.PAD * 2, height=0.04, color=color)
+            y_icon += 0.10
+            _h2_text(slide, title_txt, left=cx + _LY.PAD, top=y_icon,
+                     width=card_w - _LY.PAD * 2, height=0.40,
+                     font=font, size_pt=_LY.T_TITLE, color=dk1, bold=True, align='center')
+            y_icon += 0.44
+            body_src = body_txt or ('\n'.join(f'• {it}' for it in items[:5]) if items else '')
+            if body_src:
+                body_h = card_h - (y_icon - _LY.CT) - (0.60 if sv else 0.10) - 0.08
+                _h2_text(slide, body_src, left=cx + _LY.PAD, top=y_icon,
+                         width=card_w - _LY.PAD * 2, height=max(0.1, body_h),
+                         font=font, size_pt=_LY.T_SMALL, color=dk1,
+                         bold=False, align='left', line_spacing=1.2)
+            if sv:
+                _h2_rect(slide, left=cx + _LY.PAD, top=_LY.CB - 0.62,
+                         width=card_w - _LY.PAD * 2, height=0.025, color='CCCCCC')
+                _h2_text(slide, sv, left=cx + _LY.PAD, top=_LY.CB - 0.60,
+                         width=card_w - _LY.PAD * 2, height=0.36,
+                         font=font, size_pt=22, color=color, bold=True, align='center')
+                if sl:
+                    _h2_text(slide, sl, left=cx + _LY.PAD, top=_LY.CB - 0.24,
+                             width=card_w - _LY.PAD * 2, height=0.18,
+                             font=font, size_pt=7, color='999999', bold=True, align='center')
+        return slide
+
+    # Variante 4 : steps flow — ligne connecteur horizontal + numéro circulaire + title + body
+    n4     = min(n, 4)
+    card_w = (_LY.CW - _LY.GAP_LG * (n4 - 1)) / n4
+    conn_y = _LY.CT + 0.22
+    circle_r = 0.28
+    card_top = conn_y + circle_r + 0.14
+    card_h   = _LY.CB - card_top
+    _h2_rect(slide, left=_LY.CL, top=conn_y + circle_r - 0.02,
+             width=_LY.CW, height=0.04, color='E0E0E0')
+    for i in range(n4):
+        cx    = _LY.CL + i * (card_w + _LY.GAP_LG)
+        color = accents[i % len(accents)]
+        icon, label, title_txt, subtitle, body_txt, items, sv, sl = _card_data(cards[i])
+        num_cx = cx + card_w / 2 - circle_r
+        _h2_rounded_rect(slide, left=num_cx, top=conn_y,
+                          width=circle_r * 2, height=circle_r * 2,
+                          color=color, radius=circle_r)
+        _h2_text(slide, str(i + 1), left=num_cx, top=conn_y + 0.02,
+                 width=circle_r * 2, height=circle_r * 2,
+                 font=font, size_pt=14, color='FFFFFF', bold=True, align='center')
+        _h2_rounded_rect(slide, left=cx, top=card_top, width=card_w, height=card_h,
+                          color='F8F8F8', radius=_LY.R_SM)
+        _h2_rect(slide, left=cx, top=card_top, width=card_w, height=0.055, color=color)
+        y_cur = card_top + 0.12
+        if icon:
+            _h2_text(slide, icon, left=cx + _LY.PAD, top=y_cur,
+                     width=0.36, height=0.34,
+                     font=font, size_pt=14, color=color, bold=False, align='left')
+            y_cur += 0.36
+        _h2_text(slide, title_txt, left=cx + _LY.PAD, top=y_cur,
+                 width=card_w - _LY.PAD * 2, height=0.38,
+                 font=font, size_pt=_LY.T_TITLE, color=dk1, bold=True, align='left')
+        y_cur += 0.40
+        body_src = body_txt or ('\n'.join(f'• {it}' for it in items[:5]) if items else '')
+        if body_src:
+            body_h = card_h - (y_cur - card_top) - 0.08
+            _h2_text(slide, body_src, left=cx + _LY.PAD, top=y_cur,
+                     width=card_w - _LY.PAD * 2, height=max(0.1, body_h),
+                     font=font, size_pt=_LY.T_SMALL, color=dk1,
+                     bold=False, align='left', line_spacing=1.2)
 
     return slide
 
@@ -5785,6 +5878,202 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_entity_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Comparaison d'entités (pays, acteurs, marques) — 3 variantes déterministes.
+    v0 : cartes verticales — barre accent top + grand icon centré + nom + badge + bullets.
+    v1 : rangées horizontales — entité label gauche (fond coloré) + bullets droite.
+    v2 : tableau comparatif — entités en colonnes, critères en lignes (alternance fond).
+    entity schema: {icon?, name, badge?, label?, items:[str], stat_value?, stat_label?}
+    content: {title, section_label?, subtitle?, entities:[...], footer}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent1', '009CEA'),
+        theme.get('accent2', 'ED0000'),
+        theme.get('accent3', '40A900'),
+        theme.get('accent4', 'F66A00'),
+    ])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    entities = content.get('entities', content.get('items', []))
+    if not entities:
+        return slide
+
+    n = min(len(entities), 4)
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    def _ent(e):
+        if not isinstance(e, dict):
+            return '', str(e), '', str(e), [], '', ''
+        return (e.get('icon', ''), e.get('name', e.get('title', '')),
+                e.get('badge', e.get('label', '')),
+                e.get('label', e.get('badge', '')),
+                e.get('items', []), e.get('stat_value', ''), e.get('stat_label', ''))
+
+    if v == 0:
+        # Cartes verticales — icon centré + nom + badge pill + bullets
+        card_w = (_LY.CW - _LY.GAP_LG * (n - 1)) / n
+        card_h = _LY.CB - _LY.CT
+        for i in range(n):
+            cx    = _LY.CL + i * (card_w + _LY.GAP_LG)
+            color = accents[i % len(accents)]
+            icon, name, badge, label, items, sv, sl = _ent(entities[i])
+            _h2_rounded_rect(slide, left=cx, top=_LY.CT,
+                              width=card_w, height=card_h, color='F8F8F8', radius=_LY.R_SM)
+            _h2_rect(slide, left=cx, top=_LY.CT, width=card_w, height=0.07, color=color)
+            y_cur = _LY.CT + 0.14
+            if icon:
+                _h2_text(slide, icon, left=cx, top=y_cur,
+                         width=card_w, height=0.55,
+                         font=font, size_pt=26, color=color, bold=False, align='center')
+                y_cur += 0.58
+            _h2_text(slide, name, left=cx + _LY.PAD, top=y_cur,
+                     width=card_w - _LY.PAD * 2, height=0.36,
+                     font=font, size_pt=13, color=dk1, bold=True, align='center')
+            y_cur += 0.38
+            if badge:
+                _h2_rounded_rect(slide, left=cx + (card_w - 1.40) / 2, top=y_cur,
+                                  width=1.40, height=0.24, color=color, radius=0.06)
+                _h2_text(slide, badge, left=cx + (card_w - 1.40) / 2, top=y_cur + 0.02,
+                         width=1.40, height=0.22,
+                         font=font, size_pt=8, color='FFFFFF', bold=True, align='center')
+                y_cur += 0.30
+            _h2_rect(slide, left=cx + _LY.PAD, top=y_cur,
+                     width=card_w - _LY.PAD * 2, height=0.03, color='E0E0E0')
+            y_cur += 0.10
+            body_h = card_h - (y_cur - _LY.CT) - (0.60 if sv else 0.08)
+            for j, it in enumerate(items[:6]):
+                iy = y_cur + j * (body_h / max(len(items[:6]), 1))
+                if iy + 0.26 > _LY.CT + card_h - (0.60 if sv else 0.08):
+                    break
+                _h2_rect(slide, left=cx + _LY.PAD, top=iy + 0.08,
+                         width=0.06, height=0.06, color=color)
+                _h2_text(slide, str(it),
+                         left=cx + _LY.PAD + 0.12, top=iy,
+                         width=card_w - _LY.PAD - 0.20, height=0.28,
+                         font=font, size_pt=9, color=dk1, bold=False, align='left')
+            if sv:
+                _h2_rect(slide, left=cx + _LY.PAD, top=_LY.CB - 0.60,
+                         width=card_w - _LY.PAD * 2, height=0.025, color='DDDDDD')
+                _h2_text(slide, sv, left=cx + _LY.PAD, top=_LY.CB - 0.57,
+                         width=card_w - _LY.PAD * 2, height=0.36,
+                         font=font, size_pt=20, color=color, bold=True, align='center')
+                if sl:
+                    _h2_text(slide, sl, left=cx + _LY.PAD, top=_LY.CB - 0.22,
+                             width=card_w - _LY.PAD * 2, height=0.18,
+                             font=font, size_pt=7, color='888888', bold=True, align='center')
+        return slide
+
+    if v == 1:
+        # Rangées horizontales — entité label à gauche + bullets à droite
+        n1     = min(n, 4)
+        gap    = _LY.GAP_SM
+        row_h  = (_LY.CB - _LY.CT - gap * (n1 - 1)) / n1
+        lbl_w  = 2.60
+        bul_w  = _LY.CW - lbl_w - _LY.GAP_MD
+        for i in range(n1):
+            cy    = _LY.CT + i * (row_h + gap)
+            color = accents[i % len(accents)]
+            icon, name, badge, label, items, sv, sl = _ent(entities[i])
+            # Fond gauche coloré
+            _h2_rounded_rect(slide, left=_LY.CL, top=cy,
+                              width=lbl_w, height=row_h, color=color, radius=_LY.R_SM)
+            y_lbl = cy + (row_h - 0.44) / 2
+            if icon:
+                _h2_text(slide, icon, left=_LY.CL, top=cy + 0.08,
+                         width=lbl_w, height=0.44,
+                         font=font, size_pt=22, color='FFFFFF', bold=False, align='center')
+                y_lbl = cy + 0.52
+            _h2_text(slide, name, left=_LY.CL + 0.10, top=y_lbl,
+                     width=lbl_w - 0.20, height=row_h - (y_lbl - cy) - 0.08,
+                     font=font, size_pt=12, color='FFFFFF', bold=True, align='center')
+            # Fond fond pale + bullets
+            bx = _LY.CL + lbl_w + _LY.GAP_MD
+            _h2_rounded_rect(slide, left=bx, top=cy,
+                              width=bul_w, height=row_h, color='F8F8F8', radius=_LY.R_SM)
+            _h2_rect(slide, left=bx, top=cy, width=0.055, height=row_h, color=color)
+            if badge:
+                _h2_rounded_rect(slide, left=bx + bul_w - 1.30, top=cy + 0.08,
+                                  width=1.20, height=0.22, color=color, radius=0.06)
+                _h2_text(slide, badge, left=bx + bul_w - 1.28, top=cy + 0.09,
+                         width=1.16, height=0.20,
+                         font=font, size_pt=7, color='FFFFFF', bold=True, align='center')
+            item_h = row_h / max(len(items[:4]), 1)
+            for j, it in enumerate(items[:4]):
+                iy = cy + j * item_h + 0.04
+                _h2_text(slide, f'• {it}',
+                         left=bx + 0.18, top=iy,
+                         width=bul_w - 0.24, height=item_h - 0.04,
+                         font=font, size_pt=10, color=dk1,
+                         bold=False, align='left', line_spacing=1.1)
+        return slide
+
+    # Variante 2 : tableau comparatif — entités en colonnes, critères en lignes
+    n2       = min(n, 4)
+    hdr_h    = 0.70
+    body_h   = _LY.CB - _LY.CT - hdr_h
+    col_w    = _LY.CW / n2
+    criteria = []
+    for e in entities[:n2]:
+        if isinstance(e, dict):
+            for it in e.get('items', []):
+                if it not in criteria:
+                    criteria.append(it)
+    # Limit rows
+    max_rows = int(body_h / 0.44)
+    criteria = criteria[:max_rows]
+    n_rows   = len(criteria)
+    row_h    = body_h / max(n_rows, 1) if n_rows else body_h
+
+    # Entêtes de colonnes
+    for i in range(n2):
+        cx    = _LY.CL + i * col_w
+        color = accents[i % len(accents)]
+        icon, name, badge, label, items, sv, sl = _ent(entities[i])
+        _h2_rect(slide, left=cx, top=_LY.CT, width=col_w, height=hdr_h, color=color)
+        x_txt = cx + 0.10
+        w_txt = col_w - 0.20
+        if icon:
+            _h2_text(slide, icon, left=cx, top=_LY.CT + 0.06,
+                     width=0.50, height=hdr_h - 0.10,
+                     font=font, size_pt=18, color='FFFFFF', bold=False, align='center')
+            x_txt = cx + 0.52
+            w_txt = col_w - 0.60
+        _h2_text(slide, name, left=x_txt, top=_LY.CT + 0.16,
+                 width=w_txt, height=hdr_h - 0.20,
+                 font=font, size_pt=11, color='FFFFFF', bold=True, align='left')
+
+    # Lignes de critères
+    entity_items = [
+        (e.get('items', []) if isinstance(e, dict) else []) for e in entities[:n2]
+    ]
+    for j, crit in enumerate(criteria):
+        ry  = _LY.CT + hdr_h + j * row_h
+        bg  = 'F0F4F8' if j % 2 == 0 else 'FAFAFA'
+        _h2_rect(slide, left=_LY.CL, top=ry, width=_LY.CW, height=row_h, color=bg)
+        for i in range(n2):
+            cx    = _LY.CL + i * col_w
+            color = accents[i % len(accents)]
+            val   = crit if crit in entity_items[i] else '–'
+            tick  = '✓' if crit in entity_items[i] else '–'
+            c_txt = color if tick == '✓' else 'BBBBBB'
+            _h2_text(slide, tick, left=cx + 0.10, top=ry + (row_h - 0.28) / 2,
+                     width=0.26, height=0.28,
+                     font=font, size_pt=12, color=c_txt, bold=True, align='center')
+            _h2_text(slide, crit, left=cx + 0.38, top=ry + (row_h - 0.28) / 2,
+                     width=col_w - 0.44, height=0.28,
+                     font=font, size_pt=9, color=dk1, bold=False, align='left')
+
+    return slide
+
+
 def layout_conclusion_v4(prs: Presentation, content: dict, tp: dict):
     """
     Slide de synthèse/conclusion — grille 2×2 de cartes (gauche) + sidebar sombre (droite).
@@ -6841,7 +7130,8 @@ list_cards     — Grille de cartes (title, section_label?, subtitle?, cards:[{{
 col3           — 3 colonnes enrichies (title, section_label?, subtitle?, columns:[{{icon?,label?,title,subtitle?,items:[str],stat_value?,stat_label?}}])
 two_col        — Deux colonnes (title, section_label?, subtitle?, col_a:{{title,subtitle?,items}}, col_b:{{title,subtitle?,items}})
 conclusion     — Synthèse finale — grille 2×2 + sidebar sombre (title, section_label?, subtitle?, cards:[{{icon?,title,body?}}]×4, sidebar_title?, sidebar_quote?, sidebar_cta?)
-kpi_grid       — Grille de KPIs (title, section_label?, subtitle?, kpis:[{{value,label,sublabel}}])
+entity         — Comparaison d'entités (pays, acteurs, marques) (title, section_label?, subtitle?, entities:[{{icon?,name,badge?,items:[str],stat_value?,stat_label?}}])
+kpi_grid       — Grille de KPIs (title, section_label?, subtitle?, kpis:[{{value,label,sublabel,percent?}}])
 stat_hero      — Grande statistique (value, label, context, footer)
 bar_chart      — Graphique en barres groupées (title, section_label?, categories:[str], series:[{{name,values:[n]}}], analysis, footer)
 line_chart     — Graphique en lignes (title, section_label?, categories:[str], series:[{{name,values:[n]}}], analysis, footer)
@@ -7083,6 +7373,8 @@ async def run_pipeline_v4(
                 layout_col3_v4(prs, content, tp)
             elif layout_name in ('conclusion',):
                 layout_conclusion_v4(prs, content, tp)
+            elif layout_name in ('entity', 'entity_compare', 'comparison'):
+                layout_entity_v4(prs, content, tp)
             elif layout_name in ('stat_hero',):
                 layout_stathero_v4(prs, content, tp)
             elif layout_name in ('timeline', 'timeline_h'):
