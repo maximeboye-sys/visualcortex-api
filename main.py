@@ -2781,6 +2781,7 @@ two_col                   →  {{"title":"...", "section_label":"ANALYSE", "col_
 col3                      →  {{"title":"...", "section_label":"STRATÉGIE", "subtitle":"Trois axes prioritaires", "columns":[{{"icon":"⚡","label":"CAPEX","title":"INVESTISSEMENTS","subtitle":"Déficit potentiel","items":["Point 1","Point 2"],"stat_value":"-28%","stat_label":"BAISSE MONDIALE"}}], "footer":"..."}}
 conclusion                →  {{"title":"...", "section_label":"SYNTHÈSE", "subtitle":"...", "cards":[{{"icon":"🌐","title":"AXE 1","body":"..."}}], "sidebar_title":"Vision", "sidebar_quote":"Citation...", "sidebar_cta":"QUESTIONS & ÉCHANGES", "footer":"..."}}
 entity                    →  {{"title":"...", "section_label":"COMPARAISON", "subtitle":"Analyse comparative", "entities":[{{"icon":"🇺🇸","name":"États-Unis","badge":"LEADER","items":["Point 1","Point 2"],"stat_value":"34%","stat_label":"PART MONDIALE"}}], "footer":"..."}}
+infographic               →  {{"title":"...", "section_label":"CHIFFRES CLÉS", "subtitle":"...", "value":"47 %", "label":"Taux de croissance", "context":"Contexte additionnel en 20 mots.", "bars":[{{"label":"Segment A","percent":47}},{{"label":"Segment B","percent":31}},{{"label":"Segment C","percent":22}}], "footer":"..."}}
 quote                     →  {{"section_label":"LE GRAND ENTRETIEN", "category":"LE GRAND ENTRETIEN", "quote":"Citation percutante ≤ 20 mots", "author":"Prénom NOM, Titre — 2024", "source":"Source — Date", "footer":"..."}}
 list_numbered             →  {{"title":"...", "section_label":"ANALYSE", "subtitle":"...", "items":[{{"title":"Levier 1","body":"Explication concise en 15 mots max."}}], "footer":"..."}}
 list_cards                →  {{"title":"...", "section_label":"ANALYSE", "subtitle":"...", "cards":[{{"icon":"📊","label":"KPI","title":"Axe 1","subtitle":"Sous-axe","body":"Description en 20 mots max.","stat_value":"47%","stat_label":"PART DE MARCHÉ"}}], "footer":"..."}}
@@ -4393,10 +4394,12 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
 
 def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Grande statistique centrée — 3 variantes visuelles déterministes.
+    Grande statistique centrée — 5 variantes visuelles déterministes.
     v0 : fond blanc, valeur accent1 centrée, label dk1.
     v1 : bande verticale accent gauche (1.8") + valeur centrée à droite.
     v2 : cadre centré E8EEF5 (arrondi) contenant valeur + label.
+    v3 : split écran — panneau dk1 gauche (valeur blanche) + contexte droite.
+    v4 : multi-stats — 2-3 valeurs côte à côte si 'values' fourni.
     """
     slide   = _blank_v4(prs, tp)
     font    = tp.get('font', 'Calibri')
@@ -4405,7 +4408,7 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
     accent1 = theme.get('accent1', '009CEA')
     accent2 = theme.get('accent2', 'ED0000')
     W       = tp.get('W', 13.33)
-    v       = _v4_variant(content, 3, tp.get('seed', 0))
+    v       = _v4_variant(content, 5, tp.get('seed', 0))
 
     value   = str(content.get('value', ''))
     label   = content.get('label', '')
@@ -4457,7 +4460,7 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
                      width=rw, height=0.6,
                      font=font, size_pt=_LY.T_LABEL, color='666666',
                      bold=False, align='center', line_spacing=1.2)
-    else:
+    elif v == 2:
         # Variante 2 : cadre centré E8EEF5 contenant valeur + label
         frame_w = 7.0
         frame_h = 2.8
@@ -4480,6 +4483,250 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
                      left=1.5, top=ctx_y, width=W - 3.0, height=0.6,
                      font=font, size_pt=_LY.T_LABEL, color='666666',
                      bold=False, align='center', line_spacing=1.2)
+
+    elif v == 3:
+        # Variante 3 : split screen — panneau dk1 gauche + contexte droite
+        split_x = W * 0.45
+        _h2_rect(slide, left=0, top=0, width=split_x, height=7.5, color=dk1)
+        _h2_text(slide, value,
+                 left=0.3, top=val_y, width=split_x - 0.4, height=val_h,
+                 font=font, size_pt=_LY.T_HERO, color=accent1, bold=True, align='center')
+        if label:
+            _h2_rect(slide, left=(split_x - 2.0) / 2, top=val_y + val_h,
+                     width=2.0, height=_LY.BAR_H, color=accent2)
+            _h2_text(slide, label,
+                     left=0.3, top=val_y + val_h + 0.12, width=split_x - 0.4, height=0.50,
+                     font=font, size_pt=16, color='DDDDDD', bold=False, align='center')
+        rx = split_x + 0.5
+        rw = W - rx - 0.4
+        if context:
+            _h2_text(slide, context,
+                     left=rx, top=val_y, width=rw, height=1.6,
+                     font=font, size_pt=13, color=dk1,
+                     bold=False, align='left', line_spacing=1.4)
+        points = content.get('points', [])
+        pt_y = val_y + (1.80 if context else 0.20)
+        for j, pt in enumerate(points[:5]):
+            _h2_rect(slide, left=rx, top=pt_y + j * 0.44 + 0.10,
+                     width=0.06, height=0.06, color=accent1)
+            _h2_text(slide, str(pt),
+                     left=rx + 0.16, top=pt_y + j * 0.44,
+                     width=rw - 0.16, height=0.40,
+                     font=font, size_pt=11, color=dk1, bold=False, align='left')
+
+    else:
+        # Variante 4 : multi-stats — jusqu'à 3 valeurs côte à côte
+        values_list = content.get('values', [])
+        if not values_list:
+            values_list = [{'value': value, 'label': label, 'context': context}]
+        nv      = min(len(values_list), 3)
+        stat_w  = (_LY.CW - _LY.GAP_LG * (nv - 1)) / nv
+        bgs     = ['E8EEF5', 'EEEEEE', 'EBF9F3']
+        accs    = [accent1, accent2, theme.get('accent3', '40A900')]
+        for i, vs in enumerate(values_list[:nv]):
+            sx    = _LY.CL + i * (stat_w + _LY.GAP_LG)
+            color = accs[i % len(accs)]
+            bg    = bgs[i % len(bgs)]
+            sv    = str(vs.get('value', vs) if isinstance(vs, dict) else vs)
+            sl    = vs.get('label', '') if isinstance(vs, dict) else ''
+            sc    = vs.get('context', '') if isinstance(vs, dict) else ''
+            _h2_rounded_rect(slide, left=sx, top=_LY.CT,
+                              width=stat_w, height=_LY.CB - _LY.CT,
+                              color=bg, radius=_LY.R_MD)
+            _h2_rect(slide, left=sx, top=_LY.CT, width=stat_w, height=0.08, color=color)
+            mid_y = (_LY.CT + _LY.CB) / 2
+            _h2_text(slide, sv,
+                     left=sx + 0.2, top=mid_y - 0.70, width=stat_w - 0.4, height=1.10,
+                     font=font, size_pt=52, color=color, bold=True, align='center')
+            if sl:
+                _h2_rect(slide, left=sx + (stat_w - 1.6) / 2, top=mid_y + 0.44,
+                         width=1.6, height=_LY.BAR_H, color=color)
+                _h2_text(slide, sl,
+                         left=sx + 0.2, top=mid_y + 0.56, width=stat_w - 0.4, height=0.42,
+                         font=font, size_pt=13, color=dk1, bold=False, align='center')
+            if sc:
+                _h2_text(slide, sc,
+                         left=sx + 0.2, top=mid_y + (1.06 if sl else 0.56),
+                         width=stat_w - 0.4, height=0.60,
+                         font=font, size_pt=9, color='888888',
+                         bold=False, align='center', line_spacing=1.2)
+
+    return slide
+
+
+def layout_infographic_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Infographie hybride — grande statistique + barres segmentées + contexte.
+    v0 : valeur hero gauche + barres horizontales droite (label + bar + %).
+    v1 : valeur hero centré haut + grille de barres verticales en bas.
+    v2 : donut visuel simplifié (rectangles empilés) + légende + contexte.
+    content: {title, section_label?, subtitle?, value, label?, context?,
+              bars:[{label, percent, color?}], footer}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accent2 = theme.get('accent2', 'ED0000')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent1', '009CEA'),
+        theme.get('accent2', 'ED0000'),
+        theme.get('accent3', '40A900'),
+        theme.get('accent4', 'F66A00'),
+    ])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    value   = str(content.get('value', ''))
+    label   = content.get('label', '')
+    context = content.get('context', '')
+    bars    = content.get('bars', [])
+    v       = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if not value and not bars:
+        return slide
+
+    if v == 0:
+        # Hero valeur gauche + barres horizontales droite
+        hero_w  = _LY.CW * 0.38
+        bars_x  = _LY.CL + hero_w + _LY.GAP_LG
+        bars_w  = _LY.CR - bars_x
+        y_mid   = (_LY.CT + _LY.CB) / 2
+
+        _h2_rounded_rect(slide, left=_LY.CL, top=_LY.CT,
+                          width=hero_w, height=_LY.CB - _LY.CT,
+                          color='E8EEF5', radius=_LY.R_MD)
+        _h2_rect(slide, left=_LY.CL, top=_LY.CT, width=hero_w, height=0.07, color=accent1)
+        _h2_text(slide, value,
+                 left=_LY.CL, top=y_mid - 0.60, width=hero_w, height=1.10,
+                 font=font, size_pt=52, color=accent1, bold=True, align='center')
+        if label:
+            _h2_rect(slide, left=_LY.CL + (hero_w - 1.6) / 2, top=y_mid + 0.56,
+                     width=1.6, height=_LY.BAR_H, color=accent2)
+            _h2_text(slide, label,
+                     left=_LY.CL, top=y_mid + 0.68, width=hero_w, height=0.44,
+                     font=font, size_pt=13, color=dk1, bold=False, align='center')
+        if context:
+            _h2_text(slide, context,
+                     left=_LY.CL + 0.15, top=y_mid + (1.20 if label else 0.62),
+                     width=hero_w - 0.30, height=0.72,
+                     font=font, size_pt=9, color='666666',
+                     bold=False, align='center', line_spacing=1.3)
+
+        n_bars  = min(len(bars), 6)
+        bar_gap = (_LY.CB - _LY.CT - 0.10) / max(n_bars, 1)
+        bar_h   = min(0.36, bar_gap - 0.16)
+        max_w   = bars_w - 0.10
+        for i, b in enumerate(bars[:n_bars]):
+            bl    = b.get('label', '') if isinstance(b, dict) else str(b)
+            pct   = float(b.get('percent', b.get('pct', 50)) if isinstance(b, dict) else 50) / 100
+            pct   = max(0.0, min(1.0, pct))
+            color = b.get('color', accents[i % len(accents)]) if isinstance(b, dict) else accents[i % len(accents)]
+            by    = _LY.CT + 0.10 + i * bar_gap
+            _h2_text(slide, bl, left=bars_x, top=by,
+                     width=bars_w - 0.60, height=bar_h,
+                     font=font, size_pt=10, color=dk1, bold=False, align='left')
+            _h2_rect(slide, left=bars_x, top=by + bar_h + 0.04,
+                     width=max_w, height=0.14, color='EEEEEE')
+            _h2_rect(slide, left=bars_x, top=by + bar_h + 0.04,
+                     width=max(0.08, max_w * pct), height=0.14, color=color)
+            _h2_text(slide, f'{int(pct * 100)} %',
+                     left=bars_x + max_w + 0.04, top=by + bar_h + 0.02,
+                     width=0.52, height=0.20,
+                     font=font, size_pt=9, color=color, bold=True, align='left')
+        return slide
+
+    if v == 1:
+        # Valeur hero centré haut + barres verticales en bas
+        hero_h  = (_LY.CB - _LY.CT) * 0.38
+        bars_y  = _LY.CT + hero_h + _LY.GAP_MD
+        bars_h  = _LY.CB - bars_y
+
+        _h2_text(slide, value,
+                 left=_LY.CL, top=_LY.CT + 0.10, width=_LY.CW, height=hero_h - 0.30,
+                 font=font, size_pt=60, color=accent1, bold=True, align='center')
+        if label:
+            _h2_rect(slide, left=(_LY.CL + _LY.CR - 2.0) / 2, top=_LY.CT + hero_h - 0.22,
+                     width=2.0, height=_LY.BAR_H, color=accent2)
+            _h2_text(slide, label,
+                     left=_LY.CL, top=_LY.CT + hero_h - 0.10, width=_LY.CW, height=0.36,
+                     font=font, size_pt=14, color=dk1, bold=False, align='center')
+
+        n_bars  = min(len(bars), 6)
+        bar_w   = (_LY.CW - _LY.GAP_SM * (n_bars - 1)) / max(n_bars, 1)
+        max_bar = bars_h - 0.36
+        for i, b in enumerate(bars[:n_bars]):
+            bl    = b.get('label', '') if isinstance(b, dict) else str(b)
+            pct   = float(b.get('percent', b.get('pct', 50)) if isinstance(b, dict) else 50) / 100
+            pct   = max(0.0, min(1.0, pct))
+            color = b.get('color', accents[i % len(accents)]) if isinstance(b, dict) else accents[i % len(accents)]
+            bx    = _LY.CL + i * (bar_w + _LY.GAP_SM)
+            bh    = max(0.08, max_bar * pct)
+            by    = _LY.CB - 0.30 - bh
+            _h2_rect(slide, left=bx, top=bars_y, width=bar_w, height=max_bar, color='EEEEEE')
+            _h2_rect(slide, left=bx, top=by, width=bar_w, height=bh, color=color)
+            _h2_text(slide, f'{int(pct * 100)}%', left=bx, top=by - 0.26,
+                     width=bar_w, height=0.24,
+                     font=font, size_pt=9, color=color, bold=True, align='center')
+            _h2_text(slide, bl, left=bx, top=_LY.CB - 0.28,
+                     width=bar_w, height=0.26,
+                     font=font, size_pt=8, color=dk1, bold=False, align='center')
+        return slide
+
+    # Variante 2 : blocs empilés (donut simplifié) + légende + contexte
+    n_bars   = min(len(bars), 5)
+    total    = sum(float(b.get('percent', b.get('pct', 20)) if isinstance(b, dict) else 20) for b in bars[:n_bars])
+    total    = total or 100.0
+    stack_x  = _LY.CL
+    stack_w  = 1.60
+    stack_h  = _LY.CB - _LY.CT
+    leg_x    = stack_x + stack_w + _LY.GAP_LG
+    leg_w    = _LY.CW * 0.44
+    ctx_x    = leg_x + leg_w + _LY.GAP_LG
+    ctx_w    = _LY.CR - ctx_x
+
+    # Barre empilée verticale
+    _h2_rect(slide, left=stack_x, top=_LY.CT, width=stack_w, height=stack_h, color='F0F0F0')
+    cursor = _LY.CT
+    for i, b in enumerate(bars[:n_bars]):
+        pct   = float(b.get('percent', b.get('pct', 20)) if isinstance(b, dict) else 20)
+        color = b.get('color', accents[i % len(accents)]) if isinstance(b, dict) else accents[i % len(accents)]
+        seg_h = stack_h * (pct / total)
+        _h2_rect(slide, left=stack_x, top=cursor, width=stack_w, height=seg_h, color=color)
+        cursor += seg_h
+
+    # Légende
+    leg_item_h = (_LY.CB - _LY.CT) / max(n_bars, 1)
+    for i, b in enumerate(bars[:n_bars]):
+        bl    = b.get('label', '') if isinstance(b, dict) else str(b)
+        pct   = float(b.get('percent', b.get('pct', 20)) if isinstance(b, dict) else 20)
+        color = b.get('color', accents[i % len(accents)]) if isinstance(b, dict) else accents[i % len(accents)]
+        ly    = _LY.CT + i * leg_item_h + (leg_item_h - 0.40) / 2
+        _h2_rounded_rect(slide, left=leg_x, top=ly + 0.04,
+                          width=0.22, height=0.22, color=color, radius=0.04)
+        _h2_text(slide, bl, left=leg_x + 0.28, top=ly,
+                 width=leg_w - 0.36, height=0.30,
+                 font=font, size_pt=10, color=dk1, bold=False, align='left')
+        _h2_text(slide, f'{int(pct)}%', left=leg_x + leg_w - 0.50, top=ly,
+                 width=0.48, height=0.30,
+                 font=font, size_pt=11, color=color, bold=True, align='right')
+
+    # Valeur hero + contexte droite
+    if value:
+        _h2_text(slide, value,
+                 left=ctx_x, top=(_LY.CT + _LY.CB) / 2 - 0.60, width=ctx_w, height=1.10,
+                 font=font, size_pt=48, color=accent1, bold=True, align='center')
+    if label:
+        _h2_text(slide, label,
+                 left=ctx_x, top=(_LY.CT + _LY.CB) / 2 + 0.56, width=ctx_w, height=0.40,
+                 font=font, size_pt=12, color=dk1, bold=False, align='center')
+    if context:
+        _h2_text(slide, context,
+                 left=ctx_x, top=(_LY.CT + _LY.CB) / 2 + 1.02, width=ctx_w, height=0.80,
+                 font=font, size_pt=9, color='666666',
+                 bold=False, align='center', line_spacing=1.3)
 
     return slide
 
@@ -7131,8 +7378,9 @@ col3           — 3 colonnes enrichies (title, section_label?, subtitle?, colum
 two_col        — Deux colonnes (title, section_label?, subtitle?, col_a:{{title,subtitle?,items}}, col_b:{{title,subtitle?,items}})
 conclusion     — Synthèse finale — grille 2×2 + sidebar sombre (title, section_label?, subtitle?, cards:[{{icon?,title,body?}}]×4, sidebar_title?, sidebar_quote?, sidebar_cta?)
 entity         — Comparaison d'entités (pays, acteurs, marques) (title, section_label?, subtitle?, entities:[{{icon?,name,badge?,items:[str],stat_value?,stat_label?}}])
+infographic    — Infographie hybride (title, section_label?, value, label?, context?, bars:[{{label,percent}}])
 kpi_grid       — Grille de KPIs (title, section_label?, subtitle?, kpis:[{{value,label,sublabel,percent?}}])
-stat_hero      — Grande statistique (value, label, context, footer)
+stat_hero      — Grande statistique (value, label, context, points?:[str], values?:[{{value,label,context}}], footer)
 bar_chart      — Graphique en barres groupées (title, section_label?, categories:[str], series:[{{name,values:[n]}}], analysis, footer)
 line_chart     — Graphique en lignes (title, section_label?, categories:[str], series:[{{name,values:[n]}}], analysis, footer)
 pie_chart      — Graphique circulaire (title, section_label?, slices:[{{label,value}}], analysis, footer)
@@ -7377,6 +7625,8 @@ async def run_pipeline_v4(
                 layout_entity_v4(prs, content, tp)
             elif layout_name in ('stat_hero',):
                 layout_stathero_v4(prs, content, tp)
+            elif layout_name in ('infographic', 'infograph'):
+                layout_infographic_v4(prs, content, tp)
             elif layout_name in ('timeline', 'timeline_h'):
                 layout_timeline_v4(prs, content, tp)
             elif layout_name in ('process_flow',):
