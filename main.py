@@ -3070,17 +3070,34 @@ def analyze_template_v4(prs: Presentation) -> dict:
 
     # ── Layout map ──────────────────────────────────────────────────────────
     layout_map: dict = {}
+    # Track which layouts have picture placeholders (ph type=pic or shape_type=13)
+    def _has_picture(layout):
+        try:
+            for sh in layout.shapes:
+                if sh.shape_type == 13:
+                    return True
+            for ph in layout.placeholders:
+                if ph.placeholder_format.type and str(ph.placeholder_format.type) in ('PP_MEDIA', 'PP_OBJECT', 'PICTURE', '18'):
+                    return True
+        except Exception:
+            pass
+        return False
+
     for idx, layout in enumerate(prs.slide_layouts):
         n = layout.name.lower()
         ph_idxs = {ph.placeholder_format.idx for ph in layout.placeholders}
         if any(k in n for k in ['couverture', 'cover', 'titre de pré', 'garde', 'home', 'accueil', 'front']):
-            layout_map.setdefault('cover', idx)
+            # Prefer cover layout that has an actual picture (logo/bg image)
+            if 'cover' not in layout_map or _has_picture(layout):
+                layout_map['cover'] = idx
         elif any(k in n for k in ['ouverture', 'section', 'chapter', 'séparateur', 'separator', 'intertitre', 'transition']):
             layout_map.setdefault('section', idx)
         elif any(k in n for k in ['chiffres', 'kpi', 'metrics', 'stats']):
             layout_map.setdefault('kpi', idx)
         elif any(k in n for k in ['merci', 'closing', 'thank', 'fin', 'end']):
-            layout_map.setdefault('closing', idx)
+            # Prefer closing layout that has picture (matches cover design)
+            if 'closing' not in layout_map or _has_picture(layout):
+                layout_map['closing'] = idx
         elif any(k in n for k in ['vide', 'blank', 'vierge', 'empty']):
             layout_map.setdefault('blank', idx)
         elif any(k in n for k in ['two content', '2 contenus', 'comparison', 'deux', 'two col', '2 col', 'dual', 'compare']):
@@ -3362,18 +3379,44 @@ def layout_closing_v4(prs: Presentation, content: dict, tp: dict):
 
 # ── V4 Hybrid Layout Functions (Blank + shapes) ─────────────────────────────
 
+def _layout_has_own_bg(layout) -> bool:
+    """True if the layout defines its own background (overrides master gradient)."""
+    try:
+        cSld = layout._element.find(qn('p:cSld'))
+        if cSld is None:
+            return False
+        bg = cSld.find(qn('p:bg'))
+        return bg is not None
+    except Exception:
+        return False
+
+
 def _blank_v4(prs: Presentation, tp: dict):
     """
-    Crée une slide vide (layout blank) :
+    Crée une slide vide :
+    - Préfère un layout qui hérite du fond maître (gradient/image préservés)
     - Supprime tous les placeholders résiduels
-    - Garantit showMasterSp='1' (logo visible)
+    - Garantit showMasterSp='1' (logo et arrière-plan maître visibles)
     Retourne slide.
     """
-    blank_idx = tp['layout_map']['blank']
-    layout    = prs.slide_layouts[min(blank_idx, len(prs.slide_layouts) - 1)]
-    slide     = prs.slides.add_slide(layout)
+    # Prefer a layout that inherits the master background (no own bg override)
+    # Fallback order: text → blank → last layout
+    lmap     = tp['layout_map']
+    n_layouts = len(prs.slide_layouts)
+    preferred = [lmap.get('text'), lmap.get('blank'), n_layouts - 1]
+    chosen_idx = lmap.get('blank', n_layouts - 1)  # default
+    for idx in preferred:
+        if idx is None:
+            continue
+        idx = min(idx, n_layouts - 1)
+        if not _layout_has_own_bg(prs.slide_layouts[idx]):
+            chosen_idx = idx
+            break
 
-    # Supprimer placeholders résiduels
+    layout = prs.slide_layouts[min(chosen_idx, n_layouts - 1)]
+    slide  = prs.slides.add_slide(layout)
+
+    # Remove residual placeholders
     sp_tree = slide.shapes._spTree
     for ph in list(slide.placeholders):
         try:
@@ -3381,9 +3424,18 @@ def _blank_v4(prs: Presentation, tp: dict):
         except Exception:
             pass
 
+    # Ensure master shapes (logo, gradient bg) are visible
     cSld = slide._element.find(qn('p:cSld'))
     if cSld is not None:
         cSld.set('showMasterSp', '1')
+        # Remove any slide-level background override so master gradient shows through
+        bg = cSld.find(qn('p:bg'))
+        if bg is not None:
+            try:
+                cSld.remove(bg)
+            except Exception:
+                pass
+
     return slide
 
 
@@ -3736,7 +3788,7 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
             # v1 : badge rectangle + fond alternée + bordure gauche
             row_y   = _LY.CT + i * step
             row_h   = step - _LY.GAP_XS
-            bg_row  = 'E8EEF5' if i % 2 == 0 else 'EBF9F3'
+            bg_row  = 'E8EEF5' if i % 2 == 0 else 'F4F4F4'
             badge_h, badge_w = 0.38, 0.46
             badge_y = row_y + (row_h - badge_h) / 2
             x_text  = _LY.CL + badge_w + _LY.PAD * 2
@@ -3809,7 +3861,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
         theme.get('accent1', '009CEA'),
         theme.get('accent2', 'ED0000'),
     ])
-    _TPL = ['E8EEF5', 'EEEEEE', 'EBF9F3']
+    _TPL = ['E8EEF5', 'EEEEEE', 'F4F4F4']
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
@@ -3976,7 +4028,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
         n3 = min(n, 3)
         card_w = (_LY.CW - _LY.GAP_LG * (n3 - 1)) / n3
         card_h = _LY.CB - _LY.CT
-        bgs    = ['E8EEF5', 'EEEEEE', 'EBF9F3']
+        bgs    = ['E8EEF5', 'EEEEEE', 'F4F4F4']
         for i in range(n3):
             cx    = _LY.CL + i * (card_w + _LY.GAP_LG)
             color = accents[i % len(accents)]
@@ -4256,7 +4308,7 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
                          font=font, size_pt=_LY.T_BODY, color=dk1, bold=False, align='left')
     elif v == 1:
         # Variante 1 : fond palette pleine hauteur + puce ronde colorée + items aérés
-        bg_cols = ['E8EEF5', 'EBF9F3']
+        bg_cols = ['E8EEF5', 'F4F4F4']
         for ci, (x_col, col, color) in enumerate(cols):
             label, subtitle, items = _col_label(col), _col_sub(col), _col_items(col)
             col_h = _LY.CB - y_head
@@ -4521,7 +4573,7 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
             values_list = [{'value': value, 'label': label, 'context': context}]
         nv      = min(len(values_list), 3)
         stat_w  = (_LY.CW - _LY.GAP_LG * (nv - 1)) / nv
-        bgs     = ['E8EEF5', 'EEEEEE', 'EBF9F3']
+        bgs     = ['E8EEF5', 'EEEEEE', 'F4F4F4']
         accs    = [accent1, accent2, theme.get('accent3', '40A900')]
         for i, vs in enumerate(values_list[:nv]):
             sx    = _LY.CL + i * (stat_w + _LY.GAP_LG)
@@ -5027,7 +5079,7 @@ def layout_kpi_grid_v4(prs: Presentation, content: dict, tp: dict):
     cell_h  = (y_end - y_start) / n_rows
     v       = _v4_variant(content, 5, tp.get('seed', 0))
 
-    _light_bg = ['E8EEF5', 'EBF9F3', 'EEEEEE']
+    _light_bg = ['E8EEF5', 'F4F4F4', 'EEEEEE']
 
     # v3 : KPI héros central (premier) + petits en dessous
     if v == 3 and n >= 2:
@@ -6853,7 +6905,7 @@ def layout_swot_v4(prs: Presentation, content: dict, tp: dict):
 
     # Fonds : palette template uniquement
     quadrant_defs = [
-        ('Forces',        'strengths',    '40A900', 'EBF9F3'),
+        ('Forces',        'strengths',    '40A900', 'F4F4F4'),
         ('Faiblesses',    'weaknesses',   'ED0000', 'EEEEEE'),
         ('Opportunités',  'opportunities','009CEA', 'E8EEF5'),
         ('Menaces',       'threats',      'F66A00', 'EEEEEE'),
@@ -7356,10 +7408,10 @@ def extract_document_content(file_bytes: bytes, filename: str) -> str:
 _V4_PLANNER_SYSTEM = """
 Tu es un consultant senior en communication visuelle. Tu génères des plans de présentation
 PowerPoint en JSON strict. Chaque slide a un layout choisi dans le catalogue fourni et un
-contenu précis adapté au layout. Règle absolue : au moins 1 slide avec un graphique
-(bar_chart, line_chart, pie_chart, stacked_bar, waterfall, ou radar) et au moins 1 slide
-avec un diagramme structurel (process_flow, funnel, matrix_2x2, swot, pyramid, cycle,
-ou roadmap) dans toute présentation de 6 slides ou plus.
+contenu précis adapté au layout. Privilégie la diversité des layouts et la densité
+éditoriale. Les graphiques (bar_chart, line_chart, etc.) ne doivent être utilisés QUE
+lorsque des données chiffrées réelles le justifient explicitement — ne force pas de
+graphiques si le sujet est qualitatif ou narratif.
 """.strip()
 
 _V4_PLANNER_USER = """
@@ -7404,7 +7456,8 @@ table          — Tableau de données (title, section_label?, headers:[str], ro
 
 RÈGLES :
 1. La première slide est toujours "cover", la dernière "closing".
-2. Pour {nb_slides} ≥ 6 : inclure au moins 1 graphique ET 1 diagramme structurel.
+2. Graphiques (bar_chart, line_chart, pie_chart, stacked_bar, waterfall, radar) : utiliser UNIQUEMENT si le sujet contient des données numériques réelles. Ne jamais forcer un graphique pour "faire beau". Max 1-2 graphiques par présentation.
+2b. Diagrammes structurels (process_flow, funnel, matrix_2x2, swot, pyramid, cycle, roadmap) : utiliser quand la structure logique l'exige (processus, entonnoir, comparaison). Max 1-2 par présentation.
 3. Le contenu JSON de chaque slide doit correspondre EXACTEMENT aux champs du layout choisi.
 4. footer_text = baseline de la société (ex : "Confidentiel — NomSociété 2025").
 5. Répondre UNIQUEMENT avec le JSON ci-dessous, sans commentaire ni markdown.
