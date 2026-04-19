@@ -1851,6 +1851,17 @@ def _h2_text(slide, text: str,
     )
     tf           = txBox.text_frame
     tf.word_wrap = True
+    # Clip text at box boundary — prevents overflow into adjacent elements
+    try:
+        import lxml.etree as _et2
+        bodyPr = tf._txBody.get_or_add_bodyPr()
+        for tag in ('a:spAutoFit', 'a:normAutofit', 'a:noAutofit'):
+            el = bodyPr.find(qn(tag))
+            if el is not None:
+                bodyPr.remove(el)
+        _et2.SubElement(bodyPr, qn('a:normAutofit'))
+    except Exception:
+        pass
 
     align_map = {'left': PP_ALIGN.LEFT, 'center': PP_ALIGN.CENTER, 'right': PP_ALIGN.RIGHT}
 
@@ -3147,19 +3158,45 @@ def analyze_template_v4(prs: Presentation) -> dict:
 
     accent1 = theme.get('accent1', '009CEA')
     accent2 = theme.get('accent2', 'ED0000')
-    accent3 = theme.get('accent3', '40A900')
-    accent4 = theme.get('accent4', 'F66A00')
+    accent3 = theme.get('accent3', accent1)   # fallback → accent1, not invented green
+    accent4 = theme.get('accent4', accent2)   # fallback → accent2, not invented orange
+
+    # Build accent_cycle from colors ACTUALLY in the template (no invented fallbacks)
+    # Priority: accent1, accent2, then accent3/accent4 only if template defines them
+    _cycle_raw = []
+    for k in ('accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6'):
+        if k in theme:
+            _cycle_raw.append(theme[k])
+    if not _cycle_raw:
+        _cycle_raw = [accent1, accent2]
+    # Ensure at least 4 entries (repeat from start so cycling works)
+    while len(_cycle_raw) < 4:
+        _cycle_raw.append(_cycle_raw[len(_cycle_raw) % max(len(_cycle_raw), 1)])
+    accent_cycle = _cycle_raw
+
+    # Light neutral for card backgrounds — derived from template light color if possible
+    lt1 = theme.get('lt1', 'FFFFFF')
+    # If lt1 is near-white (luminance > 95%), use a subtle off-white; else use lt1 itself
+    try:
+        r, g, b = int(lt1[0:2], 16), int(lt1[2:4], 16), int(lt1[4:6], 16)
+        lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+        card_bg_light = 'F8F8F8' if lum > 0.94 else lt1
+        card_bg_mid   = 'F0F0F0' if lum > 0.94 else lt1
+    except Exception:
+        card_bg_light, card_bg_mid = 'F8F8F8', 'F0F0F0'
 
     tp = {
-        'theme':        theme,
-        'layout_map':   layout_map,
-        'logo_zone':    logo_zone,
-        'font':         font,
-        'accent_cycle': [accent3, accent4, accent1],
-        'W':            W,
-        'H':            H,
+        'theme':          theme,
+        'layout_map':     layout_map,
+        'logo_zone':      logo_zone,
+        'font':           font,
+        'accent_cycle':   accent_cycle,
+        'card_bg_light':  card_bg_light,   # nearly white card background
+        'card_bg_mid':    card_bg_mid,     # slightly darker alternating background
+        'W':              W,
+        'H':              H,
     }
-    log.info(f'[V4] tp: theme={list(theme.items())[:4]}, lmap={layout_map}, font={font}')
+    log.info(f'[V4] tp: theme={list(theme.items())[:4]}, lmap={layout_map}, font={font}, cycle={accent_cycle[:3]}, card_bg={card_bg_light}')
     return tp
 
 
@@ -3202,24 +3239,34 @@ def _add_template_header_and_footer(slide, title: str, footer_text: str, tp: dic
     else:
         title_y = 0.20
 
-    # Titre
+    # Budget total header zone: 1.52" (laisse 0.03" avant CT=1.55)
+    # Sans section_label : title_y=0.20, budget titre+sep = 1.32"
+    # Avec section_label  : title_y=0.42, budget titre+sep = 1.10"
+    # Calcul adaptatif de la hauteur titre
+    if subtitle:
+        title_h = 0.64   # on garde de la place pour le sous-titre
+        sub_h   = 0.26
+    else:
+        title_h = 0.80   # jusqu'à 2 lignes 28 pt
+        sub_h   = 0.0
+
     _h2_text(slide, title,
-             left=0.6, top=title_y, width=10.2, height=0.70,
+             left=0.6, top=title_y, width=10.2, height=title_h,
              font=font, size_pt=28, color=accent1,
              bold=True, align='left')
 
-    sep_y = title_y + 0.74
+    sep_y = title_y + title_h + 0.05
 
     # Sous-titre facultatif
     if subtitle:
         _h2_text(slide, subtitle,
-                 left=0.6, top=sep_y, width=10.2, height=0.25,
+                 left=0.6, top=sep_y, width=10.2, height=sub_h,
                  font=font, size_pt=11, color='888888',
                  bold=False, align='left')
-        sep_y += 0.28
+        sep_y += sub_h + 0.04
 
-    # Garantir un minimum visuel
-    sep_y = max(sep_y, 1.12)
+    # Separator ne doit pas dépasser 1.50" (CT=1.55 → 0.05" de marge)
+    sep_y = min(sep_y, 1.50)
 
     # Ligne de séparation
     _h2_rect(slide, left=0.6, top=sep_y, width=10.4, height=0.04, color=accent1)
@@ -3379,6 +3426,24 @@ def layout_closing_v4(prs: Presentation, content: dict, tp: dict):
 
 # ── V4 Hybrid Layout Functions (Blank + shapes) ─────────────────────────────
 
+def _cbg(tp: dict, idx: int = 0) -> str:
+    """Return a card/row background color from the template palette (neutral, no blue tint)."""
+    if idx % 2 == 0:
+        return tp.get('card_bg_light', 'F8F8F8')
+    return tp.get('card_bg_mid', 'F0F0F0')
+
+
+def _darken(hex_color: str, factor: float = 0.75) -> str:
+    """Darken a hex color by factor (0.0=black, 1.0=unchanged). Used for nested dark boxes."""
+    try:
+        r = max(0, int(int(hex_color[0:2], 16) * factor))
+        g = max(0, int(int(hex_color[2:4], 16) * factor))
+        b = max(0, int(int(hex_color[4:6], 16) * factor))
+        return f'{r:02X}{g:02X}{b:02X}'
+    except Exception:
+        return hex_color
+
+
 def _layout_has_own_bg(layout) -> bool:
     """True if the layout defines its own background (overrides master gradient)."""
     try:
@@ -3517,9 +3582,11 @@ def layout_quote_v4(prs: Presentation, content: dict, tp: dict):
     quote_h = min(2.8, 0.50 * n_lines)
 
     if v == 0:
-        # Cercles décoratifs en fond
-        _h2_circle(slide, cx=1.8, cy=H - 1.2, r=1.9, color='EBF4FB')
-        _h2_circle(slide, cx=W - 1.5, cy=2.0, r=1.4, color='FDE8E8')
+        # Cercles décoratifs en fond — couleurs très légères dérivées du template
+        circ1 = _cbg(tp, 0)   # very light neutral (card_bg_light)
+        circ2 = _cbg(tp, 1)   # slightly darker neutral (card_bg_mid)
+        _h2_circle(slide, cx=1.8, cy=H - 1.2, r=1.9, color=circ1)
+        _h2_circle(slide, cx=W - 1.5, cy=2.0, r=1.4, color=circ2)
 
         # Badge pill catégorie (title utilisé comme label de rubrique)
         category = content.get('category', content.get('title', ''))
@@ -3729,7 +3796,7 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
             color     = accents[i % len(accents)]
             title_txt, body_txt = _item_txt(items[i])
             cy = _LY.CT + i * (card_h + gap)
-            bg = 'EEEEEE' if i % 2 == 0 else 'E8EEF5'
+            bg = 'EEEEEE' if i % 2 == 0 else 'F0F0F0'
             _h2_rounded_rect(slide, left=_LY.CL, top=cy,
                               width=_LY.CW, height=card_h,
                               color=bg, radius=_LY.R_SM)
@@ -3788,7 +3855,7 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
             # v1 : badge rectangle + fond alternée + bordure gauche
             row_y   = _LY.CT + i * step
             row_h   = step - _LY.GAP_XS
-            bg_row  = 'E8EEF5' if i % 2 == 0 else 'F4F4F4'
+            bg_row  = 'F0F0F0' if i % 2 == 0 else 'F4F4F4'
             badge_h, badge_w = 0.38, 0.46
             badge_y = row_y + (row_h - badge_h) / 2
             x_text  = _LY.CL + badge_w + _LY.PAD * 2
@@ -3808,7 +3875,7 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
                 _h2_text(slide, body_txt,
                          left=x_text, top=badge_y + badge_h + 0.04,
                          width=_LY.CR - x_text - 0.2,
-                         height=max(0.1, row_h - badge_h - badge_y + row_y - 0.08),
+                         height=max(0.28, row_h - badge_h - badge_y + row_y - 0.08),
                          font=font, size_pt=_LY.T_BODY, color='555555',
                          bold=False, align='left', line_spacing=1.1)
 
@@ -3861,7 +3928,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
         theme.get('accent1', '009CEA'),
         theme.get('accent2', 'ED0000'),
     ])
-    _TPL = ['E8EEF5', 'EEEEEE', 'F4F4F4']
+    _TPL = ['F0F0F0', 'EEEEEE', 'F4F4F4']
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
@@ -3911,7 +3978,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
             if body_src:
                 _h2_text(slide, body_src,
                          left=cx + 0.18, top=y_cur,
-                         width=_LY.COL_W - 0.26, height=max(0.1, body_h),
+                         width=_LY.COL_W - 0.26, height=max(0.30, body_h),
                          font=font, size_pt=_LY.T_SMALL, color=dk1,
                          bold=False, align='left', line_spacing=1.2)
             if sv:
@@ -3969,7 +4036,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
             if body_src:
                 _h2_text(slide, body_src,
                          left=cx + _LY.PAD, top=y_cur,
-                         width=card_w - _LY.PAD * 2, height=max(0.1, body_h),
+                         width=card_w - _LY.PAD * 2, height=max(0.30, body_h),
                          font=font, size_pt=_LY.T_SMALL, color=dk1,
                          bold=False, align='left', line_spacing=1.2)
             if sv:
@@ -4028,7 +4095,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
         n3 = min(n, 3)
         card_w = (_LY.CW - _LY.GAP_LG * (n3 - 1)) / n3
         card_h = _LY.CB - _LY.CT
-        bgs    = ['E8EEF5', 'EEEEEE', 'F4F4F4']
+        bgs    = ['F0F0F0', 'EEEEEE', 'F4F4F4']
         for i in range(n3):
             cx    = _LY.CL + i * (card_w + _LY.GAP_LG)
             color = accents[i % len(accents)]
@@ -4061,7 +4128,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
             if body_src:
                 body_h = card_h - (y_icon - _LY.CT) - (0.60 if sv else 0.10) - 0.08
                 _h2_text(slide, body_src, left=cx + _LY.PAD, top=y_icon,
-                         width=card_w - _LY.PAD * 2, height=max(0.1, body_h),
+                         width=card_w - _LY.PAD * 2, height=max(0.30, body_h),
                          font=font, size_pt=_LY.T_SMALL, color=dk1,
                          bold=False, align='left', line_spacing=1.2)
             if sv:
@@ -4113,7 +4180,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
         if body_src:
             body_h = card_h - (y_cur - card_top) - 0.08
             _h2_text(slide, body_src, left=cx + _LY.PAD, top=y_cur,
-                     width=card_w - _LY.PAD * 2, height=max(0.1, body_h),
+                     width=card_w - _LY.PAD * 2, height=max(0.30, body_h),
                      font=font, size_pt=_LY.T_SMALL, color=dk1,
                      bold=False, align='left', line_spacing=1.2)
 
@@ -4308,7 +4375,7 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
                          font=font, size_pt=_LY.T_BODY, color=dk1, bold=False, align='left')
     elif v == 1:
         # Variante 1 : fond palette pleine hauteur + puce ronde colorée + items aérés
-        bg_cols = ['E8EEF5', 'F4F4F4']
+        bg_cols = ['F0F0F0', 'F4F4F4']
         for ci, (x_col, col, color) in enumerate(cols):
             label, subtitle, items = _col_label(col), _col_sub(col), _col_items(col)
             col_h = _LY.CB - y_head
@@ -4409,7 +4476,7 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
         icons_map = [('→', accent1), ('✓', accent3)]
         for ci, (x_col, col, color) in enumerate(cols):
             label, subtitle, items = _col_label(col), _col_sub(col), _col_items(col)
-            bg = 'EEEEEE' if ci == 0 else 'E8EEF5'
+            bg = 'EEEEEE' if ci == 0 else 'F0F0F0'
             icon_chr, icon_col = icons_map[ci]
             _h2_rounded_rect(slide, left=x_col, top=y_head,
                               width=_LY.COL_W, height=_LY.CB - y_head,
@@ -4520,7 +4587,7 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
         fy = y_center - frame_h / 2
         _h2_rounded_rect(slide, left=fx, top=fy,
                          width=frame_w, height=frame_h,
-                         color='E8EEF5', radius=_LY.R_MD)
+                         color='F0F0F0', radius=_LY.R_MD)
         _h2_rect(slide, left=fx, top=fy, width=frame_w, height=0.08, color=accent1)
         _h2_text(slide, value,
                  left=fx, top=fy + 0.18, width=frame_w, height=val_h,
@@ -4573,7 +4640,7 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
             values_list = [{'value': value, 'label': label, 'context': context}]
         nv      = min(len(values_list), 3)
         stat_w  = (_LY.CW - _LY.GAP_LG * (nv - 1)) / nv
-        bgs     = ['E8EEF5', 'EEEEEE', 'F4F4F4']
+        bgs     = ['F0F0F0', 'EEEEEE', 'F4F4F4']
         accs    = [accent1, accent2, theme.get('accent3', '40A900')]
         for i, vs in enumerate(values_list[:nv]):
             sx    = _LY.CL + i * (stat_w + _LY.GAP_LG)
@@ -4649,7 +4716,7 @@ def layout_infographic_v4(prs: Presentation, content: dict, tp: dict):
 
         _h2_rounded_rect(slide, left=_LY.CL, top=_LY.CT,
                           width=hero_w, height=_LY.CB - _LY.CT,
-                          color='E8EEF5', radius=_LY.R_MD)
+                          color='F0F0F0', radius=_LY.R_MD)
         _h2_rect(slide, left=_LY.CL, top=_LY.CT, width=hero_w, height=0.07, color=accent1)
         _h2_text(slide, value,
                  left=_LY.CL, top=y_mid - 0.60, width=hero_w, height=1.10,
@@ -4847,7 +4914,7 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
                          width=0.024, height=gap, color=color)
 
             _h2_rounded_rect(slide, left=bx, top=by,
-                              width=blk_w, height=bh, color='E8EEF5', radius=0.04)
+                              width=blk_w, height=bh, color='F0F0F0', radius=0.04)
             y_cur = by + 0.1
             if date:
                 pill_h = 0.28
@@ -4859,14 +4926,14 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
                 y_cur += pill_h + 0.1
             _h2_text(slide, title,
                      left=bx + 0.08, top=y_cur, width=blk_w - 0.16,
-                     height=max(0.1, bh - (y_cur - by) - 0.08),
+                     height=max(0.28, bh - (y_cur - by) - 0.08),
                      font=font, size_pt=11, color=dk1,
                      bold=True, align='center', line_spacing=1.1)
             if body and bh - (y_cur - by) > 0.55:
                 _h2_text(slide, body,
                          left=bx + 0.08, top=y_cur + 0.38,
                          width=blk_w - 0.16,
-                         height=max(0.1, bh - (y_cur - by) - 0.46),
+                         height=max(0.28, bh - (y_cur - by) - 0.46),
                          font=font, size_pt=9, color='555555',
                          align='center', line_spacing=1.1)
     else:
@@ -4898,7 +4965,7 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
             bh  = step_h - _LY.GAP_SM
             by  = sy - bh / 2
             _h2_rounded_rect(slide, left=blk_x, top=by,
-                              width=blk_w, height=bh, color='E8EEF5', radius=0.04)
+                              width=blk_w, height=bh, color='F0F0F0', radius=0.04)
             y_cur = by + 0.10
             if date:
                 pill_h = 0.25
@@ -4919,7 +4986,7 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
                 _h2_text(slide, body,
                          left=blk_x + 0.10, top=y_cur + 0.42,
                          width=blk_w - 0.18,
-                         height=max(0.1, bh - (y_cur - by) - 0.50),
+                         height=max(0.28, bh - (y_cur - by) - 0.50),
                          font=font, size_pt=9, color='555555',
                          align='left', line_spacing=1.1)
 
@@ -5079,7 +5146,7 @@ def layout_kpi_grid_v4(prs: Presentation, content: dict, tp: dict):
     cell_h  = (y_end - y_start) / n_rows
     v       = _v4_variant(content, 5, tp.get('seed', 0))
 
-    _light_bg = ['E8EEF5', 'F4F4F4', 'EEEEEE']
+    _light_bg = ['F0F0F0', 'F4F4F4', 'EEEEEE']
 
     # v3 : KPI héros central (premier) + petits en dessous
     if v == 3 and n >= 2:
@@ -5092,7 +5159,7 @@ def layout_kpi_grid_v4(prs: Presentation, content: dict, tp: dict):
         # Zone héros
         _h2_rounded_rect(slide, left=_LY.CL + 1.5, top=_LY.CT,
                           width=_LY.CW - 3.0, height=2.20,
-                          color='E8EEF5', radius=_LY.R_SM)
+                          color='F0F0F0', radius=_LY.R_SM)
         _h2_rect(slide, left=_LY.CL + 1.5, top=_LY.CT,
                  width=_LY.CW - 3.0, height=0.06, color=h_color)
         _h2_text(slide, h_val,
@@ -5433,7 +5500,7 @@ def _add_chart_analysis(slide, content: dict, tp: dict) -> None:
     _h2_rounded_rect(slide,
                      left=_LY.CL, top=_ANALYSIS_TOP,
                      width=_LY.CW, height=_ANALYSIS_H,
-                     color='E8EEF5', radius=_LY.R_SM)
+                     color='F0F0F0', radius=_LY.R_SM)
     _h2_rect(slide,
              left=_LY.CL, top=_ANALYSIS_TOP,
              width=0.06, height=_ANALYSIS_H, color=accent)
@@ -5974,7 +6041,7 @@ def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
     phase_w  = band_w / n
 
     # Fond de bande (axe du temps)
-    _h2_rect(slide, left=x_start, top=y_band, width=band_w, height=band_h, color='E8EEF5')
+    _h2_rect(slide, left=x_start, top=y_band, width=band_w, height=band_h, color='F0F0F0')
 
     # Hauteur disponible pour les jalons (de y_band+band_h jusqu'à CB)
     milestones_zone_h = _LY.CB - (y_band + band_h)
@@ -6105,7 +6172,7 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
         # Variante 0 : header coloré + fond palette + flèches ↔ par ligne
         for cx, col, hdr_color, bg_color, lbl in [
             (x_bef, before, '888888', 'EEEEEE', 'AVANT'),
-            (x_aft,  after,  accent1,  'E8EEF5', 'APRÈS'),
+            (x_aft,  after,  accent1,  'F0F0F0', 'APRÈS'),
         ]:
             col_title = col.get('title', lbl) if isinstance(col, dict) else lbl
             items     = col.get('items', []) if isinstance(col, dict) else []
@@ -6138,7 +6205,7 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
         # Variante 1 : colonnes fond palette, icônes ✗ (avant) et ✓ (après)
         for cx, col, bg_color, icon, icon_color, lbl in [
             (x_bef, before, 'EEEEEE', '✗', '999999', 'AVANT'),
-            (x_aft,  after,  'E8EEF5',  '✓', accent3,  'APRÈS'),
+            (x_aft,  after,  'F0F0F0',  '✓', accent3,  'APRÈS'),
         ]:
             col_title = col.get('title', lbl) if isinstance(col, dict) else lbl
             items     = col.get('items', []) if isinstance(col, dict) else []
@@ -6468,7 +6535,7 @@ def layout_conclusion_v4(prs: Presentation, content: dict, tp: dict):
         q_h = min(2.2, max(0.5, len(sb_quote) / 40 * 0.38))
         _h2_rounded_rect(slide, left=sidebar_x + 0.14, top=sy,
                           width=sidebar_w - 0.22, height=q_h + 0.30,
-                          color='2A3540', radius=_LY.R_SM)
+                          color=_darken(dk1, 0.72), radius=_LY.R_SM)
         _h2_text(slide, sb_quote,
                  left=sidebar_x + 0.24, top=sy + 0.12,
                  width=sidebar_w - 0.38, height=q_h,
@@ -6480,7 +6547,7 @@ def layout_conclusion_v4(prs: Presentation, content: dict, tp: dict):
         cta_y = _LY.CB - 1.40
         _h2_rounded_rect(slide, left=sidebar_x + 0.14, top=cta_y,
                           width=sidebar_w - 0.22, height=1.25,
-                          color='1E2A34', radius=_LY.R_SM)
+                          color=_darken(dk1, 0.58), radius=_LY.R_SM)
         _h2_text(slide, sb_cta,
                  left=sidebar_x + 0.14, top=cta_y + 0.38,
                  width=sidebar_w - 0.22, height=0.55,
@@ -6551,7 +6618,7 @@ def layout_highlight_v4(prs: Presentation, content: dict, tp: dict):
         box_x = _LY.CL + 0.20
         box_w = _LY.CW - 0.40
         _h2_rounded_rect(slide, left=box_x, top=box_y,
-                          width=box_w, height=box_h, color='E8EEF5', radius=_LY.R_SM)
+                          width=box_w, height=box_h, color='F0F0F0', radius=_LY.R_SM)
         _h2_rect(slide, left=box_x, top=box_y, width=box_w, height=0.06, color=accent1)
         _h2_rect(slide, left=box_x, top=box_y + box_h - 0.06,
                  width=box_w, height=0.06, color=accent2)
@@ -6577,7 +6644,7 @@ def layout_highlight_v4(prs: Presentation, content: dict, tp: dict):
         box_x = _LY.CL + 0.20
         box_w = _LY.CW - 0.40
         _h2_rounded_rect(slide, left=box_x, top=box_y,
-                          width=box_w, height=box_h, color='E8EEF5', radius=_LY.R_SM)
+                          width=box_w, height=box_h, color='F0F0F0', radius=_LY.R_SM)
         _h2_rect(slide, left=box_x, top=box_y, width=0.06, height=box_h, color=accent1)
         _h2_text(slide, '\u201c',
                  left=box_x + 0.22, top=box_y + 0.02,
@@ -6632,7 +6699,7 @@ def layout_highlight_v4(prs: Presentation, content: dict, tp: dict):
         hl_h = min(2.6, 1.0 + n_lines * 0.45)
         hl_y = _LY.CT + 0.10
         _h2_rounded_rect(slide, left=_LY.CL, top=hl_y,
-                          width=_LY.CW, height=hl_h, color='E8EEF5', radius=_LY.R_SM)
+                          width=_LY.CW, height=hl_h, color='F0F0F0', radius=_LY.R_SM)
         _h2_rect(slide, left=_LY.CL, top=hl_y, width=_LY.CW, height=0.07, color=accent1)
         txt_h = min(hl_h - 0.3, n_lines * (txt_sz * 0.022 + 0.1))
         txt_y = hl_y + (hl_h - txt_h) / 2
@@ -6710,7 +6777,7 @@ def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
                 color    = accents[i % len(accents)]
                 iy       = _LY.CT + ri * row_h
                 # Fond alternée
-                bg = 'E8EEF5' if i % 2 == 0 else 'EEEEEE'
+                bg = 'F0F0F0' if i % 2 == 0 else 'EEEEEE'
                 _h2_rect(slide, left=x_col, top=iy,
                          width=_LY.COL_W, height=row_h - _LY.GAP_XS, color=bg)
                 _h2_rect(slide, left=x_col, top=iy,
@@ -6752,7 +6819,7 @@ def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
             else:
                 # Variante 1 : fond ligne palette + badge numéro + sublabel
                 row_h  = step_h - _LY.GAP_XS
-                bg_row = 'E8EEF5' if i % 2 == 0 else 'EEEEEE'
+                bg_row = 'F0F0F0' if i % 2 == 0 else 'EEEEEE'
                 num_w  = 0.55
                 x_text = _LY.CL + num_w + _LY.PAD * 2 + _LY.GAP_SM
                 _h2_rect(slide, left=_LY.CL, top=iy, width=_LY.CW, height=row_h, color=bg_row)
@@ -6907,7 +6974,7 @@ def layout_swot_v4(prs: Presentation, content: dict, tp: dict):
     quadrant_defs = [
         ('Forces',        'strengths',    '40A900', 'F4F4F4'),
         ('Faiblesses',    'weaknesses',   'ED0000', 'EEEEEE'),
-        ('Opportunités',  'opportunities','009CEA', 'E8EEF5'),
+        ('Opportunités',  'opportunities','009CEA', 'F0F0F0'),
         ('Menaces',       'threats',      'F66A00', 'EEEEEE'),
     ]
 
