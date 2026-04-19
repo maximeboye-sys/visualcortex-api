@@ -2907,7 +2907,7 @@ def run_pipeline_v3(pptx_bytes: bytes, prompt: str, nb_slides: int) -> tuple:
     slides_plan = plan.get('slides', [])
 
     # Compléter si Claude en a généré moins que demandé
-    fallback_layouts = ['full_text', 'list_numbered', 'two_col', 'kpi_row']
+    fallback_layouts = ['list_cards', 'col3', 'two_col', 'kpi_grid']
     while len(slides_plan) < nb_slides:
         fb_name = fallback_layouts[len(slides_plan) % len(fallback_layouts)]
         slides_plan.append({
@@ -3372,13 +3372,18 @@ def layout_fulltext_v4(prs: Presentation, content: dict, tp: dict):
     slide, ph_map = _add_slide_native(prs, idx)
 
     # Construire le corps depuis toutes les sources possibles
+    # Limiter à 2 paragraphes de ≤ 30 mots chacun — jamais de mur de texte
     body = content.get('body', '')
     if not body:
         paras = content.get('paragraphs', [])
         if paras:
-            body = '\n'.join(str(p) for p in paras)
+            body = '\n'.join(_trunc(str(p), 30) for p in paras[:2])
     if not body:
         body = content.get('subtitle', '')
+    if body:
+        # Tronquer chaque paragraphe existant
+        lines = body.split('\n')
+        body = '\n'.join(_trunc(ln, 30) for ln in lines[:2])
 
     _ph_fill(ph_map, 0, content.get('title', ''))
 
@@ -3425,6 +3430,16 @@ def layout_closing_v4(prs: Presentation, content: dict, tp: dict):
 
 
 # ── V4 Hybrid Layout Functions (Blank + shapes) ─────────────────────────────
+
+def _trunc(text: str, max_words: int = 12) -> str:
+    """Truncate to max_words words, adding ellipsis if cut. Prevents text overflow."""
+    if not text:
+        return text
+    words = str(text).split()
+    if len(words) <= max_words:
+        return text
+    return ' '.join(words[:max_words]) + '…'
+
 
 def _cbg(tp: dict, idx: int = 0) -> str:
     """Return a card/row background color from the template palette (neutral, no blue tint)."""
@@ -3715,13 +3730,15 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
     if not items:
         return slide
 
-    n = min(len(items), 6)
+    n = min(len(items), 4)   # max 4 items — slides visuelles, pas rapports
     v = _v4_variant(content, 5, tp.get('seed', 0))
 
     def _item_txt(item):
         if isinstance(item, dict):
-            return item.get('title', str(item)), item.get('body', '')
-        return str(item), ''
+            title = _trunc(item.get('title', str(item)), 8)
+            body  = _trunc(item.get('body', ''), 12)
+            return title, body
+        return _trunc(str(item), 12), ''
 
     if v == 2:
         # v2 : grille 2 colonnes — grand numéro coloré en-tête de chaque item
@@ -3885,7 +3902,7 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
 def _card_data(card) -> tuple:
     """Extract (icon, label, title, subtitle, body, items, stat_value, stat_label) from a card dict."""
     if not isinstance(card, dict):
-        return '', '', str(card), '', '', [], '', ''
+        return '', '', _trunc(str(card), 10), '', '', [], '', ''
     stat = card.get('stat', {})
     if isinstance(stat, dict):
         sv, sl = stat.get('value', ''), stat.get('label', '')
@@ -3893,14 +3910,13 @@ def _card_data(card) -> tuple:
         sv, sl = str(stat), ''
     sv = card.get('stat_value', sv)
     sl = card.get('stat_label', sl)
-    items = card.get('items', [])
-    # body: explicit body, or join items, or empty
-    body = card.get('body', '')
+    items = [_trunc(str(it), 10) for it in card.get('items', [])[:4]]
+    body  = _trunc(card.get('body', ''), 15)  # ≤ 15 mots par card body
     return (
         card.get('icon', ''),
         card.get('label', ''),
-        card.get('title', ''),
-        card.get('subtitle', ''),
+        _trunc(card.get('title', ''), 10),
+        _trunc(card.get('subtitle', ''), 10),
         body,
         items,
         sv,
@@ -4336,7 +4352,8 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
     y_items = y_head + head_h + _LY.GAP_SM
 
     def _col_items(col):
-        return col.get('items', []) if isinstance(col, dict) else []
+        raw = col.get('items', []) if isinstance(col, dict) else []
+        return [_trunc(str(it), 10) for it in raw[:4]]  # max 4 items, ≤ 10 mots
 
     def _col_label(col):
         return col.get('title', '') if isinstance(col, dict) else ''
@@ -7473,12 +7490,25 @@ def extract_document_content(file_bytes: bytes, filename: str) -> str:
 # ── Planner V4 (async, avec contexte document) ─────────────────────────────
 
 _V4_PLANNER_SYSTEM = """
-Tu es un consultant senior en communication visuelle. Tu génères des plans de présentation
-PowerPoint en JSON strict. Chaque slide a un layout choisi dans le catalogue fourni et un
-contenu précis adapté au layout. Privilégie la diversité des layouts et la densité
-éditoriale. Les graphiques (bar_chart, line_chart, etc.) ne doivent être utilisés QUE
-lorsque des données chiffrées réelles le justifient explicitement — ne force pas de
-graphiques si le sujet est qualitatif ou narratif.
+Tu es un directeur artistique senior spécialisé en présentations exécutives. Tu génères
+des plans de présentation PowerPoint en JSON strict. Philosophie absolue :
+
+UNE SLIDE = UNE IDÉE. Le texte est une étiquette, pas un rapport.
+
+Chaque slide doit être visuelle en priorité. Préfère les layouts riches (list_cards,
+col3, kpi_grid, entity, infographic, stat_hero, highlight_box) aux listes de texte
+(list_numbered, full_text). list_numbered et full_text sont des DERNIERS RECOURS.
+
+Limites strictes de texte :
+- items dans list_numbered : ≤ 5 mots pour le titre + ≤ 10 mots pour le body. MAX 4 items.
+- body dans full_text : ≤ 2 courts paragraphes de ≤ 25 mots chacun.
+- items dans two_col : ≤ 8 mots par item. MAX 4 items par colonne.
+- body de carte (list_cards) : ≤ 12 mots. MAX 4 cartes.
+- columns[].items (col3) : ≤ 8 mots par item. MAX 4 items.
+- JAMAIS de phrases de 3 lignes dans un bullet. JAMAIS plus de 4 bullets par slide.
+
+Les graphiques ne doivent être utilisés QUE si le sujet contient des données chiffrées
+réelles. Ne jamais forcer un graphique. Max 1-2 graphiques par présentation.
 """.strip()
 
 _V4_PLANNER_USER = """
@@ -7523,16 +7553,24 @@ table          — Tableau de données (title, section_label?, headers:[str], ro
 
 RÈGLES :
 1. La première slide est toujours "cover", la dernière "closing".
-2. Graphiques (bar_chart, line_chart, pie_chart, stacked_bar, waterfall, radar) : utiliser UNIQUEMENT si le sujet contient des données numériques réelles. Ne jamais forcer un graphique pour "faire beau". Max 1-2 graphiques par présentation.
-2b. Diagrammes structurels (process_flow, funnel, matrix_2x2, swot, pyramid, cycle, roadmap) : utiliser quand la structure logique l'exige (processus, entonnoir, comparaison). Max 1-2 par présentation.
+2. Graphiques : UNIQUEMENT si données chiffrées réelles. Max 1-2 par présentation.
+2b. Diagrammes structurels : UNIQUEMENT si la logique l'exige. Max 1-2 par présentation.
 3. Le contenu JSON de chaque slide doit correspondre EXACTEMENT aux champs du layout choisi.
 4. footer_text = baseline de la société (ex : "Confidentiel — NomSociété 2025").
 5. Répondre UNIQUEMENT avec le JSON ci-dessous, sans commentaire ni markdown.
-6. Chaque slide DOIT inclure "style": 0, 1 ou 2 dans son "content" — varie librement pour maximiser la diversité visuelle.
-7. Inclure "presentation_seed" (entier aléatoire 1-999999) à la racine pour garantir l'unicité visuelle de chaque run.
-8. Tout slide de type graphique (bar_chart, line_chart, pie_chart, stacked_bar, waterfall, radar) DOIT inclure un champ "analysis" : phrase(s) d'interprétation ou d'analyse développée (2-3 phrases minimum). Un graphique sans "analysis" est invalide.
-9. Enrichir chaque slide avec section_label (rubrique thématique courte en MAJUSCULES) et subtitle (accroche ou description en 1 ligne). Exemple: section_label:"STRATÉGIE 2025", subtitle:"Les 3 axes de transformation prioritaires".
-10. Pour les layouts col3 et list_cards, utiliser les champs enrichis : icon (emoji), label (catégorie courte), stat_value/stat_label (chiffre clé par colonne/carte). Cela produit des slides plus denses et percutantes.
+6. Chaque slide DOIT inclure "style": 0, 1 ou 2 dans son "content" — varie librement.
+7. Inclure "presentation_seed" (entier aléatoire 1-999999) à la racine.
+8. Tout slide graphique DOIT inclure "analysis" : 1-2 phrases d'interprétation.
+9. Enrichir chaque slide avec section_label (MAJUSCULES, ≤ 4 mots) et subtitle (1 ligne, ≤ 10 mots).
+10. list_cards et col3 : toujours inclure icon (emoji), stat_value/stat_label si pertinent.
+11. DENSITÉ VISUELLE : préférer list_cards, col3, kpi_grid, entity, stat_hero, infographic à list_numbered et full_text. full_text est réservé aux introductions et conclusions.
+12. TEXTE COURT ABSOLU :
+    - list_numbered items : titre ≤ 5 mots + body ≤ 10 mots. MAX 4 items.
+    - full_text body : ≤ 2 paragraphes de ≤ 25 mots chacun.
+    - two_col items : ≤ 8 mots par item. MAX 4 items/colonne.
+    - list_cards body : ≤ 12 mots. MAX 4 cartes.
+    - Tout bullet point ou body : JAMAIS plus d'une phrase. JAMAIS 3 lignes.
+    - Si le contenu nécessite plus de texte → fragmenter en plusieurs slides visuelles.
 
 FORMAT DE RÉPONSE :
 {{
@@ -7671,7 +7709,7 @@ async def run_pipeline_v4(
     log.info(f'[V4] Seed de présentation : {seed}')
 
     # Compléter si Claude en a généré moins que demandé
-    fallback_layouts = ['full_text', 'list_numbered', 'two_col', 'kpi_grid']
+    fallback_layouts = ['list_cards', 'col3', 'two_col', 'highlight_box']
     while len(slides_plan) < nb_slides:
         fb = fallback_layouts[len(slides_plan) % len(fallback_layouts)]
         slides_plan.append({
