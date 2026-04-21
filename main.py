@@ -8291,8 +8291,10 @@ RICHESSE VISUELLE OBLIGATOIRE :
 - Chaque slide DOIT avoir section_label (MAJUSCULES) et subtitle (accroche en 1 ligne)
 
 HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
-TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion
-TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot
+TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
+                    team_grid, stat_banner, icon_row, numbered_features, photo_text
+TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
+                    section_break
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
 TIER 4 (dernier recours, max 1 par présentation) : full_text
 
@@ -8361,6 +8363,35 @@ matrix_2x2     — Matrice 2×2 (Impact/Effort, Urgence/Importance...)
 swot           — Analyse SWOT
                  strengths/weaknesses/opportunities/threats:[≤4 items≤8mots chacun]
 
+─── LAYOUTS VISUELS ENRICHIS [TIER 1 — NOUVEAUX] ───
+team_grid      — Équipe / personnes avec avatars circulaires
+                 Champs OBLIGATOIRES : members:[{icon(emoji),name,role}] — 3 ou 4 membres
+                 Optionnel : department, stat_value, stat_label, body
+                 Exemple membre : {{"icon":"👩‍💼","name":"Marie Dupont","role":"DG","stat_value":"12 ans","stat_label":"EXP."}}
+
+stat_banner    — Bandeau de 3-4 grandes statistiques (chiffres premium)
+                 Champs OBLIGATOIRES : stats:[{value,label}] — 3 ou 4 stats
+                 Optionnel : sublabel(source), icon(emoji)
+                 Exemple : {{"value":"1 254+","label":"Clients actifs","sublabel":"Depuis 2018","icon":"🌍"}}
+
+icon_row       — 3-4 features en cercles d'icônes connectés horizontalement
+                 Champs OBLIGATOIRES : items:[{icon(emoji),title,body}] — 3 ou 4 items
+                 Optionnel : items:[str] pour bullets dans chaque feature
+
+numbered_features — Features avec grands numéros décoratifs (style éditorial)
+                 Champs OBLIGATOIRES : items:[{title,body}] — 3 ou 4 items
+                 Optionnel : number(override), stat_value, stat_label
+
+photo_text     — Zone photo (visuelle) + contenu structuré (3 items)
+                 Champs OBLIGATOIRES : items:[{title,body}] — 3 items
+                 Optionnel : icon(emoji dans item), stat_value(dans item)
+                 Usage : présenter une offre, un projet, un profil avec visuel
+
+section_break  — Slide de rupture dramatique entre sections majeures
+                 Champs OBLIGATOIRES : title (max 6 mots) — IMPACT XL
+                 Optionnel : subtitle, number(numéro de section)
+                 Usage : UNIQUEMENT pour séparer des sections importantes
+
 ─── LAYOUTS STRUCTURE [TIER 3 — UTILISER AVEC PARCIMONIE] ───
 list_numbered  — Liste 3-4 items UNIQUEMENT si séquence logique stricte
                  items:[{{title≤5mots,body≤10mots}}]×3-4 MAX
@@ -8391,6 +8422,9 @@ full_text      — UNIQUEMENT pour intro/conclusion narrative
 8. JAMAIS de slide avec seulement du texte non structuré. JAMAIS plus de 4 bullets.
 9. Chaque slide TIER 1 doit utiliser TOUS ses champs obligatoires — aucun ne peut être omis.
 10. Variété obligatoire : pas 2 fois le même layout dans une présentation de ≤10 slides.
+11. section_break : utiliser max 1 fois, uniquement si ≥10 slides avec sections distinctes.
+12. Nouveaux layouts TIER 1 (team_grid, stat_banner, icon_row, numbered_features, photo_text) :
+    utiliser au moins 1 sur 8+ slides — ils apportent une richesse visuelle que list_cards ne peut pas.
 
 FORMAT DE RÉPONSE :
 {{
