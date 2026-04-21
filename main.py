@@ -7491,6 +7491,138 @@ def layout_stat_banner_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_icon_row_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Rangée de 3-4 features avec icônes en cercles — pattern horizontal connecté.
+    v0 : cercles accent plein + ligne connectrice + badge numéro + titre + corps.
+    v1 : cercles dans cartes arrondies (fond neutre) + titre + items bullets.
+    v2 : cercles contour + connecteurs flèche colorée + titre + corps.
+    content: {title, section_label?, items:[{icon,title,body?,items?:[str]}]}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent1', '009CEA'),
+        theme.get('accent2', 'ED0000'),
+    ])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    items = content.get('items', content.get('columns', []))
+    n     = min(len(items), 4)
+    if n == 0:
+        return slide
+
+    v      = _v4_variant(content, 3, tp.get('seed', 0))
+    col_w  = _LY.CW / n
+    zone_h = _LY.CB - _LY.CT
+
+    def _if(it):
+        if not isinstance(it, dict):
+            return '●', str(it), '', []
+        body_text = it.get('body', '')
+        bullets   = it.get('items', it.get('bullets', []))
+        return (it.get('icon', '●'), it.get('title', ''), body_text, bullets)
+
+    if v == 0:
+        # Cercles plein + ligne connectrice + badge numéro + corps
+        r = 0.52
+        icon_cy = _LY.CT + 0.90
+        for i, it in enumerate(items[:n]):
+            icon, title, body, bullets = _if(it)
+            color  = accents[i % len(accents)]
+            cx     = _LY.CL + (i + 0.5) * col_w
+            # Ligne connectrice (sauf dernier)
+            if i < n - 1:
+                _h2_rect(slide, left=cx + r, top=icon_cy - 0.015,
+                         width=col_w - r, height=0.030, color='DDDDDD')
+            # Cercle
+            _h2_circle(slide, cx, icon_cy, r, color)
+            _h2_text(slide, icon, cx - r, icon_cy - r * 0.55, r * 2, r * 1.1,
+                     font, 26, 'FFFFFF', bold=True, align='center')
+            # Badge numéro
+            br = 0.18
+            _h2_circle(slide, cx + r * 0.68, icon_cy + r * 0.68, br, 'FFFFFF')
+            _h2_text(slide, str(i + 1), cx + r * 0.68 - br, icon_cy + r * 0.68 - br * 0.55,
+                     br * 2, br * 1.1, font, 9, color, bold=True, align='center')
+            # Titre
+            y = icon_cy + r + 0.24
+            tx = _LY.CL + i * col_w + 0.10
+            tw = col_w - 0.20
+            _h2_text(slide, title, tx, y, tw, 0.42,
+                     font, _LY.T_TITLE, dk1, bold=True, align='center')
+            y += 0.46
+            body_src = body or ('\n'.join(f'• {x}' for x in bullets[:3]))
+            if body_src:
+                _h2_text(slide, body_src, tx, y, tw, _LY.CB - y - 0.10,
+                         font, _LY.T_SMALL, '666666', bold=False, align='center',
+                         line_spacing=1.2)
+
+    elif v == 1:
+        # Cercles dans cartes arrondies + titre + bullets
+        for i, it in enumerate(items[:n]):
+            icon, title, body, bullets = _if(it)
+            color  = accents[i % len(accents)]
+            cx_card = _LY.CL + i * col_w + _LY.GAP_SM
+            cw      = col_w - _LY.GAP_SM * 2
+            _h2_rounded_rect(slide, left=cx_card, top=_LY.CT,
+                             width=cw, height=zone_h, color=_cbg(tp, i), radius=_LY.R_SM)
+            _h2_rect(slide, left=cx_card, top=_LY.CT, width=cw, height=0.05, color=color)
+            cx = cx_card + cw / 2
+            r  = min(0.50, cw * 0.22)
+            cy = _LY.CT + r + 0.22
+            _h2_circle(slide, cx, cy, r, color)
+            _h2_text(slide, icon, cx - r, cy - r * 0.55, r * 2, r * 1.1,
+                     font, int(r * 44), 'FFFFFF', bold=True, align='center')
+            y = cy + r + 0.22
+            _h2_text(slide, title, cx_card + _LY.PAD, y, cw - _LY.PAD * 2, 0.40,
+                     font, _LY.T_TITLE, dk1, bold=True, align='center')
+            y += 0.44
+            body_src = body or ('\n'.join(f'• {x}' for x in bullets[:3]))
+            if body_src:
+                _h2_text(slide, body_src, cx_card + _LY.PAD, y,
+                         cw - _LY.PAD * 2, _LY.CB - y - 0.14,
+                         font, _LY.T_SMALL, '555555', bold=False, align='left',
+                         line_spacing=1.2)
+
+    else:
+        # v2 : cercles contour + flèche colorée connectrice + titre + corps
+        r = 0.46
+        icon_cy = _LY.CT + 0.88
+        for i, it in enumerate(items[:n]):
+            icon, title, body, bullets = _if(it)
+            color  = accents[i % len(accents)]
+            cx     = _LY.CL + (i + 0.5) * col_w
+            # Flèche connectrice (ligne + triangulaire)
+            if i < n - 1:
+                line_x  = cx + r + 0.08
+                line_w  = col_w - r * 2 - 0.16
+                _h2_rect(slide, left=line_x, top=icon_cy - 0.012,
+                         width=line_w * 0.85, height=0.024, color=color)
+            # Halo léger derrière le cercle
+            _h2_circle(slide, cx, icon_cy, r + 0.08, _cbg(tp, i))
+            # Cercle plein
+            _h2_circle(slide, cx, icon_cy, r, color)
+            _h2_text(slide, icon, cx - r, icon_cy - r * 0.55, r * 2, r * 1.1,
+                     font, 22, 'FFFFFF', bold=True, align='center')
+            y = icon_cy + r + 0.24
+            tx = _LY.CL + i * col_w + 0.08
+            tw = col_w - 0.16
+            _h2_text(slide, title, tx, y, tw, 0.40,
+                     font, _LY.T_TITLE, dk1, bold=True, align='center')
+            y += 0.44
+            body_src = body or ('\n'.join(f'• {x}' for x in bullets[:3]))
+            if body_src:
+                _h2_text(slide, body_src, tx, y, tw, _LY.CB - y - 0.08,
+                         font, _LY.T_SMALL, '555555', bold=False, align='center',
+                         line_spacing=1.2)
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -8185,6 +8317,8 @@ async def run_pipeline_v4(
                 layout_team_grid_v4(prs, content, tp)
             elif layout_name in ('stat_banner',):
                 layout_stat_banner_v4(prs, content, tp)
+            elif layout_name in ('icon_row',):
+                layout_icon_row_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
