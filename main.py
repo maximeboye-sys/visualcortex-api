@@ -7623,6 +7623,93 @@ def layout_icon_row_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_section_break_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Slide de rupture entre sections — impact visuel fort, typographie XL.
+    v0 : moitié gauche sombre (dk1) + grande forme cercle à cheval + titre à droite.
+    v1 : bande verticale accent gauche + numéro oversize + titre + cercle décoratif.
+    v2 : fond plein dk1 + titre centré blanc + formes géométriques accent.
+    content: {title, subtitle?, number?, footer}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accents = tp.get('accent_cycle', [accent1])
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    title    = content.get('title', '')
+    subtitle = content.get('subtitle', '')
+    number   = str(content.get('number', ''))
+    footer   = content.get('footer', '')
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if v == 0:
+        # Demi-fond dk1 gauche + cercle à cheval sur la séparation + titre à droite
+        split_x = W * 0.44
+        _h2_rect(slide, left=0, top=0, width=split_x, height=H, color=dk1)
+        # Grand cercle creux à cheval sur la ligne
+        _h2_circle(slide, split_x, H / 2, 1.70, accent1)
+        _h2_circle(slide, split_x, H / 2, 1.26, dk1)
+        if number:
+            _h2_text(slide, number, 0.20, H / 2 - 0.70, split_x - 0.40, 0.80,
+                     font, 60, 'FFFFFF', bold=True, align='center')
+        tx = split_x + 1.90
+        tw = W - tx - 0.50
+        ty = H / 2 - (0.60 if not subtitle else 0.80)
+        _h2_text(slide, title, tx, ty, tw, 0.82,
+                 font, 30, dk1, bold=True, align='left')
+        if subtitle:
+            _h2_rect(slide, left=tx, top=ty + 0.86, width=1.60, height=0.03, color=accent1)
+            _h2_text(slide, subtitle, tx, ty + 0.94, tw, 0.38,
+                     font, 13, '777777', bold=False, align='left')
+
+    elif v == 1:
+        # Bande verticale accent gauche + numéro + cercle décoratif fond
+        band_w = 1.70
+        _h2_rect(slide, left=0, top=0, width=band_w, height=H, color=accent1)
+        num_txt = number if number else '◆'
+        _h2_text(slide, num_txt, 0, H / 2 - 0.60, band_w, 0.80,
+                 font, 40, 'FFFFFF', bold=True, align='center')
+        # Cercle décoratif léger en fond côté droit
+        _h2_circle(slide, W - 1.20, H / 2, 2.30, _cbg(tp, 1))
+        cx = band_w + 0.90
+        cw = W - cx - 0.55
+        _h2_text(slide, title, cx, H / 2 - 0.52, cw, 0.72,
+                 font, 32, dk1, bold=True, align='left')
+        if subtitle:
+            _h2_rect(slide, left=cx, top=H / 2 + 0.24, width=1.80, height=0.03, color=accent1)
+            _h2_text(slide, subtitle, cx, H / 2 + 0.32, cw, 0.36,
+                     font, 13, '666666', bold=False, align='left')
+
+    else:
+        # v2 : fond plein dk1 + titre centré blanc + formes géométriques
+        _h2_rect(slide, left=0, top=0, width=W, height=H, color=dk1)
+        # Cercle décoratif haut-gauche (semi-transparent via couleur atténuée)
+        _h2_circle(slide, 0.40, H * 0.18, 1.50, _darken(accent1, 0.55))
+        # Cercle décoratif bas-droit
+        _h2_circle(slide, W - 0.40, H * 0.82, 1.90, _darken(dk1, 0.78))
+        # Ligne accent centrée
+        _h2_rect(slide, left=W * 0.30, top=H * 0.36, width=W * 0.40, height=0.04, color=accent1)
+        if number:
+            _h2_text(slide, f'{number}.', 0, H * 0.28, W, 0.46,
+                     font, 16, accent1, bold=True, align='center')
+        _h2_text(slide, title, W * 0.08, H * 0.40, W * 0.84, 0.90,
+                 font, 36, 'FFFFFF', bold=True, align='center')
+        if subtitle:
+            _h2_text(slide, subtitle, W * 0.15, H * 0.64, W * 0.70, 0.38,
+                     font, 13, 'CCCCCC', bold=False, align='center')
+
+    if footer:
+        fg = '999999' if v < 2 else 'AAAAAA'
+        _h2_text(slide, footer, 0.60, H - 0.38, W - 1.20, 0.28,
+                 font, 9, fg, bold=False, align='center')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -8319,6 +8406,8 @@ async def run_pipeline_v4(
                 layout_stat_banner_v4(prs, content, tp)
             elif layout_name in ('icon_row',):
                 layout_icon_row_v4(prs, content, tp)
+            elif layout_name in ('section_break',):
+                layout_section_break_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
