@@ -8781,7 +8781,8 @@ RICHESSE VISUELLE OBLIGATOIRE :
 
 HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
 TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
-                    team_grid, stat_banner, icon_row, numbered_features, photo_text
+                    team_grid, stat_banner, icon_row, numbered_features, photo_text,
+                    side_panel, circle_stats, mission_vision, photo_grid
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
                     section_break
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
@@ -8852,7 +8853,7 @@ matrix_2x2     — Matrice 2×2 (Impact/Effort, Urgence/Importance...)
 swot           — Analyse SWOT
                  strengths/weaknesses/opportunities/threats:[≤4 items≤8mots chacun]
 
-─── LAYOUTS VISUELS ENRICHIS [TIER 1 — NOUVEAUX] ───
+─── LAYOUTS VISUELS ENRICHIS [TIER 1 — PRÉFÉRER POUR IMPACT VISUEL] ───
 team_grid      — Équipe / personnes avec avatars circulaires
                  Champs OBLIGATOIRES : members:[{icon(emoji),name,role}] — 3 ou 4 membres
                  Optionnel : department, stat_value, stat_label, body
@@ -8875,6 +8876,24 @@ photo_text     — Zone photo (visuelle) + contenu structuré (3 items)
                  Champs OBLIGATOIRES : items:[{title,body}] — 3 items
                  Optionnel : icon(emoji dans item), stat_value(dans item)
                  Usage : présenter une offre, un projet, un profil avec visuel
+
+side_panel     — Sidebar colorée pleine hauteur + titre vertical + items (style magazine)
+                 Champs OBLIGATOIRES : panel_title(≤4 mots) + items:[{icon,title,body}]×3-4
+                 Usage : pages "À propos", "Services", "Fonctionnalités" avec sidebar éditoriale
+
+circle_stats   — 3 grands anneaux/cercles avec % géant — style éditorial premium
+                 Champs OBLIGATOIRES : circles:[{value,label,description}] — exactement 3
+                 Optionnel : bullets:[str] dans chaque cercle
+                 Exemple : {{"value":"81%","label":"Satisfaction client","description":"Base 2 000 répondants"}}
+
+mission_vision — 2 panneaux couleur plein fond côte-à-côte (Mission | Vision, Avant | Après…)
+                 Champs OBLIGATOIRES : panels:[{icon,label,title,body}]×2
+                 Optionnel : items:[str] dans chaque panneau
+                 Exemple panneau : {{"icon":"🎯","label":"MISSION","title":"Notre raison d'être","body":"…"}}
+
+photo_grid     — Grille de 2-3 zones photos avec légendes colorées superposées
+                 Champs OBLIGATOIRES : photos:[{title,subtitle?}] — 2 ou 3 photos
+                 Usage : portfolio, projets, cas clients, galerie visuelle
 
 section_break  — Slide de rupture dramatique entre sections majeures
                  Champs OBLIGATOIRES : title (max 6 mots) — IMPACT XL
@@ -8912,8 +8931,13 @@ full_text      — UNIQUEMENT pour intro/conclusion narrative
 9. Chaque slide TIER 1 doit utiliser TOUS ses champs obligatoires — aucun ne peut être omis.
 10. Variété obligatoire : pas 2 fois le même layout dans une présentation de ≤10 slides.
 11. section_break : utiliser max 1 fois, uniquement si ≥10 slides avec sections distinctes.
-12. Nouveaux layouts TIER 1 (team_grid, stat_banner, icon_row, numbered_features, photo_text) :
-    utiliser au moins 1 sur 8+ slides — ils apportent une richesse visuelle que list_cards ne peut pas.
+12. Layouts visuels enrichis à exploiter activement (au moins 2 sur 8+ slides) :
+    team_grid, stat_banner, icon_row, numbered_features, photo_text,
+    side_panel, circle_stats, mission_vision, photo_grid
+    → mission_vision pour toute comparaison binaire (avant/après, mission/vision, forces/limites)
+    → circle_stats pour données de satisfaction, performance, taux (3 indicateurs en %)
+    → photo_grid pour portfolio, projets, cas clients (contenu visuel-first)
+    → side_panel pour pages riches avec sidebar éditoriale
 
 FORMAT DE RÉPONSE :
 {{
