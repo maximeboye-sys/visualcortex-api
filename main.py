@@ -8123,6 +8123,127 @@ def layout_side_panel_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_circle_stats_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    3 grands cercles/anneaux avec % géant — style image 4 (81%, 72%, 63%).
+    v0 : anneau (deux cercles concentriques) + % centré + label + description.
+    v1 : cercle plein accent + % blanc + label + description + barre comparaison.
+    v2 : cercle contour épais coloré + % accent géant + label + bullets.
+    content: {title, section_label?, circles:[{value,label,description?,sublabel?,bullets?:[str]}]}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent1', '009CEA'),
+        theme.get('accent2', 'ED0000'),
+    ])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    circles = content.get('circles', content.get('stats', content.get('kpis', [])))
+    n = min(len(circles), 3)
+    if n == 0:
+        return slide
+
+    v      = _v4_variant(content, 3, tp.get('seed', 0))
+    col_w  = _LY.CW / n
+    zone_h = _LY.CB - _LY.CT
+
+    def _cf(c):
+        if not isinstance(c, dict):
+            return str(c), '', '', []
+        return (str(c.get('value', c.get('val', ''))),
+                c.get('label', ''),
+                c.get('description', c.get('body', c.get('sublabel', ''))),
+                c.get('bullets', c.get('items', [])))
+
+    for i, c in enumerate(circles[:n]):
+        val, label, desc, bullets = _cf(c)
+        color  = accents[i % len(accents)]
+        cx     = _LY.CL + (i + 0.5) * col_w
+
+        if v == 0:
+            # Anneau : grand cercle fond neutre + cercle blanc intérieur + % centré
+            r_outer = min(col_w * 0.38, 1.40)
+            r_inner = r_outer * 0.70
+            cy      = _LY.CT + r_outer + 0.20
+            # Cercle extérieur (couleur accent)
+            _h2_circle(slide, cx, cy, r_outer, color)
+            # Cercle intérieur (fond blanc / bg)
+            _h2_circle(slide, cx, cy, r_inner, 'FFFFFF')
+            # Valeur % dans le trou
+            _h2_text(slide, val, cx - r_inner, cy - r_inner * 0.52,
+                     r_inner * 2, r_inner * 1.04,
+                     font, int(r_inner * 42), color, bold=True, align='center')
+            y = cy + r_outer + 0.22
+            _h2_text(slide, label, _LY.CL + i * col_w + 0.10, y,
+                     col_w - 0.20, 0.36,
+                     font, _LY.T_LABEL, dk1, bold=True, align='center')
+            y += 0.38
+            if desc:
+                _h2_text(slide, desc, _LY.CL + i * col_w + 0.10, y,
+                         col_w - 0.20, _LY.CB - y - 0.08,
+                         font, _LY.T_SMALL, '666666', bold=False, align='center',
+                         line_spacing=1.2)
+
+        elif v == 1:
+            # Cercle plein + % blanc + barre de comparaison bas
+            r   = min(col_w * 0.34, 1.20)
+            cy  = _LY.CT + r + 0.24
+            _h2_circle(slide, cx, cy, r, color)
+            _h2_text(slide, val, cx - r, cy - r * 0.52, r * 2, r * 1.04,
+                     font, int(r * 46), 'FFFFFF', bold=True, align='center')
+            y = cy + r + 0.24
+            _h2_text(slide, label, _LY.CL + i * col_w + 0.10, y,
+                     col_w - 0.20, 0.36,
+                     font, _LY.T_LABEL, dk1, bold=True, align='center')
+            y += 0.38
+            if desc:
+                _h2_text(slide, desc, _LY.CL + i * col_w + 0.10, y,
+                         col_w - 0.20, _LY.CB - y - 0.42,
+                         font, _LY.T_SMALL, '666666', bold=False, align='center',
+                         line_spacing=1.2)
+            # Barre de comparaison en bas
+            try:
+                pct = float(str(val).replace('%', '').strip()) / 100
+            except Exception:
+                pct = 0.5
+            bar_w = col_w - 0.40
+            bar_x = _LY.CL + i * col_w + 0.20
+            _h2_rect(slide, left=bar_x, top=_LY.CB - 0.28,
+                     width=bar_w, height=0.10, color='EEEEEE')
+            _h2_rect(slide, left=bar_x, top=_LY.CB - 0.28,
+                     width=max(0.02, bar_w * pct), height=0.10, color=color)
+
+        else:
+            # v2 : grand contour coloré + % géant accent + label + bullets
+            r   = min(col_w * 0.36, 1.28)
+            cy  = _LY.CT + r + 0.22
+            # Contour épais = grand cercle couleur + cercle intérieur fond légèrement coloré
+            _h2_circle(slide, cx, cy, r, color)
+            _h2_circle(slide, cx, cy, r * 0.82, _cbg(tp, i))
+            # % accent
+            ri = r * 0.82
+            _h2_text(slide, val, cx - ri, cy - ri * 0.52, ri * 2, ri * 1.04,
+                     font, int(ri * 44), color, bold=True, align='center')
+            y = cy + r + 0.22
+            _h2_text(slide, label, _LY.CL + i * col_w + 0.10, y,
+                     col_w - 0.20, 0.36,
+                     font, _LY.T_LABEL, dk1, bold=True, align='center')
+            y += 0.40
+            body_src = desc or ('\n'.join(f'• {b}' for b in bullets[:3]))
+            if body_src:
+                _h2_text(slide, body_src, _LY.CL + i * col_w + 0.10, y,
+                         col_w - 0.20, _LY.CB - y - 0.08,
+                         font, _LY.T_SMALL, '555555', bold=False, align='center',
+                         line_spacing=1.2)
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -8861,6 +8982,8 @@ async def run_pipeline_v4(
                 layout_numbered_features_v4(prs, content, tp)
             elif layout_name in ('side_panel',):
                 layout_side_panel_v4(prs, content, tp)
+            elif layout_name in ('circle_stats',):
+                layout_circle_stats_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
