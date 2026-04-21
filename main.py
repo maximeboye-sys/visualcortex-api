@@ -3174,29 +3174,138 @@ def analyze_template_v4(prs: Presentation) -> dict:
         _cycle_raw.append(_cycle_raw[len(_cycle_raw) % max(len(_cycle_raw), 1)])
     accent_cycle = _cycle_raw
 
-    # Light neutral for card backgrounds — derived from template light color if possible
-    lt1 = theme.get('lt1', 'FFFFFF')
-    # If lt1 is near-white (luminance > 95%), use a subtle off-white; else use lt1 itself
+    # ── Analyse du fond maître (gradient / image / uni / plain) ─────────────
+    bg_type   = 'plain'   # 'plain' | 'solid' | 'gradient' | 'image'
+    bg_colors: list = []  # couleurs hex extraites du fond
+    bg_is_dark = False    # True si fond sombre (luminosité < 0.42)
     try:
-        r, g, b = int(lt1[0:2], 16), int(lt1[2:4], 16), int(lt1[4:6], 16)
-        lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-        card_bg_light = 'F8F8F8' if lum > 0.94 else lt1
-        card_bg_mid   = 'F0F0F0' if lum > 0.94 else lt1
-    except Exception:
-        card_bg_light, card_bg_mid = 'F8F8F8', 'F0F0F0'
+        import lxml.etree as _etxml
+        master_el = prs.slide_masters[0]._element
+        cSld_m    = master_el.find(qn('p:cSld'))
+        if cSld_m is not None:
+            bgEl = cSld_m.find(qn('p:bg'))
+            if bgEl is not None:
+                bgPr = bgEl.find(qn('p:bgPr'))
+                if bgPr is not None:
+                    gf = bgPr.find(qn('a:gradFill'))
+                    if gf is not None:
+                        bg_type = 'gradient'
+                        gsLst = gf.find(qn('a:gsLst'))
+                        if gsLst is not None:
+                            for gs in gsLst.findall(qn('a:gs')):
+                                for c_el in list(gs):
+                                    tag = c_el.tag.split('}')[-1]
+                                    if tag == 'srgbClr':
+                                        v = c_el.get('val', '').upper()
+                                        if v:
+                                            bg_colors.append(v)
+                                    elif tag == 'schemeClr':
+                                        slot = c_el.get('val', '')
+                                        if slot in theme:
+                                            bg_colors.append(theme[slot])
+                    elif bgPr.find(qn('a:blipFill')) is not None:
+                        bg_type = 'image'
+                    else:
+                        sf = bgPr.find(qn('a:solidFill'))
+                        if sf is not None:
+                            for c_el in list(sf):
+                                tag = c_el.tag.split('}')[-1]
+                                if tag == 'srgbClr':
+                                    v = c_el.get('val', '').upper()
+                                    if v:
+                                        bg_colors.append(v)
+                                elif tag == 'schemeClr':
+                                    slot = c_el.get('val', '')
+                                    if slot in theme:
+                                        bg_colors.append(theme[slot])
+                            bg_type = 'solid' if bg_colors else 'plain'
+    except Exception as e:
+        log.warning(f'[V4] bg master analysis: {e}')
+
+    # Luminosité du fond → détecter fond sombre
+    _bg_check = bg_colors[0] if bg_colors else theme.get('dk1', '')
+    if _bg_check:
+        try:
+            _br, _bg2, _bb = int(_bg_check[0:2], 16), int(_bg_check[2:4], 16), int(_bg_check[4:6], 16)
+            bg_is_dark = (0.299 * _br + 0.587 * _bg2 + 0.114 * _bb) / 255 < 0.42
+        except Exception:
+            bg_is_dark = False
+
+    # ── Layouts avec formes décoratives (héritent du master, pas de fond propre) ──
+    # Identifier le layout le plus "riche" en décors template → privilégié par _blank_v4
+    rich_layout_idx  = None
+    max_deco_shapes  = 0
+    try:
+        for _idx, _lay in enumerate(prs.slide_layouts):
+            if _layout_has_own_bg(_lay):
+                continue
+            _deco = sum(
+                1 for _sh in _lay.shapes
+                if not getattr(_sh, 'is_placeholder', False)
+                and getattr(_sh, 'shape_type', 0) not in (13, 14)  # skip pictures/OLE
+            )
+            if _deco > max_deco_shapes:
+                max_deco_shapes = _deco
+                rich_layout_idx = _idx
+    except Exception as e:
+        log.warning(f'[V4] rich layout detection: {e}')
+
+    # ── Card backgrounds — interpolation dk1 ↔ lt1 dans la famille du template ──
+    lt1 = theme.get('lt1', 'FFFFFF')
+    dk1_hex = theme.get('dk1', '374649')
+
+    def _lum(h):
+        try:
+            return (0.299 * int(h[0:2], 16) + 0.587 * int(h[2:4], 16) + 0.114 * int(h[4:6], 16)) / 255
+        except Exception:
+            return 0.5
+
+    def _blend(h1, h2, t):
+        """Interpolation linéaire entre deux couleurs hex."""
+        try:
+            r = int(int(h1[0:2], 16) * (1 - t) + int(h2[0:2], 16) * t)
+            g = int(int(h1[2:4], 16) * (1 - t) + int(h2[2:4], 16) * t)
+            b = int(int(h1[4:6], 16) * (1 - t) + int(h2[4:6], 16) * t)
+            return f'{max(0,min(255,r)):02X}{max(0,min(255,g)):02X}{max(0,min(255,b)):02X}'
+        except Exception:
+            return h2
+
+    dk1_lum = _lum(dk1_hex)
+    lt1_lum = _lum(lt1)
+    span    = max(lt1_lum - dk1_lum, 0.01)
+
+    # Cibler luminosité 0.93 (light) et 0.88 (mid) dans la famille du template
+    t_light = max(0.0, min(1.0, (0.93 - dk1_lum) / span))
+    t_mid   = max(0.0, min(1.0, (0.87 - dk1_lum) / span))
+    card_bg_light = _blend(dk1_hex, lt1, t_light)
+    card_bg_mid   = _blend(dk1_hex, lt1, t_mid)
+
+    # Si fond foncé : les cartes doivent être nettement claires pour contraster
+    if bg_is_dark:
+        card_bg_light = _blend(dk1_hex, lt1, max(t_light, 0.90))
+        card_bg_mid   = _blend(dk1_hex, lt1, max(t_mid,   0.84))
 
     tp = {
-        'theme':          theme,
-        'layout_map':     layout_map,
-        'logo_zone':      logo_zone,
-        'font':           font,
-        'accent_cycle':   accent_cycle,
-        'card_bg_light':  card_bg_light,   # nearly white card background
-        'card_bg_mid':    card_bg_mid,     # slightly darker alternating background
-        'W':              W,
-        'H':              H,
+        'theme':            theme,
+        'layout_map':       layout_map,
+        'logo_zone':        logo_zone,
+        'font':             font,
+        'accent_cycle':     accent_cycle,
+        'card_bg_light':    card_bg_light,
+        'card_bg_mid':      card_bg_mid,
+        'bg_type':          bg_type,          # 'plain'|'solid'|'gradient'|'image'
+        'bg_colors':        bg_colors,        # couleurs extraites du fond master
+        'bg_is_dark':       bg_is_dark,       # fond sombre → adapter rendu
+        'bg_rich':          bg_type in ('gradient', 'image'),
+        'rich_layout_idx':  rich_layout_idx,  # layout le plus décoré sans fond propre
+        'W':                W,
+        'H':                H,
     }
-    log.info(f'[V4] tp: theme={list(theme.items())[:4]}, lmap={layout_map}, font={font}, cycle={accent_cycle[:3]}, card_bg={card_bg_light}')
+    log.info(
+        f'[V4] tp: theme={list(theme.items())[:4]}, bg={bg_type}(dark={bg_is_dark}), '
+        f'rich_layout={rich_layout_idx}(deco={max_deco_shapes}), '
+        f'font={font}, cycle={accent_cycle[:2]}, card_bg={card_bg_light}'
+    )
     return tp
 
 
