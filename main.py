@@ -7710,6 +7710,105 @@ def layout_section_break_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_photo_text_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Zone photo (placeholder visuel) + contenu structuré — layouts inspirés images 1/2/4.
+    v0 : photo gauche (large) + 3 items avec icône et trait à droite.
+    v1 : 2 photos empilées gauche + liste d'items à droite avec stats.
+    v2 : photo droite + contenu gauche (inverse) — 3 items avec barre accent.
+    La zone photo est rendue en fond neutre + barre accent + icône centrée.
+    content: {title, section_label?, items:[{icon?,title,body?,stat_value?}], footer}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accents = tp.get('accent_cycle', [accent1])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    items  = content.get('items', [])
+    zone_h = _LY.CB - _LY.CT
+    v      = _v4_variant(content, 3, tp.get('seed', 0))
+
+    def _photo_zone(x, y, w, h, color):
+        """Placeholder photo : fond neutre + barre accent + icône."""
+        _h2_rounded_rect(slide, left=x, top=y, width=w, height=h,
+                         color=_cbg(tp, 1), radius=_LY.R_SM)
+        _h2_rect(slide, left=x, top=y, width=w, height=0.04, color=color)
+        _h2_rect(slide, left=x, top=y + h - 0.40, width=w, height=0.40, color=color)
+        _h2_text(slide, '🖼', x, y + h / 2 - 0.28, w, 0.56,
+                 font, 28, 'BBBBBB', bold=False, align='center')
+
+    def _item_row(it, ix, iy, iw, ih, color):
+        if not isinstance(it, dict):
+            it = {'title': str(it)}
+        icon  = it.get('icon', '')
+        title = it.get('title', '')
+        body  = it.get('body', '')
+        sv    = it.get('stat_value', '')
+        _h2_rounded_rect(slide, left=ix, top=iy + 0.04,
+                         width=iw, height=ih - 0.08, color=_cbg(tp, 0), radius=_LY.R_SM)
+        _h2_rect(slide, left=ix, top=iy + 0.04, width=0.04, height=ih - 0.08, color=color)
+        tx = ix + 0.16
+        if icon:
+            _h2_icon_circle(slide, tx + 0.24, iy + ih / 2, 0.22, icon, font, color, 'FFFFFF', 11)
+            tx += 0.60
+        tw_stat = 1.20 if sv else 0
+        _h2_text(slide, title, tx, iy + 0.12, iw - (tx - ix) - tw_stat - 0.10, 0.30,
+                 font, _LY.T_TITLE, dk1, bold=True, align='left')
+        if body:
+            _h2_text(slide, body, tx, iy + 0.44, iw - (tx - ix) - tw_stat - 0.10, ih - 0.52,
+                     font, _LY.T_SMALL, '666666', bold=False, align='left', line_spacing=1.15)
+        if sv:
+            _h2_text(slide, sv, ix + iw - tw_stat - 0.06, iy + (ih - 0.40) / 2,
+                     tw_stat, 0.40, font, 18, color, bold=True, align='right')
+
+    if v == 0:
+        # Photo gauche (4.8") + items à droite
+        pw = 4.80
+        tx = _LY.CL + pw + _LY.GAP_LG
+        tw = _LY.CW - pw - _LY.GAP_LG
+        _photo_zone(_LY.CL, _LY.CT, pw, zone_h, accent1)
+        n = min(len(items), 3)
+        if n > 0:
+            ih = zone_h / n
+            for i, it in enumerate(items[:n]):
+                _item_row(it, tx, _LY.CT + i * ih, tw, ih, accents[i % len(accents)])
+
+    elif v == 1:
+        # 2 photos empilées gauche + items droite
+        pw = 5.10
+        tx = _LY.CL + pw + _LY.GAP_LG
+        tw = _LY.CW - pw - _LY.GAP_LG
+        ph1 = zone_h * 0.56
+        ph2 = zone_h - ph1 - _LY.GAP_SM
+        _photo_zone(_LY.CL, _LY.CT, pw, ph1, accent1)
+        _photo_zone(_LY.CL, _LY.CT + ph1 + _LY.GAP_SM, pw, ph2,
+                    accents[1 % len(accents)])
+        n = min(len(items), 4)
+        if n > 0:
+            ih = zone_h / n
+            for i, it in enumerate(items[:n]):
+                _item_row(it, tx, _LY.CT + i * ih, tw, ih, accents[i % len(accents)])
+
+    else:
+        # v2 : photo droite + items gauche
+        pw = 4.60
+        tw = _LY.CW - pw - _LY.GAP_LG
+        px = _LY.CL + tw + _LY.GAP_LG
+        _photo_zone(px, _LY.CT, pw, zone_h, accent1)
+        n = min(len(items), 3)
+        if n > 0:
+            ih = zone_h / n
+            for i, it in enumerate(items[:n]):
+                _item_row(it, _LY.CL, _LY.CT + i * ih, tw, ih, accents[i % len(accents)])
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -8408,6 +8507,8 @@ async def run_pipeline_v4(
                 layout_icon_row_v4(prs, content, tp)
             elif layout_name in ('section_break',):
                 layout_section_break_v4(prs, content, tp)
+            elif layout_name in ('photo_text',):
+                layout_photo_text_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
