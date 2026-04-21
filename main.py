@@ -8358,6 +8358,92 @@ def layout_mission_vision_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_photo_grid_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Grille de zones photos avec légendes superposées — images 1 et 2.
+    v0 : 2 photos côte-à-côte, légende barre couleur bas + titre blanc + sous-titre.
+    v1 : 3 photos en rangée, légende compacte bas + titre blanc.
+    v2 : 1 grande photo gauche + 2 photos empilées droite, légende chacune.
+    Les zones photos sont rendues en fond neutre + icône centrale (placeholder).
+    content: {title, section_label?, photos:[{title,subtitle?,body?,icon?}]×2-3}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accents = tp.get('accent_cycle', [accent1])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    photos = content.get('photos', content.get('items', []))
+    zone_h = _LY.CB - _LY.CT
+    v      = _v4_variant(content, 3, tp.get('seed', 0))
+
+    def _photo_box(x, y, w, h, pdata, color):
+        """Zone photo : fond neutre + barre accent bas + légende superposée."""
+        icon     = pdata.get('icon', '🖼') if isinstance(pdata, dict) else '🖼'
+        title    = pdata.get('title', '') if isinstance(pdata, dict) else str(pdata)
+        subtitle = pdata.get('subtitle', '') if isinstance(pdata, dict) else ''
+        body     = pdata.get('body', '') if isinstance(pdata, dict) else ''
+
+        # Fond photo (neutre)
+        _h2_rounded_rect(slide, left=x, top=y, width=w, height=h,
+                         color=_cbg(tp, 1), radius=_LY.R_SM)
+        # Icône placeholder centré
+        _h2_text(slide, icon, x, y + h / 2 - 0.36, w, 0.56,
+                 font, 30, 'BBBBBB', bold=False, align='center')
+        # Bande légende en bas (colorée, semi-opaque simulée par fond plein)
+        leg_h = 0.52 + (0.24 if subtitle or body else 0.0)
+        _h2_rect(slide, left=x, top=y + h - leg_h, width=w, height=leg_h, color=color)
+        # Titre blanc sur la bande
+        _h2_text(slide, title, x + 0.14, y + h - leg_h + 0.08,
+                 w - 0.28, 0.34,
+                 font, _LY.T_LABEL, 'FFFFFF', bold=True, align='left')
+        if subtitle or body:
+            sub_text = subtitle or body
+            _h2_text(slide, sub_text, x + 0.14, y + h - leg_h + 0.42,
+                     w - 0.28, 0.22,
+                     font, 9, 'EEEEEE', bold=False, align='left')
+
+    if v == 0:
+        # 2 photos côte-à-côte
+        n  = min(len(photos), 2)
+        pw = (_LY.CW - _LY.GAP_MD * (n - 1)) / max(n, 1)
+        for i, p in enumerate(photos[:n]):
+            px = _LY.CL + i * (pw + _LY.GAP_MD)
+            _photo_box(px, _LY.CT, pw, zone_h, p, accents[i % len(accents)])
+
+    elif v == 1:
+        # 3 photos en rangée
+        n  = min(len(photos), 3)
+        pw = (_LY.CW - _LY.GAP_SM * (n - 1)) / max(n, 1)
+        for i, p in enumerate(photos[:n]):
+            px = _LY.CL + i * (pw + _LY.GAP_SM)
+            _photo_box(px, _LY.CT, pw, zone_h, p, accents[i % len(accents)])
+
+    else:
+        # v2 : 1 grande photo gauche + 2 petites empilées droite
+        n      = min(len(photos), 3)
+        big_w  = _LY.CW * 0.56
+        sm_w   = _LY.CW - big_w - _LY.GAP_MD
+        sm_h   = (zone_h - _LY.GAP_SM) / 2
+        sm_x   = _LY.CL + big_w + _LY.GAP_MD
+
+        if n >= 1:
+            _photo_box(_LY.CL, _LY.CT, big_w, zone_h, photos[0],
+                       accents[0 % len(accents)])
+        if n >= 2:
+            _photo_box(sm_x, _LY.CT, sm_w, sm_h, photos[1],
+                       accents[1 % len(accents)])
+        if n >= 3:
+            _photo_box(sm_x, _LY.CT + sm_h + _LY.GAP_SM, sm_w, sm_h, photos[2],
+                       accents[2 % len(accents)])
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -9100,6 +9186,8 @@ async def run_pipeline_v4(
                 layout_circle_stats_v4(prs, content, tp)
             elif layout_name in ('mission_vision',):
                 layout_mission_vision_v4(prs, content, tp)
+            elif layout_name in ('photo_grid',):
+                layout_photo_grid_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
