@@ -7364,6 +7364,133 @@ def layout_team_grid_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_stat_banner_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Bandeau de 3-4 grandes statistiques — style premium éditorial.
+    v0 : cartes arrondies + cercle accent derrière la valeur + icône optionnelle.
+    v1 : colonnes pleine hauteur alternées fond accent / fond neutre.
+    v2 : valeurs géantes centrées + séparateurs verticaux + icône en cercle.
+    content: {title, section_label?, stats:[{value,label,sublabel?,icon?}]}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent1', '009CEA'),
+        theme.get('accent2', 'ED0000'),
+    ])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    stats = content.get('stats', content.get('kpis', []))
+    n = min(len(stats), 4)
+    if n == 0:
+        return slide
+
+    v      = _v4_variant(content, 3, tp.get('seed', 0))
+    cell_w = _LY.CW / n
+    zone_h = _LY.CB - _LY.CT
+
+    def _sf(s):
+        if not isinstance(s, dict):
+            return str(s), '', '', ''
+        return (str(s.get('value', s.get('val', ''))),
+                s.get('label', ''),
+                s.get('sublabel', s.get('sub', '')),
+                s.get('icon', ''))
+
+    if v == 0:
+        # Carte arrondie + cercle décoratif en fond + valeur + label
+        for i, st in enumerate(stats[:n]):
+            val, label, sub, icon = _sf(st)
+            color  = accents[i % len(accents)]
+            card_x = _LY.CL + i * cell_w + _LY.GAP_SM
+            card_w = cell_w - _LY.GAP_SM * 2
+            card_h = zone_h - 0.10
+            _h2_rounded_rect(slide, left=card_x, top=_LY.CT + 0.05,
+                             width=card_w, height=card_h, color='F8F8F8', radius=_LY.R_SM)
+            # Grand cercle décoratif en arrière-plan (couleur accent si icône, sinon neutre)
+            r = min(card_w * 0.36, 0.85)
+            cx_card = card_x + card_w / 2
+            _h2_circle(slide, cx_card, _LY.CT + 0.05 + r + 0.18, r, color)
+            ty = _LY.CT + 0.18
+            if icon:
+                _h2_text(slide, icon, card_x, ty, card_w, 0.44,
+                         font, 24, 'FFFFFF', bold=True, align='center')
+                ty += 0.44
+            _h2_text(slide, val, card_x, ty, card_w, 0.80,
+                     font, 38, 'FFFFFF', bold=True, align='center')
+            base_y = _LY.CT + 0.05 + r * 2 + 0.44
+            _h2_rect(slide, left=card_x + card_w * 0.20, top=base_y,
+                     width=card_w * 0.60, height=0.025, color='DDDDDD')
+            base_y += 0.06
+            _h2_text(slide, label, card_x + _LY.PAD, base_y,
+                     card_w - _LY.PAD * 2, 0.36,
+                     font, _LY.T_LABEL, dk1, bold=True, align='center')
+            if sub:
+                _h2_text(slide, sub, card_x + _LY.PAD, base_y + 0.38,
+                         card_w - _LY.PAD * 2, 0.28,
+                         font, _LY.T_SMALL, '888888', bold=False, align='center')
+
+    elif v == 1:
+        # Colonnes pleine hauteur alternées
+        for i, st in enumerate(stats[:n]):
+            val, label, sub, icon = _sf(st)
+            color  = accents[i % len(accents)]
+            is_dark = (i % 2 == 0)
+            bg     = color if is_dark else _cbg(tp, i)
+            fg     = 'FFFFFF' if is_dark else dk1
+            val_c  = 'FFFFFF' if is_dark else color
+            _h2_rect(slide, left=_LY.CL + i * cell_w, top=_LY.CT,
+                     width=cell_w, height=zone_h, color=bg)
+            cy_mid = _LY.CT + zone_h / 2
+            y = cy_mid - (0.88 if icon else 0.60)
+            if icon:
+                _h2_text(slide, icon, _LY.CL + i * cell_w, y, cell_w, 0.46,
+                         font, 26, fg, bold=True, align='center')
+                y += 0.50
+            _h2_text(slide, val, _LY.CL + i * cell_w, y, cell_w, 0.78,
+                     font, 44, val_c, bold=True, align='center')
+            y += 0.80
+            _h2_text(slide, label, _LY.CL + i * cell_w, y, cell_w, 0.34,
+                     font, _LY.T_LABEL, fg, bold=True, align='center')
+            if sub:
+                _h2_text(slide, sub, _LY.CL + i * cell_w, y + 0.36, cell_w, 0.26,
+                         font, _LY.T_SMALL, fg, bold=False, align='center')
+
+    else:
+        # v2 : valeurs géantes + séparateurs verticaux + icône en cercle
+        for i, st in enumerate(stats[:n]):
+            val, label, sub, icon = _sf(st)
+            color = accents[i % len(accents)]
+            cx    = _LY.CL + (i + 0.5) * cell_w
+            y     = _LY.CT + zone_h / 2 - (1.0 if icon else 0.70)
+            if icon:
+                _h2_circle(slide, cx, y + 0.28, 0.30, color)
+                _h2_text(slide, icon, cx - 0.30, y + 0.28 - 0.15, 0.60, 0.30,
+                         font, 16, 'FFFFFF', bold=True, align='center')
+                y += 0.72
+            _h2_text(slide, val, _LY.CL + i * cell_w, y, cell_w, 0.82,
+                     font, 50, color, bold=True, align='center')
+            y += 0.84
+            _h2_rect(slide, left=cx - 0.55, top=y, width=1.10, height=0.025, color=color)
+            y += 0.06
+            _h2_text(slide, label, _LY.CL + i * cell_w, y, cell_w, 0.32,
+                     font, _LY.T_LABEL, dk1, bold=True, align='center')
+            if sub:
+                _h2_text(slide, sub, _LY.CL + i * cell_w, y + 0.34, cell_w, 0.26,
+                         font, _LY.T_SMALL, '888888', bold=False, align='center')
+            # Séparateur vertical (sauf dernier)
+            if i < n - 1:
+                _h2_rect(slide, left=_LY.CL + (i + 1) * cell_w - 0.01,
+                         top=_LY.CT + 0.40, width=0.02, height=zone_h - 0.80,
+                         color='DDDDDD')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -8056,6 +8183,8 @@ async def run_pipeline_v4(
                 layout_agenda_v4(prs, content, tp)
             elif layout_name in ('team_grid', 'team'):
                 layout_team_grid_v4(prs, content, tp)
+            elif layout_name in ('stat_banner',):
+                layout_stat_banner_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
