@@ -7809,6 +7809,152 @@ def layout_photo_text_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_numbered_features_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Features avec grands chiffres décoratifs — style éditorial premium.
+    v0 : colonnes (3-4), grand numéro en fond + barre accent + titre + corps.
+    v1 : lignes horizontales (3-4), numéro XL à gauche + titre + corps + stat.
+    v2 : grille 2×2, cercle numéroté + barre accent + titre + corps.
+    content: {title, section_label?, items:[{title,body,number?,stat_value?,stat_label?}]}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent1', '009CEA'),
+        theme.get('accent2', 'ED0000'),
+    ])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    items  = content.get('items', content.get('features', []))
+    n      = min(len(items), 4)
+    if n == 0:
+        return slide
+
+    v      = _v4_variant(content, 3, tp.get('seed', 0))
+    zone_h = _LY.CB - _LY.CT
+
+    def _ff(it, i):
+        if not isinstance(it, dict):
+            return str(i + 1), str(it), '', '', ''
+        return (str(it.get('number', i + 1)),
+                it.get('title', ''), it.get('body', ''),
+                it.get('stat_value', ''), it.get('stat_label', ''))
+
+    if v == 0:
+        # Colonnes — grand numéro en fond (couleur très atténuée) + titre + corps
+        n_cols = n
+        col_w  = (_LY.CW - _LY.GAP_LG * (n_cols - 1)) / n_cols
+        for i, it in enumerate(items[:n]):
+            num, title, body, sv, sl = _ff(it, i)
+            color  = accents[i % len(accents)]
+            cx     = _LY.CL + i * (col_w + _LY.GAP_LG)
+            # Fond carte
+            _h2_rounded_rect(slide, left=cx, top=_LY.CT, width=col_w, height=zone_h,
+                             color='F8F8F8', radius=_LY.R_SM)
+            # Grand numéro décoratif en fond (couleur très légère)
+            _h2_text(slide, num, cx - 0.06, _LY.CT + 0.06, col_w + 0.12, 0.96,
+                     font, 72, _cbg(tp, i + 1), bold=True, align='right')
+            # Barre accent
+            _h2_rect(slide, left=cx + _LY.PAD, top=_LY.CT + 0.20,
+                     width=0.80, height=0.04, color=color)
+            # Titre
+            _h2_text(slide, title, cx + _LY.PAD, _LY.CT + 0.30,
+                     col_w - _LY.PAD * 2, 0.52,
+                     font, _LY.T_HEADER, dk1, bold=True, align='left')
+            # Séparateur
+            _h2_rect(slide, left=cx + _LY.PAD, top=_LY.CT + 0.88,
+                     width=col_w - _LY.PAD * 2, height=0.02, color='DDDDDD')
+            # Corps
+            if body:
+                body_h = zone_h - 0.96 - (0.70 if sv else 0.14)
+                _h2_text(slide, body, cx + _LY.PAD, _LY.CT + 0.96,
+                         col_w - _LY.PAD * 2, body_h,
+                         font, _LY.T_SMALL, '555555', bold=False, align='left',
+                         line_spacing=1.3)
+            if sv:
+                _h2_text(slide, sv, cx + _LY.PAD, _LY.CB - 0.62,
+                         col_w - _LY.PAD * 2, 0.38,
+                         font, 22, color, bold=True, align='left')
+            if sl:
+                _h2_text(slide, sl, cx + _LY.PAD, _LY.CB - 0.24,
+                         col_w - _LY.PAD * 2, 0.20,
+                         font, 8, '999999', bold=True, align='left')
+
+    elif v == 1:
+        # Lignes — numéro XL à gauche + titre + corps
+        n_rows  = min(n, 4)
+        row_h   = zone_h / n_rows
+        num_w   = 1.30
+        for i, it in enumerate(items[:n_rows]):
+            num, title, body, sv, sl = _ff(it, i)
+            color = accents[i % len(accents)]
+            ry    = _LY.CT + i * row_h
+            # Barre accent verticale
+            _h2_rect(slide, left=_LY.CL, top=ry + 0.08,
+                     width=0.04, height=row_h - 0.16, color=color)
+            # Grand numéro
+            _h2_text(slide, num, _LY.CL + 0.08, ry + 0.04, num_w - 0.08, row_h - 0.08,
+                     font, 38, color, bold=True, align='center')
+            # Séparateur horizontal (sauf premier)
+            if i > 0:
+                _h2_rect(slide, left=_LY.CL + num_w, top=ry,
+                         width=_LY.CW - num_w, height=0.015, color='EEEEEE')
+            tx  = _LY.CL + num_w + 0.30
+            tw  = _LY.CW - num_w - 0.40 - (1.30 if sv else 0)
+            th  = 0.34 if body else row_h - 0.18
+            _h2_text(slide, title, tx, ry + (row_h - th) * 0.25, tw, th,
+                     font, _LY.T_HEADER, dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body, tx, ry + 0.44, tw, row_h - 0.50,
+                         font, _LY.T_SMALL, '666666', bold=False, align='left',
+                         line_spacing=1.2)
+            if sv:
+                _h2_text(slide, sv, _LY.CR - 1.20, ry + (row_h - 0.46) / 2,
+                         1.10, 0.46, font, 22, color, bold=True, align='right')
+
+    else:
+        # v2 : grille 2×2 — cercle numéroté + titre + corps
+        n_cols = 2
+        n_rows = (n + 1) // 2
+        card_w = (_LY.CW - _LY.GAP_LG) / 2
+        card_h = (zone_h - _LY.GAP_SM * (n_rows - 1)) / n_rows
+        for i, it in enumerate(items[:n]):
+            col_i  = i % n_cols
+            row_i  = i // n_cols
+            num, title, body, sv, sl = _ff(it, i)
+            color  = accents[i % len(accents)]
+            cx     = _LY.CL + col_i * (card_w + _LY.GAP_LG)
+            cy     = _LY.CT + row_i * (card_h + _LY.GAP_SM)
+            _h2_rounded_rect(slide, left=cx, top=cy, width=card_w, height=card_h,
+                             color='F8F8F8', radius=_LY.R_SM)
+            # Cercle numéroté
+            r  = 0.38
+            ax = cx + _LY.PAD + r
+            ay = cy + card_h / 2
+            _h2_circle(slide, ax, ay, r, color)
+            _h2_text(slide, num, ax - r, ay - r * 0.55, r * 2, r * 1.1,
+                     font, 20, 'FFFFFF', bold=True, align='center')
+            # Barre + titre + corps
+            tx = cx + _LY.PAD + r * 2 + 0.20
+            tw = card_w - _LY.PAD - r * 2 - 0.30
+            _h2_rect(slide, left=tx, top=cy + 0.18, width=0.60, height=0.03, color=color)
+            _h2_text(slide, title, tx, cy + 0.26, tw, 0.40,
+                     font, _LY.T_HEADER, dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body, tx, cy + 0.70, tw, card_h - 0.78,
+                         font, _LY.T_SMALL, '666666', bold=False, align='left',
+                         line_spacing=1.2)
+            if sv:
+                _h2_text(slide, sv, tx + tw - 1.30, cy + 0.28, 1.30, 0.36,
+                         font, 18, color, bold=True, align='right')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -8509,6 +8655,8 @@ async def run_pipeline_v4(
                 layout_section_break_v4(prs, content, tp)
             elif layout_name in ('photo_text',):
                 layout_photo_text_v4(prs, content, tp)
+            elif layout_name in ('numbered_features',):
+                layout_numbered_features_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
