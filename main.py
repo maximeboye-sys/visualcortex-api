@@ -7181,6 +7181,189 @@ def layout_table_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_team_grid_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Grille d'équipe — avatars circulaires, nom, rôle, département optionnel.
+    v0 : rangée de 3-4 colonnes, cercle XL centré + nom + rôle + stat bas.
+    v1 : grille 2×2 cartes arrondies, cercle SM gauche + nom + rôle.
+    v2 : 3 colonnes plein hauteur, cercle MD + barre accent + nom + corps.
+    content: {title, section_label?, members:[{name,role,department?,icon?,stat_value?,stat_label?,body?}]}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accents = tp.get('accent_cycle', [
+        theme.get('accent1', '009CEA'),
+        theme.get('accent2', 'ED0000'),
+    ])
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    members = content.get('members', content.get('items', []))
+    n = min(len(members), 6)
+    if n == 0:
+        return slide
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    def _mf(m):
+        if not isinstance(m, dict):
+            return '👤', str(m), '', '', '', '', ''
+        return (m.get('icon', '👤'),
+                m.get('name', m.get('title', '')),
+                m.get('role', m.get('subtitle', '')),
+                m.get('department', m.get('dept', '')),
+                m.get('stat_value', ''), m.get('stat_label', ''),
+                m.get('body', ''))
+
+    if v == 0:
+        # Rangée de colonnes avec grand cercle centré
+        n_cols = min(n, 4)
+        col_w  = _LY.CW / n_cols
+        zone_h = _LY.CB - _LY.CT
+        for i, m in enumerate(members[:n_cols]):
+            icon, name, role, dept, sv, sl, body = _mf(m)
+            color  = accents[i % len(accents)]
+            card_x = _LY.CL + i * col_w
+            _h2_rounded_rect(slide, left=card_x + _LY.GAP_SM, top=_LY.CT,
+                             width=col_w - _LY.GAP_SM * 2, height=zone_h,
+                             color='F8F8F8', radius=_LY.R_SM)
+            _h2_rect(slide, left=card_x + _LY.GAP_SM, top=_LY.CT,
+                     width=col_w - _LY.GAP_SM * 2, height=0.05, color=color)
+            cx = card_x + col_w / 2
+            r  = min(0.72, col_w * 0.30)
+            cy = _LY.CT + r + 0.28
+            _h2_circle(slide, cx, cy, r, color)
+            _h2_text(slide, icon, cx - r, cy - r * 0.55, r * 2, r * 1.1,
+                     font, int(r * 32), 'FFFFFF', bold=True, align='center')
+            y = cy + r + 0.20
+            _h2_text(slide, name, card_x + _LY.PAD, y,
+                     col_w - _LY.PAD * 2, 0.36,
+                     font, _LY.T_LABEL, dk1, bold=True, align='center')
+            y += 0.38
+            if role:
+                _h2_text(slide, role, card_x + _LY.PAD, y,
+                         col_w - _LY.PAD * 2, 0.26,
+                         font, _LY.T_SMALL, '777777', bold=False, align='center')
+                y += 0.28
+            if dept:
+                _h2_text(slide, dept, card_x + _LY.PAD, y,
+                         col_w - _LY.PAD * 2, 0.24,
+                         font, 9, color, bold=True, align='center')
+                y += 0.26
+            if body:
+                _h2_text(slide, body, card_x + _LY.PAD, y,
+                         col_w - _LY.PAD * 2, _LY.CB - y - (0.68 if sv else 0.12),
+                         font, _LY.T_SMALL, '666666', bold=False, align='center',
+                         line_spacing=1.2)
+            if sv:
+                _h2_rect(slide, left=card_x + _LY.PAD, top=_LY.CB - 0.66,
+                         width=col_w - _LY.PAD * 2, height=0.025, color='DDDDDD')
+                _h2_text(slide, sv, card_x + _LY.PAD, _LY.CB - 0.62,
+                         col_w - _LY.PAD * 2, 0.38,
+                         font, 20, color, bold=True, align='center')
+            if sl:
+                _h2_text(slide, sl, card_x + _LY.PAD, _LY.CB - 0.24,
+                         col_w - _LY.PAD * 2, 0.20,
+                         font, 8, '999999', bold=False, align='center')
+
+    elif v == 1:
+        # Grille 2×2 ou 2×3 — cercle SM à gauche, texte à droite
+        n_cols = 2 if n <= 4 else 3
+        n_rows = (n + n_cols - 1) // n_cols
+        card_w = (_LY.CW - _LY.GAP_LG * (n_cols - 1)) / n_cols
+        card_h = (_LY.CB - _LY.CT - _LY.GAP_SM * (n_rows - 1)) / n_rows
+        for i, m in enumerate(members[:n]):
+            col_i  = i % n_cols
+            row_i  = i // n_cols
+            icon, name, role, dept, sv, sl, body = _mf(m)
+            color  = accents[i % len(accents)]
+            cx     = _LY.CL + col_i * (card_w + _LY.GAP_LG)
+            cy     = _LY.CT + row_i * (card_h + _LY.GAP_SM)
+            _h2_rounded_rect(slide, left=cx, top=cy, width=card_w, height=card_h,
+                             color='F8F8F8', radius=_LY.R_SM)
+            _h2_rect(slide, left=cx, top=cy, width=card_w, height=0.05, color=color)
+            r  = 0.32
+            ax = cx + _LY.PAD + r
+            ay = cy + card_h / 2
+            _h2_circle(slide, ax, ay, r, color)
+            _h2_text(slide, icon, ax - r, ay - r * 0.55, r * 2, r * 1.1,
+                     font, 14, 'FFFFFF', bold=True, align='center')
+            tx = cx + _LY.PAD + r * 2 + 0.16
+            tw = card_w - (tx - cx) - _LY.PAD
+            ty = cy + 0.14
+            _h2_text(slide, name, tx, ty, tw, 0.34,
+                     font, _LY.T_TITLE, dk1, bold=True, align='left')
+            ty += 0.36
+            if role:
+                _h2_text(slide, role, tx, ty, tw, 0.24,
+                         font, _LY.T_SMALL, '777777', bold=False, align='left')
+                ty += 0.26
+            if dept:
+                _h2_text(slide, dept, tx, ty, tw, 0.22,
+                         font, 9, color, bold=True, align='left')
+            if sv:
+                _h2_text(slide, sv, cx + card_w - 1.40, cy + 0.12, 1.30, 0.36,
+                         font, 18, color, bold=True, align='right')
+            if sl:
+                _h2_text(slide, sl, cx + card_w - 1.40, cy + 0.50, 1.30, 0.20,
+                         font, 8, '999999', bold=False, align='right')
+
+    else:
+        # v2 : 3 colonnes plein hauteur — cercle MD + barre accent
+        n_cols = min(n, 3)
+        col_w  = (_LY.CW - _LY.GAP_LG * (n_cols - 1)) / n_cols
+        zone_h = _LY.CB - _LY.CT
+        for i, m in enumerate(members[:n_cols]):
+            icon, name, role, dept, sv, sl, body = _mf(m)
+            color  = accents[i % len(accents)]
+            card_x = _LY.CL + i * (col_w + _LY.GAP_LG)
+            _h2_rounded_rect(slide, left=card_x, top=_LY.CT, width=col_w, height=zone_h,
+                             color=_cbg(tp, i), radius=_LY.R_SM)
+            cx = card_x + col_w / 2
+            r  = min(0.82, col_w * 0.35)
+            cy = _LY.CT + r + 0.24
+            _h2_circle(slide, cx, cy, r, color)
+            _h2_text(slide, icon, cx - r, cy - r * 0.55, r * 2, r * 1.1,
+                     font, int(r * 34), 'FFFFFF', bold=True, align='center')
+            _h2_rect(slide, left=card_x + _LY.PAD, top=cy + r + 0.18,
+                     width=col_w - _LY.PAD * 2, height=0.03, color=color)
+            y = cy + r + 0.26
+            _h2_text(slide, name, card_x + _LY.PAD, y,
+                     col_w - _LY.PAD * 2, 0.38,
+                     font, 15, dk1, bold=True, align='center')
+            y += 0.40
+            if role:
+                _h2_text(slide, role, card_x + _LY.PAD, y,
+                         col_w - _LY.PAD * 2, 0.28,
+                         font, _LY.T_SMALL, '777777', bold=False, align='center')
+                y += 0.30
+            if dept:
+                _h2_text(slide, dept, card_x + _LY.PAD, y,
+                         col_w - _LY.PAD * 2, 0.26,
+                         font, 9, color, bold=True, align='center')
+                y += 0.28
+            if body:
+                _h2_text(slide, body, card_x + _LY.PAD, y,
+                         col_w - _LY.PAD * 2, _LY.CB - y - (0.68 if sv else 0.12),
+                         font, _LY.T_SMALL, '555555', bold=False, align='center',
+                         line_spacing=1.25)
+            if sv:
+                _h2_rect(slide, left=card_x + _LY.PAD, top=_LY.CB - 0.66,
+                         width=col_w - _LY.PAD * 2, height=0.025, color='DDDDDD')
+                _h2_text(slide, sv, card_x + _LY.PAD, _LY.CB - 0.62,
+                         col_w - _LY.PAD * 2, 0.38,
+                         font, 22, color, bold=True, align='center')
+            if sl:
+                _h2_text(slide, sl, card_x + _LY.PAD, _LY.CB - 0.24,
+                         col_w - _LY.PAD * 2, 0.20,
+                         font, 8, '999999', bold=False, align='center')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -7871,6 +8054,8 @@ async def run_pipeline_v4(
                 layout_highlight_v4(prs, content, tp)
             elif layout_name in ('agenda',):
                 layout_agenda_v4(prs, content, tp)
+            elif layout_name in ('team_grid', 'team'):
+                layout_team_grid_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
