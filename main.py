@@ -7955,6 +7955,174 @@ def layout_numbered_features_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_side_panel_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Panneau latéral pleine hauteur avec titre vertical + zone contenu.
+    Inspiré image 2 (barre "HEADING HERE" grise + 2 photos + texte).
+    v0 : sidebar accent1 gauche + titre vertical vert270 + items cards droite.
+    v1 : sidebar dk1 sombre gauche + items avec icônes à droite en 2 colonnes.
+    v2 : sidebar accent droite + contenu large à gauche.
+    content: {title, panel_title?, section_label?, items:[{icon?,title,body}], footer}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accents = tp.get('accent_cycle', [accent1])
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    panel_title = content.get('panel_title', content.get('title', ''))
+    main_title  = content.get('title', '')
+    items  = content.get('items', [])
+    footer = content.get('footer', '')
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    panel_w = 1.80
+
+    def _vertical_text(x, y, w, h, text, color, size_pt=20):
+        """Texte vertical vert270 (lit de bas en haut)."""
+        txBox = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+        tf = txBox.text_frame
+        tf.word_wrap = False
+        try:
+            bodyPr = tf._txBody.get_or_add_bodyPr()
+            bodyPr.set('vert', 'vert270')
+            bodyPr.set('anchor', 'ctr')
+        except Exception:
+            pass
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        run = p.add_run()
+        run.text = str(text).upper()
+        run.font.name = font
+        run.font.size = Pt(size_pt)
+        run.font.bold = True
+        run.font.color.rgb = _h2_parse_hex(color)
+
+    if v == 0:
+        # Sidebar accent gauche + items droite
+        _h2_rect(slide, left=0, top=0, width=panel_w, height=H, color=accent1)
+        _h2_rect(slide, left=0, top=H - 1.10, width=panel_w, height=1.10,
+                 color=_darken(accent1, 0.78))
+        _vertical_text(0, 0.30, panel_w, H - 0.60, panel_title, 'FFFFFF', 18)
+
+        cx = panel_w + 0.55
+        cw = W - cx - 0.45
+        # Titre principal
+        _h2_text(slide, main_title, cx, 0.22, cw, 0.56,
+                 font, 22, dk1, bold=True, align='left')
+        _h2_rect(slide, left=cx, top=0.82, width=1.60, height=0.03, color=accent1)
+
+        n = min(len(items), 4)
+        if n:
+            ih = (H - 1.10) / n
+            for i, it in enumerate(items[:n]):
+                icon  = it.get('icon', '') if isinstance(it, dict) else ''
+                title = it.get('title', '') if isinstance(it, dict) else str(it)
+                body  = it.get('body', '') if isinstance(it, dict) else ''
+                color = accents[i % len(accents)]
+                iy    = 0.96 + i * ih
+                _h2_rounded_rect(slide, left=cx, top=iy + 0.05,
+                                 width=cw, height=ih - 0.10, color=_cbg(tp, i), radius=_LY.R_SM)
+                _h2_rect(slide, left=cx, top=iy + 0.05, width=0.04, height=ih - 0.10, color=color)
+                tx = cx + 0.16
+                if icon:
+                    _h2_icon_circle(slide, tx + 0.24, iy + ih / 2, 0.22, icon, font, color, 'FFFFFF', 11)
+                    tx += 0.60
+                tw2 = cx + cw - tx - 0.12
+                _h2_text(slide, title, tx, iy + 0.12, tw2, 0.30,
+                         font, _LY.T_TITLE, dk1, bold=True, align='left')
+                if body:
+                    _h2_text(slide, body, tx, iy + 0.44, tw2, ih - 0.52,
+                             font, _LY.T_SMALL, '666666', bold=False, align='left', line_spacing=1.15)
+
+    elif v == 1:
+        # Sidebar dk1 sombre + items droite en 2 colonnes
+        _h2_rect(slide, left=0, top=0, width=panel_w, height=H, color=dk1)
+        _h2_rect(slide, left=0, top=0, width=panel_w, height=0.30, color=accent1)
+        _vertical_text(0, 0.30, panel_w, H - 0.60, panel_title, 'FFFFFF', 18)
+
+        cx = panel_w + 0.55
+        cw = W - cx - 0.45
+        _h2_text(slide, main_title, cx, 0.20, cw, 0.54,
+                 font, 22, dk1, bold=True, align='left')
+        _h2_rect(slide, left=cx, top=0.78, width=1.60, height=0.03, color=accent1)
+
+        n = min(len(items), 6)
+        if n:
+            n_cols = 2 if n > 3 else 1
+            col_w2 = (cw - (0.30 if n_cols > 1 else 0)) / n_cols
+            n_rows = (n + n_cols - 1) // n_cols
+            ih = (H - 1.0) / n_rows
+            for i, it in enumerate(items[:n]):
+                col_i = i % n_cols
+                row_i = i // n_cols
+                icon  = it.get('icon', '') if isinstance(it, dict) else ''
+                title = it.get('title', '') if isinstance(it, dict) else str(it)
+                body  = it.get('body', '') if isinstance(it, dict) else ''
+                color = accents[i % len(accents)]
+                ix    = cx + col_i * (col_w2 + 0.30)
+                iy    = 0.94 + row_i * ih
+                _h2_rounded_rect(slide, left=ix, top=iy + 0.04,
+                                 width=col_w2, height=ih - 0.08, color=_cbg(tp, i), radius=_LY.R_SM)
+                _h2_rect(slide, left=ix, top=iy + 0.04, width=0.04, height=ih - 0.08, color=color)
+                tx = ix + 0.14
+                if icon:
+                    _h2_icon_circle(slide, tx + 0.22, iy + ih / 2, 0.20, icon, font, color, 'FFFFFF', 10)
+                    tx += 0.54
+                tw2 = ix + col_w2 - tx - 0.10
+                _h2_text(slide, title, tx, iy + 0.10, tw2, 0.28,
+                         font, _LY.T_SMALL + 1, dk1, bold=True, align='left')
+                if body:
+                    _h2_text(slide, body, tx, iy + 0.40, tw2, ih - 0.48,
+                             font, _LY.T_SMALL, '666666', bold=False, align='left', line_spacing=1.1)
+
+    else:
+        # v2 : sidebar accent droite + contenu large gauche
+        px = W - panel_w
+        _h2_rect(slide, left=px, top=0, width=panel_w, height=H, color=accent1)
+        _h2_rect(slide, left=px, top=0, width=panel_w, height=0.30, color=_darken(accent1, 0.75))
+        _vertical_text(px, 0.30, panel_w, H - 0.60, panel_title, 'FFFFFF', 18)
+
+        cx = _LY.CL
+        cw = px - cx - 0.40
+        _h2_text(slide, main_title, cx, 0.22, cw, 0.54,
+                 font, 22, dk1, bold=True, align='left')
+        _h2_rect(slide, left=cx, top=0.80, width=1.60, height=0.03, color=accent1)
+
+        n = min(len(items), 4)
+        if n:
+            ih = (H - 1.0) / n
+            for i, it in enumerate(items[:n]):
+                icon  = it.get('icon', '') if isinstance(it, dict) else ''
+                title = it.get('title', '') if isinstance(it, dict) else str(it)
+                body  = it.get('body', '') if isinstance(it, dict) else ''
+                color = accents[i % len(accents)]
+                iy    = 0.94 + i * ih
+                _h2_rounded_rect(slide, left=cx, top=iy + 0.05,
+                                 width=cw, height=ih - 0.10, color=_cbg(tp, i), radius=_LY.R_SM)
+                _h2_rect(slide, left=cx + cw - 0.04, top=iy + 0.05,
+                         width=0.04, height=ih - 0.10, color=color)
+                tx = cx + 0.14
+                if icon:
+                    _h2_icon_circle(slide, tx + 0.24, iy + ih / 2, 0.22, icon, font, color, 'FFFFFF', 11)
+                    tx += 0.60
+                tw2 = cw - (tx - cx) - 0.20
+                _h2_text(slide, title, tx, iy + 0.12, tw2, 0.30,
+                         font, _LY.T_TITLE, dk1, bold=True, align='left')
+                if body:
+                    _h2_text(slide, body, tx, iy + 0.44, tw2, ih - 0.52,
+                             font, _LY.T_SMALL, '666666', bold=False, align='left', line_spacing=1.15)
+
+    if footer:
+        _h2_text(slide, footer, panel_w + 0.55, H - 0.36, W - panel_w - 1.0, 0.28,
+                 font, 9, 'AAAAAA', bold=False, align='left')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -8691,6 +8859,8 @@ async def run_pipeline_v4(
                 layout_photo_text_v4(prs, content, tp)
             elif layout_name in ('numbered_features',):
                 layout_numbered_features_v4(prs, content, tp)
+            elif layout_name in ('side_panel',):
+                layout_side_panel_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
