@@ -3557,6 +3557,68 @@ def _cbg(tp: dict, idx: int = 0) -> str:
     return tp.get('card_bg_mid', 'F0F0F0')
 
 
+def _set_shape_alpha(shape, alpha_pct: int):
+    """
+    Applique une transparence à un shape déjà créé avec fill.solid().
+    alpha_pct : 0 = transparent, 100 = opaque.
+    Manipule le XML <a:alpha> dans <a:srgbClr> ou <a:schemeClr>.
+    """
+    try:
+        import lxml.etree as _et_alpha
+        spPr = shape._element.find(qn('p:spPr'))
+        if spPr is None:
+            return
+        # Chercher le nœud couleur dans solidFill
+        for clr_tag in (qn('a:srgbClr'), qn('a:schemeClr'), qn('a:prstClr')):
+            clr_el = spPr.find('.//' + clr_tag)
+            if clr_el is not None:
+                # Supprimer alpha existant si présent
+                for ex in clr_el.findall(qn('a:alpha')):
+                    clr_el.remove(ex)
+                alpha_el = _et_alpha.SubElement(clr_el, qn('a:alpha'))
+                alpha_el.set('val', str(int(alpha_pct * 1000)))
+                return
+    except Exception:
+        pass
+
+
+def _h2_rect_alpha(slide, left: float, top: float, width: float, height: float,
+                   color: str = 'FFFFFF', alpha_pct: int = 80):
+    """Rectangle semi-transparent. alpha_pct : 0=transparent, 100=opaque."""
+    shape = _h2_rect(slide, left, top, max(0.1, width), max(0.1, height), color)
+    _set_shape_alpha(shape, alpha_pct)
+    return shape
+
+
+def _h2_rounded_rect_alpha(slide, left: float, top: float, width: float, height: float,
+                            color: str = 'FFFFFF', radius: float = 0.04, alpha_pct: int = 80):
+    """Rounded rect semi-transparent. alpha_pct : 0=transparent, 100=opaque."""
+    shape = _h2_rounded_rect(slide, left, top, max(0.1, width), max(0.1, height), color, radius)
+    _set_shape_alpha(shape, alpha_pct)
+    return shape
+
+
+def _h2_card_bg(slide, left: float, top: float, width: float, height: float,
+                tp: dict, idx: int = 0, radius: float = _LY.R_SM):
+    """
+    Fond de carte adapté au template.
+    - Fond riche (gradient/image) → fond blanc semi-transparent (laisse voir le fond).
+    - Fond sombre               → fond clair de la famille du template, semi-transparent.
+    - Fond classique            → fond opaque dans la famille couleur du template.
+    """
+    if tp.get('bg_rich', False):
+        # Gradient ou image derrière → carte blanche semi-transparente (85% opaque)
+        return _h2_rounded_rect_alpha(slide, left, top, width, height,
+                                      'FFFFFF', radius, alpha_pct=85)
+    elif tp.get('bg_is_dark', False):
+        # Fond uni sombre → carte légère semi-transparente de la famille
+        return _h2_rounded_rect_alpha(slide, left, top, width, height,
+                                      _cbg(tp, idx), radius, alpha_pct=92)
+    else:
+        # Fond clair classique → fond opaque dans la famille du template
+        return _h2_rounded_rect(slide, left, top, width, height, _cbg(tp, idx), radius)
+
+
 def _darken(hex_color: str, factor: float = 0.75) -> str:
     """Darken a hex color by factor (0.0=black, 1.0=unchanged). Used for nested dark boxes."""
     try:
