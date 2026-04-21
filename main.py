@@ -8244,6 +8244,120 @@ def layout_circle_stats_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_mission_vision_v4(prs: Presentation, content: dict, tp: dict):
+    """
+    Deux panneaux couleur côte-à-côte — Mission | Vision ou toute paire conceptuelle.
+    Inspiré image 5 (navy/yellow) : chaque panneau = plein fond coloré + icon + titre + texte.
+    v0 : panneau gauche accent1 + panneau droit dk1 (fond foncé/foncé).
+    v1 : panneau gauche accent1 + panneau droit neutre clair (contraste fort).
+    v2 : 2 panneaux côte-à-côte avec bande accent en bas + grand icon central.
+    content: {title, section_label?, panels:[{icon?,label?,title,body,items?:[str]}]×2}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    accents = tp.get('accent_cycle', [accent1])
+    W = tp.get('W', 13.33)
+    H = tp.get('H', 7.50)
+
+    panels = content.get('panels', [])
+    footer = content.get('footer', '')
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    # Fallback si panels non fourni
+    if not panels:
+        panels = [
+            {'label': 'MISSION', 'title': content.get('title', ''), 'body': ''},
+            {'label': 'VISION',  'title': content.get('subtitle', ''), 'body': ''},
+        ]
+
+    n = min(len(panels), 2)
+    gap  = 0.0
+    pw   = W / n
+
+    def _panel_colors(i):
+        if v == 0:
+            colors = [(accent1, 'FFFFFF'), (_darken(dk1, 0.85), 'FFFFFF')]
+        elif v == 1:
+            colors = [(accent1, 'FFFFFF'), (_cbg(tp, 0), dk1)]
+        else:
+            colors = [(accents[i % len(accents)], 'FFFFFF'),
+                      (_cbg(tp, i + 1), dk1)]
+        return colors[i % 2]
+
+    for i, panel in enumerate(panels[:n]):
+        if not isinstance(panel, dict):
+            panel = {'title': str(panel)}
+        icon  = panel.get('icon', '')
+        label = panel.get('label', '')
+        title = panel.get('title', '')
+        body  = panel.get('body', '')
+        items = panel.get('items', [])
+        body_src = body or ('\n'.join(f'• {x}' for x in items[:5]))
+
+        bg, fg = _panel_colors(i)
+        px = i * pw
+
+        # Fond panneau plein
+        _h2_rect(slide, left=px, top=0, width=pw, height=H, color=bg)
+
+        if v == 2:
+            # Bande accent en bas + grand icon en haut centré dans cercle
+            bar_color = accents[(i + 1) % len(accents)]
+            _h2_rect(slide, left=px, top=H - 0.60, width=pw, height=0.60, color=bar_color)
+
+        # Content zone (respecte le header area)
+        content_y  = H * 0.14
+        content_cx = px + pw / 2
+
+        # Icône dans cercle
+        if icon:
+            r = 0.52 if v == 2 else 0.44
+            icon_cy = content_y + r
+            circle_color = _darken(bg, 0.75) if fg == 'FFFFFF' else accent1
+            _h2_circle(slide, content_cx, icon_cy, r, circle_color)
+            _h2_text(slide, icon, content_cx - r, icon_cy - r * 0.55,
+                     r * 2, r * 1.1, font, int(r * 40), fg, bold=True, align='center')
+            content_y = icon_cy + r + 0.18
+
+        # Label badge
+        if label:
+            _h2_text(slide, label, px + 0.30, content_y, pw - 0.60, 0.34,
+                     font, 10, fg if fg == 'FFFFFF' else accent1,
+                     bold=True, align='center')
+            content_y += 0.36
+
+        # Trait séparateur
+        _h2_rect(slide, left=px + pw * 0.25, top=content_y,
+                 width=pw * 0.50, height=0.03,
+                 color='FFFFFF' if fg == 'FFFFFF' else accent1)
+        content_y += 0.10
+
+        # Titre
+        _h2_text(slide, title, px + 0.30, content_y, pw - 0.60, 0.56,
+                 font, 18, fg, bold=True, align='center')
+        content_y += 0.60
+
+        # Corps
+        body_max_h = H - content_y - (0.70 if footer else 0.20)
+        if body_src and body_max_h > 0.20:
+            _h2_text(slide, body_src, px + 0.40, content_y, pw - 0.80, body_max_h,
+                     font, _LY.T_SMALL, fg, bold=False, align='center', line_spacing=1.3)
+
+    # Séparateur vertical entre panneaux
+    if n == 2:
+        _h2_rect(slide, left=pw - 0.01, top=H * 0.10,
+                 width=0.02, height=H * 0.80, color='FFFFFF')
+
+    if footer:
+        _h2_text(slide, footer, 0.60, H - 0.36, W - 1.20, 0.28,
+                 font, 9, 'AAAAAA', bold=False, align='center')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -8984,6 +9098,8 @@ async def run_pipeline_v4(
                 layout_side_panel_v4(prs, content, tp)
             elif layout_name in ('circle_stats',):
                 layout_circle_stats_v4(prs, content, tp)
+            elif layout_name in ('mission_vision',):
+                layout_mission_vision_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
