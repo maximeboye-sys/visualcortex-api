@@ -9306,6 +9306,152 @@ def layout_diamond_icons_v4(prs, content: dict, tp: dict):
     return slide
 
 
+def layout_market_sizing_v4(prs, content: dict, tp: dict):
+    """
+    Market sizing: TAM/SAM/SOM or KPI grid with trend indicators.
+    content: {title, segments:[{label, value, change?, trend?:'up'|'down', description?}]}
+    v0: Staircase bars — decreasing width per segment (TAM > SAM > SOM)
+    v1: KPI cards with large trend arrows
+    v2: Nested rectangles (concentric boxes) + labels on left
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+
+    title    = content.get('title', '')
+    segments = content.get('segments', [])
+    if not segments:
+        segments = [
+            {'label': 'TAM', 'value': '$10B', 'trend': 'up', 'change': '+12%'},
+            {'label': 'SAM', 'value': '$2B',  'trend': 'up', 'change': '+8%'},
+            {'label': 'SOM', 'value': '$300M','trend': 'up', 'change': '+25%'},
+        ]
+    n        = min(len(segments), 4)
+    segments = segments[:n]
+    if title:
+        _h2_title(slide, title, tp)
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if v == 0:
+        # Staircase: decreasing-width rows, centered, largest at top
+        bar_h  = min((_LY.CB - _LY.CT - _LY.GAP_SM * (n - 1)) / max(n, 1), 1.20)
+        max_w  = _LY.CW * 0.82
+
+        for i, seg in enumerate(segments):
+            label  = seg.get('label',  f'Segment {i+1}') if isinstance(seg, dict) else str(seg)
+            value  = seg.get('value',  '')               if isinstance(seg, dict) else ''
+            change = seg.get('change', '')               if isinstance(seg, dict) else ''
+            trend  = seg.get('trend',  'up')             if isinstance(seg, dict) else 'up'
+            desc   = seg.get('description', '')          if isinstance(seg, dict) else ''
+            color  = accents[i % len(accents)]
+            bar_w  = max_w * (1.0 - i * 0.15)
+            bx     = _LY.CL + (_LY.CW - bar_w) / 2
+            by     = _LY.CT + i * (bar_h + _LY.GAP_SM)
+
+            _h2_rounded_rect(slide, bx, by, bar_w, bar_h - 0.04, color, _LY.R_SM)
+
+            # Label left
+            _h2_text(slide, label, bx + _LY.PAD, by + (bar_h - 0.34) / 2,
+                     1.40, 0.34, font, 12, 'FFFFFF', bold=True, align='left')
+            # Value centre
+            _h2_text(slide, value, bx + bar_w / 2 - 1.0, by + (bar_h - 0.40) / 2,
+                     2.0, 0.40, font, 22, 'FFFFFF', bold=True, align='center')
+            # Change right
+            if change:
+                arrow = '▲' if trend == 'up' else '▼'
+                _h2_text(slide, f'{arrow} {change}',
+                         bx + bar_w - 1.45, by + (bar_h - 0.26) / 2,
+                         1.36, 0.26, font, 10, 'FFFFFF', bold=True, align='right')
+            if desc:
+                _h2_text(slide, desc, bx, by + bar_h - 0.02, bar_w, 0.20,
+                         font, 7, '888888', bold=False, align='center')
+
+    elif v == 1:
+        # KPI cards with large trend arrow
+        n_cols = min(n, 4)
+        n_rows = (n + n_cols - 1) // n_cols
+        gap    = _LY.GAP_SM
+        cw     = (_LY.CW - gap * (n_cols - 1)) / n_cols
+        ch     = (_LY.CB - _LY.CT - gap * (n_rows - 1)) / max(n_rows, 1)
+
+        for i, seg in enumerate(segments):
+            col_i  = i % n_cols
+            row_i  = i // n_cols
+            cx     = _LY.CL + col_i * (cw + gap)
+            cy     = _LY.CT + row_i * (ch + gap)
+            label  = seg.get('label',  '')    if isinstance(seg, dict) else str(seg)
+            value  = seg.get('value',  '')    if isinstance(seg, dict) else ''
+            change = seg.get('change', '')    if isinstance(seg, dict) else ''
+            trend  = seg.get('trend',  'up')  if isinstance(seg, dict) else 'up'
+            desc   = seg.get('description', '') if isinstance(seg, dict) else ''
+            color  = accents[i % len(accents)]
+            up     = trend != 'down'
+            arrow  = '▲' if up else '▼'
+            ac     = '27AE60' if up else 'E74C3C'
+
+            _h2_card_bg(slide, cx, cy, cw, ch, tp, i)
+            _h2_rect(slide, cx, cy, cw, 0.07, color)
+
+            # Large trend arrow (decorative, top right)
+            _h2_text(slide, arrow, cx + cw - 0.58, cy + 0.12, 0.48, 0.44,
+                     font, 24, ac, bold=True, align='center')
+            _h2_text(slide, label, cx + _LY.PAD, cy + 0.14, cw - 0.64, 0.28,
+                     font, 10, dk1, bold=True, align='left')
+            _h2_text(slide, value, cx + _LY.PAD, cy + 0.40, cw - _LY.PAD * 2, 0.52,
+                     font, 26, color, bold=True, align='left')
+            if change:
+                _h2_text(slide, f'{arrow} {change}', cx + _LY.PAD, cy + 0.90,
+                         cw - _LY.PAD * 2, 0.24, font, 10, ac, bold=True, align='left')
+            if desc:
+                _h2_text(slide, desc, cx + _LY.PAD, cy + ch - 0.30,
+                         cw - _LY.PAD * 2, 0.24, font, 8, '888888', bold=False, align='left')
+
+    else:
+        # v2: Nested concentric rectangles (TAM outer → SOM inner) + labels left
+        lbl_w  = _LY.CW * 0.34
+        box_x  = _LY.CL + lbl_w + _LY.GAP_MD
+        box_w  = _LY.CR - box_x
+        box_h  = _LY.CB - _LY.CT
+
+        # Draw from largest (back) to smallest (front)
+        for i, seg in enumerate(reversed(segments)):
+            j     = n - 1 - i
+            color = accents[j % len(accents)]
+            scale = 1.0 - i * (0.80 / max(n, 1))
+            bw    = max(box_w * scale, 0.30)
+            bh    = max(box_h * scale, 0.20)
+            bx    = box_x + (box_w - bw) / 2
+            by    = _LY.CT + (box_h - bh) / 2
+            _h2_rounded_rect(slide, bx, by, bw, bh, color, _LY.R_SM)
+
+        # Labels on left side
+        lh = box_h / max(n, 1)
+        for i, seg in enumerate(segments):
+            label  = seg.get('label',  '')   if isinstance(seg, dict) else str(seg)
+            value  = seg.get('value',  '')   if isinstance(seg, dict) else ''
+            change = seg.get('change', '')   if isinstance(seg, dict) else ''
+            trend  = seg.get('trend',  'up') if isinstance(seg, dict) else 'up'
+            color  = accents[i % len(accents)]
+            ly     = _LY.CT + i * lh
+            up     = trend != 'down'
+            arrow  = '▲' if up else '▼'
+            ac     = '27AE60' if up else 'E74C3C'
+
+            # Colour dot
+            _h2_rounded_rect(slide, _LY.CL, ly + lh / 2 - 0.10, 0.20, 0.20, color, 0.10)
+            _h2_text(slide, label, _LY.CL + 0.28, ly + lh / 2 - 0.24,
+                     lbl_w - 0.30, 0.24, font, 10, dk1, bold=True, align='left')
+            _h2_text(slide, value, _LY.CL + 0.28, ly + lh / 2 - 0.02,
+                     lbl_w - 0.30, 0.30, font, 14, color, bold=True, align='left')
+            if change:
+                _h2_text(slide, f'{arrow} {change}', _LY.CL + 0.28, ly + lh / 2 + 0.26,
+                         lbl_w - 0.30, 0.22, font, 8, ac, bold=True, align='left')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -9647,7 +9793,7 @@ TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero
                     side_panel, circle_stats, mission_vision, photo_grid,
                     pricing_table, hub_spoke, diamond_icons
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
-                    section_break, competitor_matrix, pest_analysis
+                    section_break, competitor_matrix, pest_analysis, market_sizing
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
 TIER 4 (dernier recours, max 1 par présentation) : full_text
 
@@ -9757,6 +9903,12 @@ mission_vision — 2 panneaux couleur plein fond côte-à-côte (Mission | Visio
 photo_grid     — Grille de 2-3 zones photos avec légendes colorées superposées
                  Champs OBLIGATOIRES : photos:[{title,subtitle?}] — 2 ou 3 photos
                  Usage : portfolio, projets, cas clients, galerie visuelle
+
+market_sizing  — Dimensionnement marché : TAM/SAM/SOM avec indicateurs de tendance
+                 Champs OBLIGATOIRES : segments:[{{label,value}}] — 2 à 4 segments
+                 Optionnel : change(ex: "+12%"), trend("up"|"down"), description
+                 Exemple : {{"label":"TAM","value":"10 Md€","change":"+12%","trend":"up","description":"Marché mondial adressable"}}
+                 Usage : sizing marché, KPIs financiers comparatifs, métriques de croissance
 
 diamond_icons  — Rangée de 3-4 icônes en losanges (variante visuelle de icon_row)
                  Champs OBLIGATOIRES : items:[{{icon(emoji),title}}] — 3 ou 4 items
@@ -10113,6 +10265,8 @@ async def run_pipeline_v4(
                 layout_pest_analysis_v4(prs, content, tp)
             elif layout_name in ('diamond_icons', 'diamond'):
                 layout_diamond_icons_v4(prs, content, tp)
+            elif layout_name in ('market_sizing', 'market'):
+                layout_market_sizing_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
