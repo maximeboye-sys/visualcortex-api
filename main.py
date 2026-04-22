@@ -8763,6 +8763,177 @@ def layout_pricing_table_v4(prs, content: dict, tp: dict):
     return slide
 
 
+def layout_hub_spoke_v4(prs, content: dict, tp: dict):
+    """
+    Hub-and-spoke radial diagram: centre labelled circle + items radiating around.
+    content: {title, center:{label, icon?}, items:[{icon?, label, body?}]}
+    v0: Centre radial — items at clock positions around hub
+    v1: Hub left + items in 2-col grid right
+    v2: Hub top-centre + items in 2-row grid below
+    """
+    import math
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+
+    title  = content.get('title', '')
+    center = content.get('center', {})
+    items  = content.get('items', [])
+    n      = min(len(items), 8)
+    items  = items[:n]
+
+    clabel = center.get('label', '') if isinstance(center, dict) else str(center)
+    cicon  = center.get('icon',  '') if isinstance(center, dict) else ''
+
+    if title:
+        _h2_title(slide, title, tp)
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if v == 0:
+        # Radial: items placed at equal angles around the hub
+        hub_r   = 0.72
+        hub_cx  = _LY.CL + _LY.CW * 0.42
+        hub_cy  = _LY.CT + (_LY.CB - _LY.CT) * 0.50
+        spoke_r = 0.28
+        dist    = 2.10
+
+        # Hub circle
+        _h2_rounded_rect(slide, hub_cx - hub_r, hub_cy - hub_r,
+                         hub_r * 2, hub_r * 2, accents[0], hub_r)
+        if cicon:
+            _h2_text(slide, cicon, hub_cx - hub_r, hub_cy - hub_r - 0.08,
+                     hub_r * 2, hub_r * 0.9, font, 26, 'FFFFFF', bold=False, align='center')
+        cy_lbl = hub_cy - (0.18 if not cicon else -hub_r * 0.08)
+        _h2_text(slide, clabel, hub_cx - hub_r, cy_lbl,
+                 hub_r * 2, 0.32, font, 10, 'FFFFFF', bold=True, align='center')
+
+        for i, item in enumerate(items[:min(n, 7)]):
+            angle  = math.radians(i * 360 / min(n, 7) - 90)
+            ix     = hub_cx + math.cos(angle) * dist
+            iy     = hub_cy + math.sin(angle) * dist
+            color  = accents[(i + 1) % len(accents)]
+            icon   = item.get('icon', '')  if isinstance(item, dict) else ''
+            label  = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+
+            _h2_rounded_rect(slide, ix - spoke_r, iy - spoke_r,
+                             spoke_r * 2, spoke_r * 2, color, spoke_r)
+            if icon:
+                _h2_text(slide, icon, ix - spoke_r, iy - spoke_r,
+                         spoke_r * 2, spoke_r * 2, font, 13, 'FFFFFF', bold=False, align='center')
+
+            # Label near spoke — offset outward
+            lbl_w = 1.10
+            off   = spoke_r + 0.08
+            lx    = ix + math.cos(angle) * off - lbl_w / 2
+            ly    = iy + math.sin(angle) * off - 0.02
+            # clamp to slide
+            lx = max(_LY.CL, min(lx, _LY.CR - lbl_w))
+            ly = max(_LY.CT, min(ly, _LY.CB - 0.24))
+            _h2_text(slide, label, lx, ly, lbl_w, 0.24,
+                     font, 8, dk1, bold=True, align='center')
+
+    elif v == 1:
+        # Hub on left ~25%, items 2-col grid on right
+        hub_r  = 0.62
+        hub_cx = _LY.CL + _LY.CW * 0.14
+        hub_cy = _LY.CT + (_LY.CB - _LY.CT) / 2
+        rx     = _LY.CL + _LY.CW * 0.30
+        rw     = _LY.CR - rx
+        n_cols = 2
+        n_rows = (n + 1) // 2
+        iw     = (rw - _LY.GAP_SM) / 2
+        ih     = min((_LY.CB - _LY.CT - _LY.GAP_SM * (n_rows - 1)) / max(n_rows, 1), 1.10)
+
+        _h2_rounded_rect(slide, hub_cx - hub_r, hub_cy - hub_r,
+                         hub_r * 2, hub_r * 2, accents[0], hub_r)
+        if cicon:
+            _h2_text(slide, cicon, hub_cx - hub_r, hub_cy - hub_r - 0.05,
+                     hub_r * 2, hub_r * 0.85, font, 24, 'FFFFFF', bold=False, align='center')
+        ly2 = hub_cy + (hub_r * 0.12 if cicon else -0.12)
+        _h2_text(slide, clabel, hub_cx - hub_r, ly2,
+                 hub_r * 2, 0.30, font, 9, 'FFFFFF', bold=True, align='center')
+
+        for i, item in enumerate(items):
+            col_i = i % n_cols
+            row_i = i // n_cols
+            ix    = rx + col_i * (iw + _LY.GAP_SM)
+            iy    = _LY.CT + row_i * (ih + _LY.GAP_SM)
+            color = accents[(i + 1) % len(accents)]
+            icon  = item.get('icon', '')  if isinstance(item, dict) else ''
+            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body', '')  if isinstance(item, dict) else ''
+
+            _h2_card_bg(slide, ix, iy, iw, ih - 0.04, tp, i)
+            cy2 = iy + 0.10
+            if icon:
+                _h2_rounded_rect(slide, ix + 0.10, cy2, 0.34, 0.34, color, 0.17)
+                _h2_text(slide, icon, ix + 0.10, cy2, 0.34, 0.34,
+                         font, 13, 'FFFFFF', bold=False, align='center')
+                _h2_text(slide, label, ix + 0.50, cy2 + 0.04, iw - 0.58, 0.26,
+                         font, 9, dk1, bold=True, align='left')
+            else:
+                _h2_rect(slide, ix + 0.10, cy2, 0.05, ih - 0.18, color, 0.025)
+                _h2_text(slide, label, ix + 0.22, cy2, iw - 0.30, 0.26,
+                         font, 9, dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body, ix + 0.10 + (0.40 if icon else 0.12),
+                         cy2 + 0.32, iw - (0.56 if icon else 0.22), ih - 0.50,
+                         font, 8, '555555', bold=False, align='left')
+
+    else:
+        # v2: Hub top-centre, items in 2/3 columns below
+        hub_r  = 0.52
+        hub_cx = _LY.CL + _LY.CW / 2
+        hub_cy = _LY.CT + 0.62
+        by     = hub_cy + hub_r + 0.28
+        zh     = _LY.CB - by
+        n2     = min(n, 6)
+        n_cols = 3 if n2 >= 4 else 2
+        n_rows = (n2 + n_cols - 1) // n_cols
+        cw     = _LY.CW / n_cols
+        ch     = zh / max(n_rows, 1)
+
+        _h2_rounded_rect(slide, hub_cx - hub_r, hub_cy - hub_r,
+                         hub_r * 2, hub_r * 2, accents[0], hub_r)
+        if cicon:
+            _h2_text(slide, cicon, hub_cx - hub_r, hub_cy - hub_r,
+                     hub_r * 2, hub_r, font, 18, 'FFFFFF', bold=False, align='center')
+        _h2_text(slide, clabel, hub_cx - 1.2, hub_cy + hub_r * 0.18,
+                 2.4, 0.26, font, 9, 'FFFFFF', bold=True, align='center')
+
+        for i, item in enumerate(items[:n2]):
+            col_i = i % n_cols
+            row_i = i // n_cols
+            ix    = _LY.CL + col_i * cw + _LY.GAP_SM
+            iy    = by + row_i * ch
+            color = accents[(i + 1) % len(accents)]
+            icon  = item.get('icon', '')  if isinstance(item, dict) else ''
+            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body', '')  if isinstance(item, dict) else ''
+            w     = cw - _LY.GAP_SM * 2
+            h     = ch - _LY.GAP_SM
+
+            _h2_card_bg(slide, ix, iy, w, h, tp, i)
+            _h2_rect(slide, ix, iy, w, 0.05, color)
+            cy2 = iy + 0.10
+            if icon:
+                _h2_rounded_rect(slide, ix + 0.10, cy2, 0.30, 0.30, color, 0.15)
+                _h2_text(slide, icon, ix + 0.10, cy2, 0.30, 0.30,
+                         font, 12, 'FFFFFF', bold=False, align='center')
+                _h2_text(slide, label, ix + 0.46, cy2 + 0.02, w - 0.54, 0.26,
+                         font, 9, dk1, bold=True, align='left')
+            else:
+                _h2_text(slide, label, ix + 0.12, cy2, w - 0.20, 0.26,
+                         font, 9, dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body, ix + 0.12, cy2 + 0.30, w - 0.20, h - 0.46,
+                         font, 8, '555555', bold=False, align='left')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -9101,7 +9272,8 @@ RICHESSE VISUELLE OBLIGATOIRE :
 HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
 TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
                     team_grid, stat_banner, icon_row, numbered_features, photo_text,
-                    side_panel, circle_stats, mission_vision, photo_grid, pricing_table
+                    side_panel, circle_stats, mission_vision, photo_grid,
+                    pricing_table, hub_spoke
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
                     section_break
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
@@ -9213,6 +9385,12 @@ mission_vision — 2 panneaux couleur plein fond côte-à-côte (Mission | Visio
 photo_grid     — Grille de 2-3 zones photos avec légendes colorées superposées
                  Champs OBLIGATOIRES : photos:[{title,subtitle?}] — 2 ou 3 photos
                  Usage : portfolio, projets, cas clients, galerie visuelle
+
+hub_spoke      — Diagramme hub-and-spoke : cercle central + items rayonnants autour
+                 Champs OBLIGATOIRES : center:{{label,icon?}} + items:[{{icon?,label,body?}}] — 4 à 7 items
+                 Exemple centre : {{"label":"Stratégie","icon":"🎯"}}
+                 Exemple item : {{"icon":"📊","label":"Données","body":"Analyse en temps réel"}}
+                 Usage : présenter une stratégie centrale avec ses composantes, une plateforme et ses modules
 
 pricing_table  — Comparaison de 2-4 offres tarifaires (plans, abonnements, formules)
                  Champs OBLIGATOIRES : tiers:[{{name,price,features:[str]}}] — 2 à 4 plans
@@ -9539,6 +9717,8 @@ async def run_pipeline_v4(
                 layout_photo_grid_v4(prs, content, tp)
             elif layout_name in ('pricing_table', 'pricing'):
                 layout_pricing_table_v4(prs, content, tp)
+            elif layout_name in ('hub_spoke', 'hub'):
+                layout_hub_spoke_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
