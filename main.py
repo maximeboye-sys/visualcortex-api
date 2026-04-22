@@ -9169,6 +9169,143 @@ def layout_pest_analysis_v4(prs, content: dict, tp: dict):
     return slide
 
 
+def _h2_diamond(slide, left, top, width, height, color_hex):
+    """Diamond (rhombus) autoshape, falls back to circle on error."""
+    from pptx.util import Inches
+    from pptx.dml.color import RGBColor
+    r, g, b = int(color_hex[0:2], 16), int(color_hex[2:4], 16), int(color_hex[4:6], 16)
+    try:
+        shp = slide.shapes.add_shape(
+            4,  # MSO autoshape DIAMOND
+            Inches(left), Inches(top), Inches(width), Inches(height)
+        )
+        shp.fill.solid()
+        shp.fill.fore_color.rgb = RGBColor(r, g, b)
+        shp.line.fill.background()
+        return shp
+    except Exception:
+        return _h2_rounded_rect(slide, left, top, width, height, color_hex,
+                                min(width, height) / 2)
+
+
+def layout_diamond_icons_v4(prs, content: dict, tp: dict):
+    """
+    Row of diamond (rhombus) shapes with icons — graphic variant of icon_row.
+    content: {title, items:[{icon, title, body?}]}
+    v0: Row of diamonds + title + body below each
+    v1: Diamonds with horizontal connector bar + numbered badge
+    v2: Each diamond sits inside a card (rounded rect background)
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+
+    title = content.get('title', '')
+    items = content.get('items', [])
+    n     = min(len(items), 4)
+    items = items[:n]
+    if title:
+        _h2_title(slide, title, tp)
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if v == 0:
+        d_size = 1.15
+        gap    = (_LY.CW - n * d_size) / (n + 1)
+        gap    = max(gap, 0.15)
+        d_y    = _LY.CT + (_LY.CB - _LY.CT) * 0.06
+
+        for i, item in enumerate(items):
+            dx    = _LY.CL + gap + i * (d_size + gap)
+            color = accents[i % len(accents)]
+            icon  = item.get('icon',  '') if isinstance(item, dict) else ''
+            ttxt  = item.get('title', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body',  '') if isinstance(item, dict) else ''
+
+            _h2_diamond(slide, dx, d_y, d_size, d_size, color)
+            if icon:
+                _h2_text(slide, icon, dx, d_y + d_size * 0.20, d_size, d_size * 0.58,
+                         font, 28, 'FFFFFF', bold=False, align='center')
+
+            ty = d_y + d_size + 0.14
+            _h2_text(slide, ttxt, dx - 0.18, ty, d_size + 0.36, 0.30,
+                     font, 11, dk1, bold=True, align='center')
+            if body:
+                _h2_text(slide, body, dx - 0.12, ty + 0.32, d_size + 0.24,
+                         _LY.CB - ty - 0.36, font, 9, '555555', bold=False, align='center')
+
+    elif v == 1:
+        # Diamonds with horizontal connector + numbered badge
+        d_size  = 1.00
+        gap     = (_LY.CW - n * d_size) / (n + 1)
+        gap     = max(gap, 0.12)
+        d_y     = _LY.CT + (_LY.CB - _LY.CT) * 0.08
+        conn_y  = d_y + d_size * 0.50 - 0.025
+
+        # Connector line behind diamonds
+        _h2_rect(slide, _LY.CL + gap + d_size * 0.35, conn_y,
+                 _LY.CW - gap * 2 - d_size * 0.70, 0.05, _cbg(tp, 1))
+
+        for i, item in enumerate(items):
+            dx    = _LY.CL + gap + i * (d_size + gap)
+            color = accents[i % len(accents)]
+            icon  = item.get('icon',  '') if isinstance(item, dict) else ''
+            ttxt  = item.get('title', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body',  '') if isinstance(item, dict) else ''
+
+            _h2_diamond(slide, dx, d_y, d_size, d_size, color)
+            if icon:
+                _h2_text(slide, icon, dx, d_y + d_size * 0.20, d_size, d_size * 0.58,
+                         font, 24, 'FFFFFF', bold=False, align='center')
+
+            # Numbered badge top-right
+            br = 0.18
+            _h2_rounded_rect(slide, dx + d_size - br, d_y - br,
+                             br * 2, br * 2, _darken(color, 0.25), br)
+            _h2_text(slide, str(i + 1), dx + d_size - br, d_y - br,
+                     br * 2, br * 2, font, 8, 'FFFFFF', bold=True, align='center')
+
+            ty = d_y + d_size + 0.12
+            _h2_text(slide, ttxt, dx - 0.14, ty, d_size + 0.28, 0.28,
+                     font, 10, dk1, bold=True, align='center')
+            if body:
+                _h2_text(slide, body, dx - 0.10, ty + 0.30, d_size + 0.20,
+                         _LY.CB - ty - 0.36, font, 8, '555555', bold=False, align='center')
+
+    else:
+        # v2: diamond centred in card background
+        gap    = _LY.GAP_SM
+        card_w = (_LY.CW - gap * (n - 1)) / n
+        d_size = min(card_w * 0.52, 1.05)
+
+        for i, item in enumerate(items):
+            cx    = _LY.CL + i * (card_w + gap)
+            color = accents[i % len(accents)]
+            icon  = item.get('icon',  '') if isinstance(item, dict) else ''
+            ttxt  = item.get('title', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body',  '') if isinstance(item, dict) else ''
+
+            _h2_card_bg(slide, cx, _LY.CT, card_w, _LY.CB - _LY.CT, tp, i)
+            _h2_rect(slide, cx, _LY.CT, card_w, 0.06, color)
+
+            dx = cx + (card_w - d_size) / 2
+            dy = _LY.CT + 0.16
+            _h2_diamond(slide, dx, dy, d_size, d_size, color)
+            if icon:
+                _h2_text(slide, icon, dx, dy + d_size * 0.20, d_size, d_size * 0.58,
+                         font, 22, 'FFFFFF', bold=False, align='center')
+
+            ty = dy + d_size + 0.14
+            _h2_text(slide, ttxt, cx + 0.10, ty, card_w - 0.20, 0.28,
+                     font, 10, dk1, bold=True, align='center')
+            if body:
+                _h2_text(slide, body, cx + 0.10, ty + 0.30, card_w - 0.20,
+                         _LY.CB - ty - 0.36, font, 8, '555555', bold=False, align='center')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -9508,7 +9645,7 @@ HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
 TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
                     team_grid, stat_banner, icon_row, numbered_features, photo_text,
                     side_panel, circle_stats, mission_vision, photo_grid,
-                    pricing_table, hub_spoke
+                    pricing_table, hub_spoke, diamond_icons
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
                     section_break, competitor_matrix, pest_analysis
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
@@ -9620,6 +9757,11 @@ mission_vision — 2 panneaux couleur plein fond côte-à-côte (Mission | Visio
 photo_grid     — Grille de 2-3 zones photos avec légendes colorées superposées
                  Champs OBLIGATOIRES : photos:[{title,subtitle?}] — 2 ou 3 photos
                  Usage : portfolio, projets, cas clients, galerie visuelle
+
+diamond_icons  — Rangée de 3-4 icônes en losanges (variante visuelle de icon_row)
+                 Champs OBLIGATOIRES : items:[{{icon(emoji),title}}] — 3 ou 4 items
+                 Optionnel : body dans chaque item
+                 Usage : features produit, étapes clés, valeurs — impact visuel fort
 
 pest_analysis  — Analyse P.E.S.T (ou tout framework 4 quadrants avec grandes lettres décoratives)
                  Champs OBLIGATOIRES : items:[{{letter,label,body}}] — exactement 4 items
@@ -9969,6 +10111,8 @@ async def run_pipeline_v4(
                 layout_competitor_matrix_v4(prs, content, tp)
             elif layout_name in ('pest_analysis', 'pest'):
                 layout_pest_analysis_v4(prs, content, tp)
+            elif layout_name in ('diamond_icons', 'diamond'):
+                layout_diamond_icons_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
