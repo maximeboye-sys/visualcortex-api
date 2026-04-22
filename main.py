@@ -3651,11 +3651,17 @@ def _blank_v4(prs: Presentation, tp: dict):
     Retourne slide.
     """
     # Prefer a layout that inherits the master background (no own bg override)
-    # Fallback order: text → blank → last layout
-    lmap     = tp['layout_map']
-    n_layouts = len(prs.slide_layouts)
-    preferred = [lmap.get('text'), lmap.get('blank'), n_layouts - 1]
-    chosen_idx = lmap.get('blank', n_layouts - 1)  # default
+    # Ordre de préférence :
+    # 1. Layout le plus décoré du template (rich_layout_idx) — apporte les éléments visuels du template
+    # 2. Layout "text" standard
+    # 3. Layout "blank"
+    # 4. Dernier layout
+    # Condition : doit hériter du fond maître (pas de fond propre)
+    lmap          = tp['layout_map']
+    n_layouts     = len(prs.slide_layouts)
+    rich_idx      = tp.get('rich_layout_idx')
+    preferred     = [rich_idx, lmap.get('text'), lmap.get('blank'), n_layouts - 1]
+    chosen_idx    = lmap.get('blank', n_layouts - 1)
     for idx in preferred:
         if idx is None:
             continue
@@ -4142,9 +4148,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
             cx, cy = x_cols[i % 2], y_rows[i // 2]
             color  = accents[i % len(accents)]
             icon, label, title_txt, subtitle, body_txt, items, sv, sl = _card_data(cards[i])
-            _h2_rounded_rect(slide, left=cx, top=cy,
-                              width=_LY.COL_W, height=card_h,
-                              color='F8F8F8', radius=_LY.R_SM)
+            _h2_card_bg(slide, cx, cy, _LY.COL_W, card_h, tp, i)
             _h2_rect(slide, left=cx, top=cy, width=_LY.COL_W, height=0.07, color=color)
             # Bordure gauche colorée
             _h2_rect(slide, left=cx, top=cy + 0.07, width=0.055, height=card_h - 0.07, color=color)
@@ -4188,9 +4192,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
             cx    = _LY.CL + i * (card_w + _LY.GAP_LG)
             color = accents[i % len(accents)]
             icon, label, title_txt, subtitle, body_txt, items, sv, sl = _card_data(cards[i])
-            _h2_rounded_rect(slide, left=cx, top=_LY.CT,
-                              width=card_w, height=card_h,
-                              color='F8F8F8', radius=_LY.R_SM)
+            _h2_card_bg(slide, cx, _LY.CT, card_w, card_h, tp, i)
             # Bande colorée haute
             _h2_rect(slide, left=cx, top=_LY.CT, width=card_w, height=0.07, color=color)
             y_cur = _LY.CT + 0.16
@@ -4350,8 +4352,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
         _h2_text(slide, str(i + 1), left=num_cx, top=conn_y + 0.02,
                  width=circle_r * 2, height=circle_r * 2,
                  font=font, size_pt=14, color='FFFFFF', bold=True, align='center')
-        _h2_rounded_rect(slide, left=cx, top=card_top, width=card_w, height=card_h,
-                          color='F8F8F8', radius=_LY.R_SM)
+        _h2_card_bg(slide, cx, card_top, card_w, card_h, tp, i)
         _h2_rect(slide, left=cx, top=card_top, width=card_w, height=0.055, color=color)
         y_cur = card_top + 0.12
         if icon:
@@ -4420,8 +4421,7 @@ def layout_col3_v4(prs: Presentation, content: dict, tp: dict):
         sl = col.get('stat_label', sl) if isinstance(col, dict) else sl
 
         # Fond carte
-        _h2_rounded_rect(slide, left=cx, top=_LY.CT, width=card_w, height=card_h,
-                          color='F8F8F8', radius=_LY.R_SM)
+        _h2_card_bg(slide, cx, _LY.CT, card_w, card_h, tp, i)
         # Barre accent top
         _h2_rect(slide, left=cx, top=_LY.CT, width=card_w, height=bar_h, color=color)
 
@@ -4647,9 +4647,7 @@ def layout_twocol_v4(prs: Presentation, content: dict, tp: dict):
             for j, item in enumerate(items[:n_it]):
                 item_txt = item.get('title', str(item)) if isinstance(item, dict) else str(item)
                 iy = y_items + j * (it_h + gap)
-                _h2_rounded_rect(slide, left=x_col, top=iy,
-                                  width=_LY.COL_W, height=it_h,
-                                  color='F8F8F8', radius=_LY.R_SM)
+                _h2_card_bg(slide, x_col, iy, _LY.COL_W, it_h, tp, j)
                 _h2_text(slide, str(j + 1),
                          left=x_col + 0.10, top=iy + (it_h - 0.34) / 2,
                          width=0.28, height=0.34,
@@ -6479,8 +6477,7 @@ def layout_entity_v4(prs: Presentation, content: dict, tp: dict):
             cx    = _LY.CL + i * (card_w + _LY.GAP_LG)
             color = accents[i % len(accents)]
             icon, name, badge, label, items, sv, sl = _ent(entities[i])
-            _h2_rounded_rect(slide, left=cx, top=_LY.CT,
-                              width=card_w, height=card_h, color='F8F8F8', radius=_LY.R_SM)
+            _h2_card_bg(slide, cx, _LY.CT, card_w, card_h, tp, i)
             _h2_rect(slide, left=cx, top=_LY.CT, width=card_w, height=0.07, color=color)
             y_cur = _LY.CT + 0.14
             if icon:
@@ -6550,8 +6547,7 @@ def layout_entity_v4(prs: Presentation, content: dict, tp: dict):
                      font=font, size_pt=12, color='FFFFFF', bold=True, align='center')
             # Fond fond pale + bullets
             bx = _LY.CL + lbl_w + _LY.GAP_MD
-            _h2_rounded_rect(slide, left=bx, top=cy,
-                              width=bul_w, height=row_h, color='F8F8F8', radius=_LY.R_SM)
+            _h2_card_bg(slide, bx, cy, bul_w, row_h, tp, i)
             _h2_rect(slide, left=bx, top=cy, width=0.055, height=row_h, color=color)
             if badge:
                 _h2_rounded_rect(slide, left=bx + bul_w - 1.30, top=cy + 0.08,
@@ -6679,8 +6675,7 @@ def layout_conclusion_v4(prs: Presentation, content: dict, tp: dict):
         body  = card.get('body', '') if isinstance(card, dict) else ''
 
         # Fond carte + bordure gauche colorée
-        _h2_rounded_rect(slide, left=cx, top=cy, width=card_w, height=card_h,
-                          color='F8F8F8', radius=_LY.R_SM)
+        _h2_card_bg(slide, cx, cy, card_w, card_h, tp, i)
         _h2_rect(slide, left=cx, top=cy, width=0.055, height=card_h, color=color)
 
         y = cy + 0.14
@@ -7398,9 +7393,8 @@ def layout_team_grid_v4(prs: Presentation, content: dict, tp: dict):
             icon, name, role, dept, sv, sl, body = _mf(m)
             color  = accents[i % len(accents)]
             card_x = _LY.CL + i * col_w
-            _h2_rounded_rect(slide, left=card_x + _LY.GAP_SM, top=_LY.CT,
-                             width=col_w - _LY.GAP_SM * 2, height=zone_h,
-                             color='F8F8F8', radius=_LY.R_SM)
+            _h2_card_bg(slide, card_x + _LY.GAP_SM, _LY.CT,
+                        col_w - _LY.GAP_SM * 2, zone_h, tp, i)
             _h2_rect(slide, left=card_x + _LY.GAP_SM, top=_LY.CT,
                      width=col_w - _LY.GAP_SM * 2, height=0.05, color=color)
             cx = card_x + col_w / 2
@@ -7453,8 +7447,7 @@ def layout_team_grid_v4(prs: Presentation, content: dict, tp: dict):
             color  = accents[i % len(accents)]
             cx     = _LY.CL + col_i * (card_w + _LY.GAP_LG)
             cy     = _LY.CT + row_i * (card_h + _LY.GAP_SM)
-            _h2_rounded_rect(slide, left=cx, top=cy, width=card_w, height=card_h,
-                             color='F8F8F8', radius=_LY.R_SM)
+            _h2_card_bg(slide, cx, cy, card_w, card_h, tp, i)
             _h2_rect(slide, left=cx, top=cy, width=card_w, height=0.05, color=color)
             r  = 0.32
             ax = cx + _LY.PAD + r
@@ -7580,8 +7573,7 @@ def layout_stat_banner_v4(prs: Presentation, content: dict, tp: dict):
             card_x = _LY.CL + i * cell_w + _LY.GAP_SM
             card_w = cell_w - _LY.GAP_SM * 2
             card_h = zone_h - 0.10
-            _h2_rounded_rect(slide, left=card_x, top=_LY.CT + 0.05,
-                             width=card_w, height=card_h, color='F8F8F8', radius=_LY.R_SM)
+            _h2_card_bg(slide, card_x, _LY.CT + 0.05, card_w, card_h, tp, i)
             # Grand cercle décoratif en arrière-plan (couleur accent si icône, sinon neutre)
             r = min(card_w * 0.36, 0.85)
             cx_card = card_x + card_w / 2
@@ -8024,8 +8016,7 @@ def layout_numbered_features_v4(prs: Presentation, content: dict, tp: dict):
             color  = accents[i % len(accents)]
             cx     = _LY.CL + i * (col_w + _LY.GAP_LG)
             # Fond carte
-            _h2_rounded_rect(slide, left=cx, top=_LY.CT, width=col_w, height=zone_h,
-                             color='F8F8F8', radius=_LY.R_SM)
+            _h2_card_bg(slide, cx, _LY.CT, col_w, zone_h, tp, i)
             # Grand numéro décoratif en fond (couleur très légère)
             _h2_text(slide, num, cx - 0.06, _LY.CT + 0.06, col_w + 0.12, 0.96,
                      font, 72, _cbg(tp, i + 1), bold=True, align='right')
@@ -8100,8 +8091,7 @@ def layout_numbered_features_v4(prs: Presentation, content: dict, tp: dict):
             color  = accents[i % len(accents)]
             cx     = _LY.CL + col_i * (card_w + _LY.GAP_LG)
             cy     = _LY.CT + row_i * (card_h + _LY.GAP_SM)
-            _h2_rounded_rect(slide, left=cx, top=cy, width=card_w, height=card_h,
-                             color='F8F8F8', radius=_LY.R_SM)
+            _h2_card_bg(slide, cx, cy, card_w, card_h, tp, i)
             # Cercle numéroté
             r  = 0.38
             ax = cx + _LY.PAD + r
