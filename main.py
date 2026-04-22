@@ -8605,6 +8605,164 @@ def layout_photo_grid_v4(prs: Presentation, content: dict, tp: dict):
     return slide
 
 
+def layout_pricing_table_v4(prs, content: dict, tp: dict):
+    """
+    Pricing tier comparison: columns with price, feature list, CTA button.
+    content: {title, tiers:[{name, price, period?, highlight?:bool, features:[str], cta?}]}
+    v0: Classic columns, highlighted centre
+    v1: Tabular feature matrix with header row
+    v2: Bold price + accent top bar per column
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+
+    title = content.get('title', '')
+    tiers = content.get('tiers', [])
+    if not tiers:
+        tiers = [
+            {'name': 'Basic',    'price': '$9',  'features': ['Feature A', 'Feature B']},
+            {'name': 'Standard', 'price': '$29', 'features': ['Feature A', 'Feature B', 'Feature C'], 'highlight': True},
+            {'name': 'Premium',  'price': '$79', 'features': ['Feature A', 'Feature B', 'Feature C', 'Feature D']},
+        ]
+    n     = min(len(tiers), 4)
+    tiers = tiers[:n]
+    v     = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if title:
+        _h2_title(slide, title, tp)
+
+    if v == 0:
+        gap    = _LY.GAP_SM
+        col_w  = (_LY.CW - gap * (n - 1)) / n
+        zone_h = _LY.CB - _LY.CT
+
+        for i, tier in enumerate(tiers):
+            cx         = _LY.CL + i * (col_w + gap)
+            color      = accents[i % len(accents)]
+            highlight  = tier.get('highlight', False) or (n == 3 and i == 1)
+            if highlight:
+                _h2_rounded_rect(slide, cx, _LY.CT, col_w, zone_h, color, _LY.R_SM)
+                tc, sc = 'FFFFFF', 'FFFFFF'
+            else:
+                _h2_card_bg(slide, cx, _LY.CT, col_w, zone_h, tp, i)
+                tc, sc = dk1, '777777'
+
+            y = _LY.CT + 0.22
+            _h2_text(slide, tier.get('name', f'Plan {i+1}').upper(),
+                     cx + _LY.PAD, y, col_w - _LY.PAD * 2, 0.26,
+                     font, 10, tc, bold=True, align='center')
+            y += 0.28
+            _h2_text(slide, tier.get('price', ''),
+                     cx + _LY.PAD, y, col_w - _LY.PAD * 2, 0.52,
+                     font, 34, tc, bold=True, align='center')
+            y += 0.54
+            _h2_text(slide, tier.get('period', 'par mois'),
+                     cx + _LY.PAD, y, col_w - _LY.PAD * 2, 0.20,
+                     font, 8, sc, bold=False, align='center')
+            y += 0.26
+            _h2_rect(slide, cx + _LY.PAD, y, col_w - _LY.PAD * 2, 0.025,
+                     'FFFFFF' if highlight else 'DDDDDD')
+            y += 0.10
+
+            for feat in tier.get('features', [])[:7]:
+                tick_c = 'FFFFFF' if highlight else color
+                _h2_text(slide, '✓', cx + _LY.PAD, y, 0.24, 0.24,
+                         font, 10, tick_c, bold=True, align='center')
+                _h2_text(slide, feat, cx + _LY.PAD + 0.22, y,
+                         col_w - _LY.PAD - 0.28, 0.24,
+                         font, 8, tc, bold=False, align='left')
+                y += 0.26
+
+            cta   = tier.get('cta', 'Choisir')
+            btn_h = 0.28
+            btn_y = _LY.CB - btn_h - 0.18
+            if highlight:
+                _h2_rounded_rect(slide, cx + _LY.PAD, btn_y,
+                                 col_w - _LY.PAD * 2, btn_h, 'FFFFFF', 0.08)
+                _h2_text(slide, cta, cx + _LY.PAD, btn_y,
+                         col_w - _LY.PAD * 2, btn_h, font, 9, color, bold=True, align='center')
+            else:
+                _h2_rounded_rect(slide, cx + _LY.PAD, btn_y,
+                                 col_w - _LY.PAD * 2, btn_h, color, 0.08)
+                _h2_text(slide, cta, cx + _LY.PAD, btn_y,
+                         col_w - _LY.PAD * 2, btn_h, font, 9, 'FFFFFF', bold=True, align='center')
+
+    elif v == 1:
+        # Tabular: tier headers across top, feature rows below
+        all_feats = []
+        seen = set()
+        for t in tiers:
+            for f in t.get('features', []):
+                if f not in seen:
+                    all_feats.append(f)
+                    seen.add(f)
+        all_feats = all_feats[:9]
+        nf     = len(all_feats)
+        hdr_h  = 0.60
+        row_h  = min(max((_LY.CB - _LY.CT - hdr_h - _LY.GAP_SM) / max(nf, 1), 0.32), 0.52)
+        name_w = _LY.CW * 0.32
+        col_w  = (_LY.CW - name_w) / n
+
+        for i, tier in enumerate(tiers):
+            cx    = _LY.CL + name_w + i * col_w
+            color = accents[i % len(accents)]
+            _h2_rounded_rect(slide, cx + 0.03, _LY.CT, col_w - 0.06, hdr_h, color, _LY.R_SM)
+            _h2_text(slide, tier.get('name', f'Plan {i+1}'),
+                     cx, _LY.CT + 0.06, col_w, 0.24, font, 9, 'FFFFFF', bold=True, align='center')
+            _h2_text(slide, tier.get('price', ''),
+                     cx, _LY.CT + 0.30, col_w, 0.30, font, 16, 'FFFFFF', bold=True, align='center')
+
+        for fi, feat in enumerate(all_feats):
+            fy     = _LY.CT + hdr_h + _LY.GAP_SM + fi * row_h
+            row_bg = _cbg(tp, 0) if fi % 2 == 0 else 'FFFFFF'
+            _h2_rect(slide, _LY.CL, fy, _LY.CW, row_h - 0.02, row_bg)
+            _h2_text(slide, feat, _LY.CL + 0.10, fy + 0.04,
+                     name_w - 0.12, row_h - 0.08, font, 9, dk1, bold=False, align='left')
+            for i, tier in enumerate(tiers):
+                cx   = _LY.CL + name_w + i * col_w
+                has  = feat in tier.get('features', [])
+                sym  = '✓' if has else '✗'
+                c    = accents[i % len(accents)] if has else 'CCCCCC'
+                _h2_text(slide, sym, cx, fy + 0.04, col_w, row_h - 0.08,
+                         font, 12, c, bold=True, align='center')
+
+    else:
+        # v2: accent top bar, large price, feature bullets
+        gap   = _LY.GAP_SM
+        col_w = (_LY.CW - gap * (n - 1)) / n
+        bar_h = 0.10
+
+        for i, tier in enumerate(tiers):
+            cx    = _LY.CL + i * (col_w + gap)
+            color = accents[i % len(accents)]
+            _h2_rect(slide, cx, _LY.CT, col_w, bar_h, color)
+            _h2_card_bg(slide, cx, _LY.CT + bar_h, col_w,
+                        _LY.CB - _LY.CT - bar_h, tp, i)
+            y = _LY.CT + bar_h + 0.16
+            _h2_text(slide, tier.get('name', f'Plan {i+1}').upper(),
+                     cx + _LY.PAD, y, col_w - _LY.PAD * 2, 0.24,
+                     font, 9, color, bold=True, align='center')
+            y += 0.26
+            _h2_text(slide, tier.get('price', ''),
+                     cx + _LY.PAD, y, col_w - _LY.PAD * 2, 0.52,
+                     font, 36, dk1, bold=True, align='center')
+            y += 0.54
+            _h2_text(slide, tier.get('period', 'par mois'),
+                     cx + _LY.PAD, y, col_w - _LY.PAD * 2, 0.18,
+                     font, 7, '888888', bold=False, align='center')
+            y += 0.26
+            _h2_rect(slide, cx + 0.18, y, col_w - 0.36, 0.02, 'DDDDDD')
+            y += 0.12
+            for feat in tier.get('features', [])[:6]:
+                _h2_text(slide, f'• {feat}', cx + _LY.PAD, y,
+                         col_w - _LY.PAD * 2, 0.25, font, 8, '555555', bold=False, align='left')
+                y += 0.27
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -8943,7 +9101,7 @@ RICHESSE VISUELLE OBLIGATOIRE :
 HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
 TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
                     team_grid, stat_banner, icon_row, numbered_features, photo_text,
-                    side_panel, circle_stats, mission_vision, photo_grid
+                    side_panel, circle_stats, mission_vision, photo_grid, pricing_table
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
                     section_break
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
@@ -9055,6 +9213,12 @@ mission_vision — 2 panneaux couleur plein fond côte-à-côte (Mission | Visio
 photo_grid     — Grille de 2-3 zones photos avec légendes colorées superposées
                  Champs OBLIGATOIRES : photos:[{title,subtitle?}] — 2 ou 3 photos
                  Usage : portfolio, projets, cas clients, galerie visuelle
+
+pricing_table  — Comparaison de 2-4 offres tarifaires (plans, abonnements, formules)
+                 Champs OBLIGATOIRES : tiers:[{{name,price,features:[str]}}] — 2 à 4 plans
+                 Optionnel : period(≤8mots), highlight:bool (colonne mise en avant), cta(≤3mots)
+                 Exemple : {{"name":"Standard","price":"29€","period":"par mois","highlight":true,"features":["Stockage 50 Go","Support 24h","API incluse"],"cta":"Choisir"}}
+                 Usage : offres SaaS, abonnements, packages de services
 
 section_break  — Slide de rupture dramatique entre sections majeures
                  Champs OBLIGATOIRES : title (max 6 mots) — IMPACT XL
@@ -9373,6 +9537,8 @@ async def run_pipeline_v4(
                 layout_mission_vision_v4(prs, content, tp)
             elif layout_name in ('photo_grid',):
                 layout_photo_grid_v4(prs, content, tp)
+            elif layout_name in ('pricing_table', 'pricing'):
+                layout_pricing_table_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
