@@ -9026,6 +9026,149 @@ def layout_competitor_matrix_v4(prs, content: dict, tp: dict):
     return slide
 
 
+def layout_pest_analysis_v4(prs, content: dict, tp: dict):
+    """
+    P.E.S.T / framework 2×2 with large decorative letter tiles.
+    content: {title, items:[{letter, label, icon?, body}] × 4}
+    v0: 2×2 grid — large letter as light bg decoration, coloured top bar
+    v1: Horizontal 4 tiles — large coloured letter dominates upper half
+    v2: 2×2 grid — coloured header block with letter + icon, body below
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+
+    title = content.get('title', '')
+    items = content.get('items', [])
+    if not items:
+        items = [
+            {'letter': 'P', 'label': 'Political',     'body': 'Regulations, trade policy'},
+            {'letter': 'E', 'label': 'Economic',      'body': 'Growth rates, inflation'},
+            {'letter': 'S', 'label': 'Social',        'body': 'Demographics, trends'},
+            {'letter': 'T', 'label': 'Technological', 'body': 'Innovation, disruption'},
+        ]
+    n     = min(len(items), 4)
+    items = items[:n]
+    if title:
+        _h2_title(slide, title, tp)
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if v == 0:
+        # 2×2 grid, oversized decorative letter in cell background
+        gap    = _LY.GAP_SM
+        cell_w = (_LY.CW - gap) / 2
+        cell_h = (_LY.CB - _LY.CT - gap) / 2
+
+        for i, item in enumerate(items):
+            col_i  = i % 2
+            row_i  = i // 2
+            cx     = _LY.CL + col_i * (cell_w + gap)
+            cy     = _LY.CT + row_i * (cell_h + gap)
+            color  = accents[i % len(accents)]
+            letter = item.get('letter', str(i + 1)) if isinstance(item, dict) else str(item)
+            label  = item.get('label', '')           if isinstance(item, dict) else ''
+            icon   = item.get('icon', '')            if isinstance(item, dict) else ''
+            body   = item.get('body', '')            if isinstance(item, dict) else ''
+
+            _h2_card_bg(slide, cx, cy, cell_w, cell_h, tp, i)
+            # Oversized letter as watermark
+            _h2_text(slide, letter, cx - 0.05, cy - 0.20, cell_w * 0.60, cell_h * 0.82,
+                     font, 80, _cbg(tp, i + 1), bold=True, align='left')
+            # Coloured top bar
+            _h2_rect(slide, cx, cy, cell_w, 0.07, color)
+
+            y = cy + 0.14
+            if icon:
+                _h2_rounded_rect(slide, cx + 0.12, y, 0.36, 0.36, color, 0.18)
+                _h2_text(slide, icon, cx + 0.12, y, 0.36, 0.36,
+                         font, 15, 'FFFFFF', bold=False, align='center')
+                y += 0.42
+            _h2_text(slide, label, cx + _LY.PAD, y, cell_w - _LY.PAD * 2, 0.28,
+                     font, 11, color, bold=True, align='left')
+            y += 0.30
+            if body:
+                _h2_text(slide, body, cx + _LY.PAD, y,
+                         cell_w - _LY.PAD * 2, cell_h - (y - cy) - 0.10,
+                         font, 9, dk1, bold=False, align='left')
+
+    elif v == 1:
+        # Horizontal 4 tiles — large letter fills upper 55% of tile
+        gap    = _LY.GAP_SM
+        tile_w = (_LY.CW - gap * (n - 1)) / n
+        tile_h = _LY.CB - _LY.CT
+
+        for i, item in enumerate(items):
+            cx     = _LY.CL + i * (tile_w + gap)
+            color  = accents[i % len(accents)]
+            letter = item.get('letter', str(i + 1)) if isinstance(item, dict) else str(item)
+            label  = item.get('label', '')           if isinstance(item, dict) else ''
+            icon   = item.get('icon', '')            if isinstance(item, dict) else ''
+            body   = item.get('body', '')            if isinstance(item, dict) else ''
+
+            _h2_card_bg(slide, cx, _LY.CT, tile_w, tile_h, tp, i)
+            # Big coloured letter
+            _h2_text(slide, letter, cx, _LY.CT + 0.04, tile_w, tile_h * 0.52,
+                     font, 70, color, bold=True, align='center')
+            y = _LY.CT + tile_h * 0.50
+            if icon:
+                ix2 = cx + tile_w / 2 - 0.18
+                _h2_rounded_rect(slide, ix2, y, 0.36, 0.36, color, 0.18)
+                _h2_text(slide, icon, ix2, y, 0.36, 0.36,
+                         font, 15, 'FFFFFF', bold=False, align='center')
+                y += 0.42
+            _h2_text(slide, label, cx + _LY.PAD, y, tile_w - _LY.PAD * 2, 0.28,
+                     font, 10, color, bold=True, align='center')
+            y += 0.30
+            if body:
+                _h2_text(slide, body, cx + _LY.PAD, y, tile_w - _LY.PAD * 2,
+                         _LY.CB - y - 0.10, font, 8, dk1, bold=False, align='center')
+
+    else:
+        # v2: 2×2 — coloured header block (letter + icon), body in light area below
+        gap    = _LY.GAP_SM
+        cell_w = (_LY.CW - gap) / 2
+        cell_h = (_LY.CB - _LY.CT - gap) / 2
+        hdr_h  = cell_h * 0.40
+
+        for i, item in enumerate(items):
+            col_i  = i % 2
+            row_i  = i // 2
+            cx     = _LY.CL + col_i * (cell_w + gap)
+            cy     = _LY.CT + row_i * (cell_h + gap)
+            color  = accents[i % len(accents)]
+            letter = item.get('letter', str(i + 1)) if isinstance(item, dict) else str(item)
+            label  = item.get('label', '')           if isinstance(item, dict) else ''
+            icon   = item.get('icon', '')            if isinstance(item, dict) else ''
+            body   = item.get('body', '')            if isinstance(item, dict) else ''
+
+            # Light body area
+            _h2_card_bg(slide, cx, cy, cell_w, cell_h, tp, i)
+            # Coloured header block
+            _h2_rounded_rect(slide, cx, cy, cell_w, hdr_h + _LY.R_SM, color, _LY.R_SM)
+            _h2_rect(slide, cx, cy + hdr_h * 0.55, cell_w, hdr_h * 0.50, color)
+
+            # Letter in header (left side)
+            _h2_text(slide, letter, cx + _LY.PAD, cy + 0.04,
+                     hdr_h * 0.80, hdr_h - 0.08, font, 32, 'FFFFFF', bold=True, align='center')
+            # Icon in header (right side)
+            if icon:
+                _h2_text(slide, icon, cx + hdr_h * 0.82, cy + (hdr_h - 0.34) / 2,
+                         hdr_h * 0.72, 0.34, font, 20, 'FFFFFF', bold=False, align='center')
+
+            y = cy + hdr_h + 0.12
+            _h2_text(slide, label, cx + _LY.PAD, y, cell_w - _LY.PAD * 2, 0.28,
+                     font, 11, color, bold=True, align='left')
+            y += 0.30
+            if body:
+                _h2_text(slide, body, cx + _LY.PAD, y,
+                         cell_w - _LY.PAD * 2, cell_h - hdr_h - 0.52,
+                         font, 9, dk1, bold=False, align='left')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -9367,7 +9510,7 @@ TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero
                     side_panel, circle_stats, mission_vision, photo_grid,
                     pricing_table, hub_spoke
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
-                    section_break, competitor_matrix
+                    section_break, competitor_matrix, pest_analysis
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
 TIER 4 (dernier recours, max 1 par présentation) : full_text
 
@@ -9477,6 +9620,12 @@ mission_vision — 2 panneaux couleur plein fond côte-à-côte (Mission | Visio
 photo_grid     — Grille de 2-3 zones photos avec légendes colorées superposées
                  Champs OBLIGATOIRES : photos:[{title,subtitle?}] — 2 ou 3 photos
                  Usage : portfolio, projets, cas clients, galerie visuelle
+
+pest_analysis  — Analyse P.E.S.T (ou tout framework 4 quadrants avec grandes lettres décoratives)
+                 Champs OBLIGATOIRES : items:[{{letter,label,body}}] — exactement 4 items
+                 Optionnel : icon(emoji) par item
+                 Exemple : {{"letter":"P","label":"Politique","icon":"🏛️","body":"Stabilité réglementaire, politiques commerciales"}}
+                 Usage : PEST, PESTEL, tout framework lettré 4 quadrants
 
 competitor_matrix — Matrice de comparaison concurrentielle avec ✓/✗ par fonctionnalité
                  Champs OBLIGATOIRES : competitors:[str] (2-5 noms) + features:[{{name,values:[bool]}}]
@@ -9818,6 +9967,8 @@ async def run_pipeline_v4(
                 layout_hub_spoke_v4(prs, content, tp)
             elif layout_name in ('competitor_matrix', 'competitor'):
                 layout_competitor_matrix_v4(prs, content, tp)
+            elif layout_name in ('pest_analysis', 'pest'):
+                layout_pest_analysis_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
