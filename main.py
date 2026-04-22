@@ -8934,6 +8934,98 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
     return slide
 
 
+def layout_competitor_matrix_v4(prs, content: dict, tp: dict):
+    """
+    Feature comparison matrix with ✓/✗ symbols.
+    content: {title, competitors:[str], features:[{name, values:[bool]}]}
+    v0: Full matrix, coloured header row
+    v1: Highlighted winner column (most features)
+    v2: Simplified with large symbols and spacious rows
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+
+    title       = content.get('title', '')
+    competitors = content.get('competitors', [])
+    features    = content.get('features', [])
+    if title:
+        _h2_title(slide, title, tp)
+
+    nc = min(len(competitors), 5)
+    nf = min(len(features), 9)
+    competitors = competitors[:nc]
+    features    = features[:nf]
+
+    name_w = _LY.CW * 0.30
+    col_w  = (_LY.CW - name_w) / max(nc, 1)
+    hdr_h  = 0.46
+    row_h  = min(max((_LY.CB - _LY.CT - hdr_h - _LY.GAP_SM) / max(nf, 1), 0.32), 0.54)
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    # Find highlight column (most ✓) for v1
+    highlight_col = 0
+    if v == 1 and nc > 1:
+        counts = []
+        for ci in range(nc):
+            cnt = sum(
+                1 for f in features
+                if isinstance(f, dict) and ci < len(f.get('values', [])) and f['values'][ci]
+            )
+            counts.append(cnt)
+        highlight_col = counts.index(max(counts)) if counts else 0
+
+    # Header row
+    for i, comp in enumerate(competitors):
+        cx    = _LY.CL + name_w + i * col_w
+        color = accents[i % len(accents)]
+
+        if v == 1 and i == highlight_col:
+            # Tall highlight column spanning entire matrix
+            total_h = hdr_h + _LY.GAP_SM + nf * row_h
+            _h2_rounded_rect(slide, cx + 0.03, _LY.CT,
+                             col_w - 0.06, total_h, color, _LY.R_SM)
+            _h2_text(slide, comp, cx, _LY.CT + 0.08, col_w, hdr_h - 0.10,
+                     font, 9, 'FFFFFF', bold=True, align='center')
+        else:
+            _h2_rounded_rect(slide, cx + 0.03, _LY.CT, col_w - 0.06, hdr_h, color, _LY.R_SM)
+            _h2_text(slide, comp, cx, _LY.CT + 0.08, col_w, hdr_h - 0.10,
+                     font, 9, 'FFFFFF', bold=True, align='center')
+
+    # Feature rows
+    for fi, feat in enumerate(features):
+        fy        = _LY.CT + hdr_h + _LY.GAP_SM + fi * row_h
+        feat_name = feat.get('name', str(feat)) if isinstance(feat, dict) else str(feat)
+        values    = feat.get('values', []) if isinstance(feat, dict) else []
+
+        if fi % 2 == 0:
+            _h2_rect(slide, _LY.CL, fy, _LY.CW, row_h - 0.02, _cbg(tp, 0))
+
+        _h2_text(slide, feat_name, _LY.CL + 0.10, fy + 0.04,
+                 name_w - 0.12, row_h - 0.08, font, 9, dk1, bold=False, align='left')
+
+        for i in range(nc):
+            cx  = _LY.CL + name_w + i * col_w
+            val = values[i] if i < len(values) else False
+            if isinstance(val, str):
+                sym, sym_color = val, accents[i % len(accents)]
+            elif val:
+                sym, sym_color = '✓', accents[i % len(accents)]
+            else:
+                sym, sym_color = '✗', 'CCCCCC'
+            sym_pt = 13 if v == 2 else 11
+            # In highlight col (v1) use white symbols
+            if v == 1 and i == highlight_col:
+                sym_color = 'FFFFFF' if val else 'FFFFFF88'[:-2]  # white / dim white
+                sym_color = 'FFFFFF' if val else 'DDEEFF'
+            _h2_text(slide, sym, cx, fy + 0.04, col_w, row_h - 0.08,
+                     font, sym_pt, sym_color, bold=True, align='center')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -9275,7 +9367,7 @@ TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero
                     side_panel, circle_stats, mission_vision, photo_grid,
                     pricing_table, hub_spoke
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
-                    section_break
+                    section_break, competitor_matrix
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
 TIER 4 (dernier recours, max 1 par présentation) : full_text
 
@@ -9385,6 +9477,11 @@ mission_vision — 2 panneaux couleur plein fond côte-à-côte (Mission | Visio
 photo_grid     — Grille de 2-3 zones photos avec légendes colorées superposées
                  Champs OBLIGATOIRES : photos:[{title,subtitle?}] — 2 ou 3 photos
                  Usage : portfolio, projets, cas clients, galerie visuelle
+
+competitor_matrix — Matrice de comparaison concurrentielle avec ✓/✗ par fonctionnalité
+                 Champs OBLIGATOIRES : competitors:[str] (2-5 noms) + features:[{{name,values:[bool]}}]
+                 Exemple feature : {{"name":"Support 24h","values":[true,false,true,false]}}
+                 Usage : analyse concurrentielle, comparaison de solutions, benchmark marché
 
 hub_spoke      — Diagramme hub-and-spoke : cercle central + items rayonnants autour
                  Champs OBLIGATOIRES : center:{{label,icon?}} + items:[{{icon?,label,body?}}] — 4 à 7 items
@@ -9719,6 +9816,8 @@ async def run_pipeline_v4(
                 layout_pricing_table_v4(prs, content, tp)
             elif layout_name in ('hub_spoke', 'hub'):
                 layout_hub_spoke_v4(prs, content, tp)
+            elif layout_name in ('competitor_matrix', 'competitor'):
+                layout_competitor_matrix_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
