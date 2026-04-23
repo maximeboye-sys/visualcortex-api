@@ -5046,9 +5046,10 @@ def layout_infographic_v4(prs: Presentation, content: dict, tp: dict):
 
 def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Frise chronologique — 2 variantes visuelles déterministes.
+    Frise chronologique — 3 variantes visuelles déterministes.
     v0 : frise horizontale, jalons alternés dessus/dessous.
     v1 : frise verticale, ligne accent1 à gauche, blocs à droite.
+    v2 : cartes colorées horizontales avec numéro grand + date pill + contenu.
     """
     slide  = _blank_v4(prs, tp)
     font   = tp.get('font', 'Calibri')
@@ -5069,7 +5070,7 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    v = _v4_variant(content, 2, tp.get('seed', 0))
+    v = _v4_variant(content, 3, tp.get('seed', 0))
 
     if v == 0:
         # Variante 0 : frise horizontale jalons alternés
@@ -5128,7 +5129,7 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
                          height=max(0.28, bh - (y_cur - by) - 0.46),
                          font=font, size_pt=9, color='555555',
                          align='center', line_spacing=1.1)
-    else:
+    elif v == 1:
         # Variante 1 : frise verticale — ligne accent1 à gauche, blocs à droite
         axis_x  = _LY.CL + 0.50
         blk_x   = axis_x + 0.55
@@ -5181,6 +5182,56 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
                          height=max(0.28, bh - (y_cur - by) - 0.50),
                          font=font, size_pt=9, color='555555',
                          align='left', line_spacing=1.1)
+
+    else:
+        # Variante 2 : cartes colorées en rangée — grand numéro + date pill + contenu
+        n_cols  = min(n, 4)
+        n_rows  = (n + n_cols - 1) // n_cols
+        gap_x   = _LY.GAP_SM
+        gap_y   = _LY.GAP_MD
+        card_w  = (_LY.CW - gap_x * (n_cols - 1)) / n_cols
+        card_h  = (_LY.CB - _LY.CT - gap_y * (n_rows - 1)) / max(n_rows, 1)
+
+        for i, step in enumerate(steps[:n]):
+            col   = i % n_cols
+            row   = i // n_cols
+            cx    = _LY.CL + col * (card_w + gap_x)
+            cy    = _LY.CT + row * (card_h + gap_y)
+            color = accents[i % len(accents)]
+            date  = step.get('date', '') if isinstance(step, dict) else ''
+            title = step.get('title', '') if isinstance(step, dict) else str(step)
+            body  = step.get('body', '') if isinstance(step, dict) else ''
+
+            # Card background
+            bg = _cbg(tp, 0)
+            _h2_rounded_rect(slide, cx, cy, card_w, card_h, bg, _LY.R_SM)
+            # Colored top band
+            _h2_rect(slide, cx, cy, card_w, 0.08, color)
+            # Large decorative number bottom-right
+            _h2_text(slide, str(i + 1),
+                     left=cx + card_w * 0.52, top=cy + card_h * 0.08,
+                     width=card_w * 0.46, height=card_h * 0.75,
+                     font=font, size_pt=72, color=color, bold=True, align='right')
+            # Date pill
+            y_txt = cy + 0.16
+            if date:
+                dw = min(card_w - 0.20, len(date) * 0.11 + 0.40)
+                _h2_rounded_rect(slide, cx + 0.10, y_txt, dw, 0.26, color, 0.13)
+                _h2_text(slide, date, cx + 0.10, y_txt, dw, 0.26,
+                         font, 8, 'FFFFFF', bold=True, align='center')
+                y_txt += 0.34
+            # Title
+            _h2_text(slide, title,
+                     left=cx + 0.10, top=y_txt,
+                     width=card_w * 0.62, height=min(0.46, card_h - (y_txt - cy) - 0.10),
+                     font=font, size_pt=12, color=dk1, bold=True, align='left',
+                     line_spacing=1.1)
+            if body:
+                _h2_text(slide, body,
+                         left=cx + 0.10, top=y_txt + 0.48,
+                         width=card_w * 0.62, height=card_h - (y_txt - cy) - 0.58,
+                         font=font, size_pt=9, color='777777',
+                         bold=False, align='left', line_spacing=1.1)
 
     return slide
 
@@ -6515,9 +6566,10 @@ def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
 
 def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Avant / Après — 2 variantes visuelles déterministes.
+    Avant / Après — 3 variantes visuelles déterministes.
     v0 : deux colonnes header coloré + fond palette + flèche centrale.
-    v1 : colonne gauche EEEEEE + colonne droite E8EEF5, items avec icône ✗/✓.
+    v1 : colonne gauche EEEEEE + colonne droite teinté, items avec icône ✗/✓.
+    v2 : panneau plein couleur gauche (gris, AVANT) + flèche MSO + panneau accent (APRÈS).
     content: {title, before:{title,items:[str]}, after:{title,items:[str]}, footer}
     """
     slide  = _blank_v4(prs, tp)
@@ -6533,7 +6585,7 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
 
     before = content.get('before', {})
     after  = content.get('after', {})
-    v      = _v4_variant(content, 2, tp.get('seed', 0))
+    v      = _v4_variant(content, 3, tp.get('seed', 0))
 
     y_top   = _LY.CT
     y_bot   = _LY.CB
@@ -6584,7 +6636,7 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
                      width=arrow_w - 0.10, height=0.40,
                      font=font, size_pt=20, color=accent1,
                      bold=True, align='center')
-    else:
+    elif v == 1:
         # Variante 1 : colonnes fond palette, icônes ✗ (avant) et ✓ (après)
         for cx, col, bg_color, icon, icon_color, lbl in [
             (x_bef, before, 'EEEEEE', '✗', '999999', 'AVANT'),
@@ -6623,6 +6675,49 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
                      width=arrow_w - 0.10, height=0.40,
                      font=font, size_pt=20, color=accent1,
                      bold=True, align='center')
+
+    else:
+        # Variante 2 : deux panneaux pleins couleur séparés par une flèche MSO large
+        pan_gap = 0.72
+        pan_w   = (_LY.CW - pan_gap) / 2
+        pan_h   = _LY.CB - _LY.CT
+        bef_x   = _LY.CL
+        aft_x   = _LY.CL + pan_w + pan_gap
+        arr_cx  = _LY.CL + pan_w + pan_gap / 2
+
+        # Avant panel — gris neutre
+        _h2_rounded_rect(slide, bef_x, _LY.CT, pan_w, pan_h, '888888', _LY.R_SM)
+        # Après panel — accent
+        _h2_rounded_rect(slide, aft_x, _LY.CT, pan_w, pan_h, accent1, _LY.R_SM)
+
+        # Central MSO right arrow
+        arr_h = 0.55
+        arr_w = pan_gap - 0.08
+        _h2_autoshape(slide, 13,
+                      arr_cx - arr_w / 2, (_LY.CT + _LY.CB) / 2 - arr_h / 2,
+                      arr_w, arr_h, accent1)
+
+        for (cx, col, text_color, lbl) in [
+            (bef_x, before, 'FFFFFF', 'AVANT'),
+            (aft_x,  after,  'FFFFFF', 'APRÈS'),
+        ]:
+            col_title = col.get('title', lbl) if isinstance(col, dict) else lbl
+            items     = col.get('items', []) if isinstance(col, dict) else []
+            _h2_text(slide, col_title,
+                     left=cx + _LY.PAD, top=_LY.CT + 0.14,
+                     width=pan_w - _LY.PAD * 2, height=0.44,
+                     font=font, size_pt=16, color=text_color, bold=True, align='left')
+            _h2_rect(slide, cx + _LY.PAD, _LY.CT + 0.60,
+                     pan_w * 0.25, 0.04, 'FFFFFF')
+            for j, item in enumerate(items[:6]):
+                iy = _LY.CT + 0.76 + j * 0.54
+                if iy + 0.44 > _LY.CB:
+                    break
+                _h2_text(slide, f'• {item}',
+                         left=cx + _LY.PAD, top=iy,
+                         width=pan_w - _LY.PAD * 2, height=0.44,
+                         font=font, size_pt=11, color=text_color,
+                         bold=False, align='left', line_spacing=1.1)
 
     return slide
 
@@ -7233,9 +7328,11 @@ def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
 
 def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Matrice 2×2. Chaque quadrant : rounded_rect #F5F5F5 + bordure haute colorée.
-    Axes labels en dehors de la grille. Items bullet dans chaque quadrant.
-    content: {title, quadrants:[{label,body}]×4, axes:{x,y}, footer}
+    Matrice 2×2 — 3 variantes.
+    v0 : quadrants neutres + fine bordure couleur en haut + axes labels.
+    v1 : quadrants aux fonds colorés légers (accent teinté) + numéro grand en déco.
+    v2 : lignes d'axes centrales + quadrants sans fond + label grand + body compact.
+    content: {title, quadrants:[{label,body,items?}]×4, axes:{x,y}, footer}
     """
     slide  = _blank_v4(prs, tp)
     font   = tp.get('font', 'Calibri')
@@ -7249,94 +7346,158 @@ def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
         theme.get('accent2', 'ED0000'),
     ])
     W = tp.get('W', 13.33)
-    H = tp.get('H', 7.50)
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
     quadrants = content.get('quadrants', [])
     axes      = content.get('axes', {})
+    v         = _v4_variant(content, 3, tp.get('seed', 0))
 
-    # Grille : 2×2 dans la zone contenu
-    y_top    = _LY.CT
-    y_bot    = _LY.CB
     gap      = _LY.GAP_SM
-    ax_lbl_w = 1.10   # largeur réservée pour label axe Y
-    ax_lbl_h = 0.38   # hauteur réservée pour label axe X
+    ax_lbl_w = 1.10
+    ax_lbl_h = 0.38
+    grid_x   = _LY.CL + ax_lbl_w
+    grid_w   = _LY.CR - grid_x
+    grid_y   = _LY.CT
+    grid_h   = _LY.CB - ax_lbl_h - _LY.CT
+    cell_w   = (grid_w - gap) / 2
+    cell_h   = (grid_h - gap) / 2
 
-    grid_x = _LY.CL + ax_lbl_w
-    grid_w = _LY.CR - grid_x
-    grid_y = y_top
-    grid_h = y_bot - ax_lbl_h - y_top
-
-    cell_w = (grid_w - gap) / 2
-    cell_h = (grid_h - gap) / 2
-
-    # Axe Y — label centré sur la hauteur de la grille, aligné à droite
-    y_axis = axes.get('y', '')
-    if y_axis:
-        _h2_text(slide, y_axis,
-                 left=_LY.CL, top=grid_y + grid_h / 2 - 0.25,
-                 width=ax_lbl_w - 0.10, height=0.50,
-                 font=font, size_pt=10, color=dk1,
-                 bold=False, align='right')
-
-    # Axe X — label centré sous la grille
-    x_axis = axes.get('x', '')
-    if x_axis:
-        _h2_text(slide, x_axis,
-                 left=grid_x + grid_w / 4, top=y_bot - ax_lbl_h,
-                 width=grid_w / 2, height=ax_lbl_h,
-                 font=font, size_pt=10, color=dk1,
-                 bold=False, align='center')
-
-    # 4 quadrants (ordre : TL, TR, BL, BR)
     positions = [
         (grid_x,               grid_y),
         (grid_x + cell_w + gap, grid_y),
         (grid_x,               grid_y + cell_h + gap),
         (grid_x + cell_w + gap, grid_y + cell_h + gap),
     ]
-    for i, pos in enumerate(positions):
-        if i >= len(quadrants):
-            break
-        q   = quadrants[i] if isinstance(quadrants[i], dict) else {'label': str(quadrants[i])}
-        cx, cy = pos
-        color  = accents[i % len(accents)]
-        label  = q.get('label', '')
-        body   = q.get('body', '')
-        items  = q.get('items', [])
 
-        # Fond palette template (pas de F5F5F5 hors palette)
-        _h2_rounded_rect(slide, left=cx, top=cy,
-                          width=cell_w, height=cell_h,
-                          color='EEEEEE', radius=0.04)
-        _h2_rect(slide, left=cx, top=cy, width=cell_w, height=0.07, color=color)
+    # Axis labels (all variants)
+    y_axis = axes.get('y', '')
+    x_axis = axes.get('x', '')
+    if y_axis:
+        _h2_text(slide, y_axis,
+                 left=_LY.CL, top=grid_y + grid_h / 2 - 0.25,
+                 width=ax_lbl_w - 0.10, height=0.50,
+                 font=font, size_pt=10, color=dk1, bold=False, align='right')
+    if x_axis:
+        _h2_text(slide, x_axis,
+                 left=grid_x + grid_w / 4, top=_LY.CB - ax_lbl_h,
+                 width=grid_w / 2, height=ax_lbl_h,
+                 font=font, size_pt=10, color=dk1, bold=False, align='center')
 
-        _h2_text(slide, label,
-                 left=cx + _LY.PAD, top=cy + 0.13,
-                 width=cell_w - _LY.PAD * 2, height=0.38,
-                 font=font, size_pt=_LY.T_LABEL, color=dk1,
-                 bold=True, align='left')
+    if v == 0:
+        # Quadrants neutres + fine bordure couleur en haut
+        for i, pos in enumerate(positions):
+            if i >= len(quadrants):
+                break
+            q     = quadrants[i] if isinstance(quadrants[i], dict) else {'label': str(quadrants[i])}
+            cx, cy = pos
+            color  = accents[i % len(accents)]
+            label  = q.get('label', '')
+            body   = q.get('body', '')
+            items  = q.get('items', [])
 
-        # Contenu (body ou items) — dk1 pour cohérence palette
-        txt = body
-        if not txt and items:
-            txt = '\n'.join(f'• {it}' for it in items)
-        if txt:
-            _h2_text(slide, txt,
-                     left=cx + _LY.PAD, top=cy + 0.57,
-                     width=cell_w - _LY.PAD * 2, height=cell_h - 0.65,
-                     font=font, size_pt=_LY.T_SMALL, color=dk1,
-                     bold=False, align='left', line_spacing=1.2)
+            bg = _cbg(tp, 0)
+            _h2_rounded_rect(slide, cx, cy, cell_w, cell_h, bg, _LY.R_SM)
+            _h2_rect(slide, cx, cy, cell_w, 0.07, color)
+            _h2_text(slide, label,
+                     left=cx + _LY.PAD, top=cy + 0.13,
+                     width=cell_w - _LY.PAD * 2, height=0.38,
+                     font=font, size_pt=_LY.T_LABEL, color=dk1, bold=True, align='left')
+            txt = body or '\n'.join(f'• {it}' for it in items[:5])
+            if txt:
+                _h2_text(slide, txt,
+                         left=cx + _LY.PAD, top=cy + 0.57,
+                         width=cell_w - _LY.PAD * 2, height=cell_h - 0.65,
+                         font=font, size_pt=_LY.T_SMALL, color=dk1,
+                         bold=False, align='left', line_spacing=1.2)
+
+    elif v == 1:
+        # Fond coloré léger par quadrant + grand numéro décoratif
+        for i, pos in enumerate(positions):
+            if i >= len(quadrants):
+                break
+            q     = quadrants[i] if isinstance(quadrants[i], dict) else {'label': str(quadrants[i])}
+            cx, cy = pos
+            color  = accents[i % len(accents)]
+            label  = q.get('label', '')
+            body   = q.get('body', '')
+            items  = q.get('items', [])
+
+            # Tinted background from accent
+            try:
+                r = int(color[0:2], 16); g = int(color[2:4], 16); b = int(color[4:6], 16)
+                tint = f'{min(255,int(r+(255-r)*0.82)):02X}{min(255,int(g+(255-g)*0.82)):02X}{min(255,int(b+(255-b)*0.82)):02X}'
+            except Exception:
+                tint = 'EEEEEE'
+            _h2_rounded_rect(slide, cx, cy, cell_w, cell_h, tint, _LY.R_SM)
+
+            # Grand numéro décoratif en fond
+            _h2_text(slide, str(i + 1),
+                     left=cx + cell_w * 0.60, top=cy + cell_h * 0.05,
+                     width=cell_w * 0.38, height=cell_h * 0.80,
+                     font=font, size_pt=90, color=color, bold=True, align='right')
+
+            # Bordure colorée à gauche
+            _h2_rect(slide, cx, cy, 0.07, cell_h, color)
+
+            _h2_text(slide, label,
+                     left=cx + 0.14, top=cy + 0.10,
+                     width=cell_w * 0.60, height=0.42,
+                     font=font, size_pt=13, color=color, bold=True, align='left')
+            txt = body or '\n'.join(f'• {it}' for it in items[:4])
+            if txt:
+                _h2_text(slide, txt,
+                         left=cx + 0.14, top=cy + 0.55,
+                         width=cell_w * 0.78, height=cell_h - 0.63,
+                         font=font, size_pt=_LY.T_SMALL, color=dk1,
+                         bold=False, align='left', line_spacing=1.2)
+
+    else:
+        # Lignes d'axes centrales + quadrants ouverts (sans fond lourd)
+        mid_x = grid_x + (cell_w + gap / 2)
+        mid_y = grid_y + (cell_h + gap / 2)
+        _h2_rect(slide, grid_x, mid_y - 0.015, grid_w, 0.03, accent1)
+        _h2_rect(slide, mid_x - 0.015, grid_y, 0.03, grid_h, accent1)
+
+        for i, pos in enumerate(positions):
+            if i >= len(quadrants):
+                break
+            q     = quadrants[i] if isinstance(quadrants[i], dict) else {'label': str(quadrants[i])}
+            cx, cy = pos
+            color  = accents[i % len(accents)]
+            label  = q.get('label', '')
+            body   = q.get('body', '')
+            items  = q.get('items', [])
+
+            # Petit cercle coloré coin haut-gauche de chaque quadrant
+            _h2_circle(slide, cx=cx + 0.24, cy=cy + 0.24, r=0.18, color=color)
+            _h2_text(slide, str(i + 1),
+                     left=cx + 0.06, top=cy + 0.06,
+                     width=0.36, height=0.36,
+                     font=font, size_pt=11, color='FFFFFF', bold=True, align='center')
+
+            _h2_text(slide, label,
+                     left=cx + 0.52, top=cy + 0.08,
+                     width=cell_w - 0.60, height=0.42,
+                     font=font, size_pt=13, color=dk1, bold=True, align='left')
+            txt = body or '\n'.join(f'• {it}' for it in items[:5])
+            if txt:
+                _h2_text(slide, txt,
+                         left=cx + _LY.PAD, top=cy + 0.58,
+                         width=cell_w - _LY.PAD * 2, height=cell_h - 0.66,
+                         font=font, size_pt=_LY.T_SMALL, color=dk1,
+                         bold=False, align='left', line_spacing=1.2)
 
     return slide
 
 
 def layout_swot_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Analyse SWOT : 4 quadrants colorés (vert/rouge/bleu/orange).
-    Header couleur + items bullet dans chaque quadrant.
+    Analyse SWOT — 3 variantes.
+    v0 : 2×2 grille, header coloré + fond carte + bullets.
+    v1 : 4 panneaux pleine couleur (fond accent), grande initiale décorative + items blancs.
+    v2 : grille compacte avec icône emoji + titre en couleur + items, sans fond coloré lourd.
     content: {title, strengths:[str], weaknesses:[str],
               opportunities:[str], threats:[str], footer}
     """
@@ -7345,60 +7506,99 @@ def layout_swot_v4(prs: Presentation, content: dict, tp: dict):
     theme  = tp.get('theme', {})
     dk1    = theme.get('dk1', '374649')
     W = tp.get('W', 13.33)
-    H = tp.get('H', 7.50)
 
     _add_template_header_and_footer(slide, content.get('title', 'Analyse SWOT'),
                                     content.get('footer', ''), tp, content)
 
-    # Fonds : palette template uniquement
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
     quadrant_defs = [
-        ('Forces',        'strengths',    '40A900', 'F4F4F4'),
-        ('Faiblesses',    'weaknesses',   'ED0000', 'EEEEEE'),
-        ('Opportunités',  'opportunities','009CEA', 'F0F0F0'),
-        ('Menaces',       'threats',      'F66A00', 'EEEEEE'),
+        ('Forces',       'S', 'strengths',    '40A900', '💪'),
+        ('Faiblesses',   'W', 'weaknesses',   'ED0000', '⚠️'),
+        ('Opportunités', 'O', 'opportunities','009CEA', '🚀'),
+        ('Menaces',      'T', 'threats',      'F66A00', '🛡️'),
     ]
 
-    y_top  = _LY.CT
-    y_bot  = _LY.CB
     gap    = _LY.GAP_SM
-    x_left = _LY.CL
-    x_right = _LY.CR
-    grid_w = x_right - x_left
-    grid_h = y_bot - y_top
-    cell_w = (grid_w - gap) / 2
-    cell_h = (grid_h - gap) / 2
-    head_h = _LY.HEAD_H
-
+    cell_w = (_LY.CW - gap) / 2
+    cell_h = (_LY.CB - _LY.CT - gap) / 2
     positions = [
-        (x_left,               y_top),
-        (x_left + cell_w + gap, y_top),
-        (x_left,               y_top + cell_h + gap),
-        (x_left + cell_w + gap, y_top + cell_h + gap),
+        (_LY.CL,               _LY.CT),
+        (_LY.CL + cell_w + gap, _LY.CT),
+        (_LY.CL,               _LY.CT + cell_h + gap),
+        (_LY.CL + cell_w + gap, _LY.CT + cell_h + gap),
     ]
 
-    for (label, key, hdr_color, bg_color), (cx, cy) in zip(quadrant_defs, positions):
-        items = content.get(key, [])
+    if v == 0:
+        # Grille classique : header coloré + fond neutre + bullets
+        for (label, letter, key, hdr_color, icon), (cx, cy) in zip(quadrant_defs, positions):
+            items = content.get(key, [])
+            bg = _cbg(tp, 0)
+            _h2_rounded_rect(slide, cx, cy, cell_w, cell_h, bg, _LY.R_SM)
+            _h2_rect(slide, cx, cy, cell_w, _LY.HEAD_H, hdr_color)
+            _h2_text(slide, f'{icon}  {label}',
+                     left=cx + _LY.PAD, top=cy + _LY.GAP_XS,
+                     width=cell_w - _LY.PAD * 2, height=_LY.HEAD_H - 0.08,
+                     font=font, size_pt=_LY.T_HEADER, color='FFFFFF', bold=True, align='left')
+            txt = '\n'.join(f'• {it}' for it in items[:6])
+            if txt:
+                _h2_text(slide, txt,
+                         left=cx + _LY.PAD, top=cy + _LY.HEAD_H + _LY.GAP_SM,
+                         width=cell_w - _LY.PAD * 2, height=cell_h - _LY.HEAD_H - _LY.GAP_MD,
+                         font=font, size_pt=_LY.T_SMALL, color=dk1,
+                         bold=False, align='left', line_spacing=1.22)
 
-        # Fond du quadrant (palette template)
-        _h2_rounded_rect(slide, left=cx, top=cy,
-                          width=cell_w, height=cell_h,
-                          color=bg_color, radius=0.04)
-        # Header coloré
-        _h2_rect(slide, left=cx, top=cy, width=cell_w, height=head_h, color=hdr_color)
-        _h2_text(slide, label,
-                 left=cx + _LY.PAD, top=cy + _LY.GAP_XS,
-                 width=cell_w - _LY.PAD * 2, height=head_h - 0.1,
-                 font=font, size_pt=_LY.T_HEADER, color='FFFFFF',
-                 bold=True, align='left')
+    elif v == 1:
+        # 4 panneaux pleins couleurs — grande initiale décorative + items blancs
+        for (label, letter, key, hdr_color, icon), (cx, cy) in zip(quadrant_defs, positions):
+            items = content.get(key, [])
+            _h2_rounded_rect(slide, cx, cy, cell_w, cell_h, hdr_color, _LY.R_SM)
+            # Grande initiale décorative en fond
+            _h2_text(slide, letter,
+                     left=cx + cell_w * 0.50, top=cy + cell_h * 0.05,
+                     width=cell_w * 0.48, height=cell_h * 0.85,
+                     font=font, size_pt=110, color='FFFFFF', bold=True, align='right')
+            # Label en haut
+            _h2_text(slide, label,
+                     left=cx + _LY.PAD, top=cy + 0.10,
+                     width=cell_w * 0.62, height=0.40,
+                     font=font, size_pt=14, color='FFFFFF', bold=True, align='left')
+            # Items bullets blancs
+            txt = '\n'.join(f'• {it}' for it in items[:5])
+            if txt:
+                _h2_text(slide, txt,
+                         left=cx + _LY.PAD, top=cy + 0.52,
+                         width=cell_w - _LY.PAD * 2, height=cell_h - 0.60,
+                         font=font, size_pt=10, color='FFFFFF',
+                         bold=False, align='left', line_spacing=1.22)
 
-        # Items bullet — texte dk1 (jamais '333333')
-        txt = '\n'.join(f'• {it}' for it in items[:8])
-        if txt:
-            _h2_text(slide, txt,
-                     left=cx + _LY.PAD, top=cy + head_h + _LY.GAP_SM,
-                     width=cell_w - _LY.PAD * 2, height=cell_h - head_h - _LY.GAP_MD,
-                     font=font, size_pt=_LY.T_SMALL, color=dk1,
-                     bold=False, align='left', line_spacing=1.25)
+    else:
+        # Grille épurée : bordure colorée gauche + icône + titre coloré + items dk1
+        for (label, letter, key, hdr_color, icon), (cx, cy) in zip(quadrant_defs, positions):
+            items = content.get(key, [])
+            bg = _cbg(tp, 0)
+            _h2_rounded_rect(slide, cx, cy, cell_w, cell_h, bg, _LY.R_SM)
+            # Bordure gauche colorée
+            _h2_rect(slide, cx, cy, 0.07, cell_h, hdr_color)
+            # Icône + titre
+            _h2_text(slide, f'{icon}',
+                     left=cx + 0.14, top=cy + 0.08,
+                     width=0.52, height=0.44,
+                     font=font, size_pt=22, color=hdr_color, bold=False, align='left')
+            _h2_text(slide, label,
+                     left=cx + 0.70, top=cy + 0.10,
+                     width=cell_w - 0.78, height=0.40,
+                     font=font, size_pt=13, color=hdr_color, bold=True, align='left')
+            # Séparateur
+            _h2_rect(slide, cx + 0.14, cy + 0.56, cell_w - 0.22, 0.03, hdr_color)
+            # Items
+            txt = '\n'.join(f'• {it}' for it in items[:6])
+            if txt:
+                _h2_text(slide, txt,
+                         left=cx + 0.14, top=cy + 0.65,
+                         width=cell_w - 0.22, height=cell_h - 0.72,
+                         font=font, size_pt=_LY.T_SMALL, color=dk1,
+                         bold=False, align='left', line_spacing=1.22)
 
     return slide
 
