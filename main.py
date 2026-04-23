@@ -9188,6 +9188,49 @@ def _h2_diamond(slide, left, top, width, height, color_hex):
                                 min(width, height) / 2)
 
 
+def _h2_autoshape(slide, mso_type, left, top, width, height, color_hex):
+    """Generic MSO autoshape helper with circle fallback."""
+    from pptx.util import Inches
+    from pptx.dml.color import RGBColor
+    r, g, b = int(color_hex[0:2], 16), int(color_hex[2:4], 16), int(color_hex[4:6], 16)
+    try:
+        shp = slide.shapes.add_shape(
+            mso_type, Inches(left), Inches(top), Inches(width), Inches(height)
+        )
+        shp.fill.solid()
+        shp.fill.fore_color.rgb = RGBColor(r, g, b)
+        shp.line.fill.background()
+        return shp
+    except Exception:
+        return _h2_rounded_rect(slide, left, top, width, height, color_hex,
+                                min(width, height) / 2)
+
+
+def _h2_triangle(slide, left, top, width, height, color_hex):
+    """Isosceles triangle pointing upward (MSO type 7)."""
+    return _h2_autoshape(slide, 7, left, top, width, height, color_hex)
+
+
+def _h2_hexagon(slide, left, top, width, height, color_hex):
+    """Regular hexagon autoshape (MSO type 10)."""
+    return _h2_autoshape(slide, 10, left, top, width, height, color_hex)
+
+
+def _h2_chevron(slide, left, top, width, height, color_hex):
+    """Chevron/notched-right-arrow shape (MSO type 55)."""
+    return _h2_autoshape(slide, 55, left, top, width, height, color_hex)
+
+
+def _h2_arrow_right(slide, left, top, width, height, color_hex):
+    """Right-pointing arrow shape (MSO type 13)."""
+    return _h2_autoshape(slide, 13, left, top, width, height, color_hex)
+
+
+def _h2_trapezoid(slide, left, top, width, height, color_hex):
+    """Trapezoid shape (MSO type 3) — wide top, narrow bottom."""
+    return _h2_autoshape(slide, 3, left, top, width, height, color_hex)
+
+
 def layout_diamond_icons_v4(prs, content: dict, tp: dict):
     """
     Row of diamond (rhombus) shapes with icons — graphic variant of icon_row.
