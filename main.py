@@ -6513,7 +6513,9 @@ def layout_cycle_v4(prs: Presentation, content: dict, tp: dict):
 def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
     """
     Roadmap avec phases et jalons.
-    Bande temporelle accent1 + phases distinctes + jalons listés.
+    v0: bande de phases en haut + jalons listés en dessous de chaque phase
+    v1: timeline central alternant labels haut/bas + jalons listés
+    v2: cartes de phase horizontales avec flèches entre elles + jalons dedans
     content: {title, phases:[{label, milestones:[str]}], footer}
     """
     slide  = _blank_v4(prs, tp)
@@ -6526,8 +6528,7 @@ def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
         theme.get('accent4', 'F66A00'),
         accent1,
     ])
-    W = tp.get('W', 13.33)
-    H = tp.get('H', 7.50)
+    v = _v4_variant(content, 3, tp.get('seed', 0))
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
@@ -6537,45 +6538,123 @@ def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    # Bande de frise au sommet de la zone contenu (CT)
-    y_band   = _LY.CT
-    band_h   = _LY.HEAD_H
-    x_start  = _LY.CL
-    x_end    = _LY.CR
-    band_w   = x_end - x_start
-    phase_w  = band_w / n
+    x_start = _LY.CL
+    band_w  = _LY.CR - _LY.CL
+    phase_w = band_w / n
 
-    # Fond de bande (axe du temps)
-    _h2_rect(slide, left=x_start, top=y_band, width=band_w, height=band_h, color='F0F0F0')
+    if v == 0:
+        # Bande de phases en haut + jalons listés sous chaque phase
+        y_band  = _LY.CT
+        band_h  = _LY.HEAD_H
+        ms_zone = _LY.CB - (y_band + band_h)
+        _h2_rect(slide, left=x_start, top=y_band, width=band_w, height=band_h, color='F0F0F0')
+        for i, phase in enumerate(phases[:n]):
+            label      = phase.get('label', '') if isinstance(phase, dict) else str(phase)
+            milestones = phase.get('milestones', []) if isinstance(phase, dict) else []
+            color      = accents[i % len(accents)]
+            px         = x_start + i * phase_w
+            _h2_rect(slide, left=px + 0.04, top=y_band, width=phase_w - 0.08, height=band_h, color=color)
+            _h2_text(slide, label,
+                     left=px + 0.08, top=y_band + 0.06,
+                     width=phase_w - 0.14, height=band_h - 0.10,
+                     font=font, size_pt=11, color='FFFFFF', bold=True, align='center')
+            n_ms    = min(len(milestones), 5)
+            ms_step = ms_zone / max(n_ms, 1)
+            for j, ms in enumerate(milestones[:n_ms]):
+                my = y_band + band_h + j * ms_step + 0.08
+                _h2_rect(slide, left=px + 0.08, top=my + 0.08, width=0.07, height=0.07, color=color)
+                _h2_text(slide, str(ms),
+                         left=px + 0.22, top=my,
+                         width=phase_w - 0.30, height=ms_step - 0.10,
+                         font=font, size_pt=10, color=dk1,
+                         bold=False, align='left', line_spacing=1.1)
 
-    # Hauteur disponible pour les jalons (de y_band+band_h jusqu'à CB)
-    milestones_zone_h = _LY.CB - (y_band + band_h)
+    elif v == 1:
+        # Timeline central: ligne horizontale au milieu, labels alternant haut/bas, jalons listés
+        mid_y  = (_LY.CT + _LY.CB) / 2
+        lbl_h  = 0.38
+        dot_r  = 0.14
+        # Ligne de timeline
+        _h2_rect(slide, left=x_start, top=mid_y - 0.03, width=band_w, height=0.06, color='DDDDDD')
+        for i, phase in enumerate(phases[:n]):
+            label      = phase.get('label', '') if isinstance(phase, dict) else str(phase)
+            milestones = phase.get('milestones', []) if isinstance(phase, dict) else []
+            color      = accents[i % len(accents)]
+            cx         = x_start + (i + 0.5) * phase_w
+            above      = (i % 2 == 0)
+            # Dot sur la ligne
+            _h2_rect(slide, left=cx - dot_r, top=mid_y - dot_r,
+                     width=dot_r * 2, height=dot_r * 2, color=color)
+            # Tige verticale
+            if above:
+                _h2_rect(slide, left=cx - 0.02, top=mid_y - 1.50, width=0.04, height=1.50, color=color)
+                _h2_text(slide, label,
+                         left=cx - phase_w * 0.46, top=mid_y - 1.50 - lbl_h,
+                         width=phase_w * 0.92, height=lbl_h,
+                         font=font, size_pt=11, color=color, bold=True, align='center')
+                n_ms = min(len(milestones), 3)
+                for j, ms in enumerate(milestones[:n_ms]):
+                    _h2_text(slide, f'• {ms}',
+                             left=cx - phase_w * 0.46,
+                             top=mid_y + dot_r + 0.12 + j * 0.38,
+                             width=phase_w * 0.92, height=0.36,
+                             font=font, size_pt=9, color=dk1,
+                             bold=False, align='center', line_spacing=1.1)
+            else:
+                _h2_rect(slide, left=cx - 0.02, top=mid_y + dot_r, width=0.04, height=1.50, color=color)
+                _h2_text(slide, label,
+                         left=cx - phase_w * 0.46, top=mid_y + dot_r + 1.50,
+                         width=phase_w * 0.92, height=lbl_h,
+                         font=font, size_pt=11, color=color, bold=True, align='center')
+                n_ms = min(len(milestones), 3)
+                for j, ms in enumerate(milestones[:n_ms]):
+                    _h2_text(slide, f'• {ms}',
+                             left=cx - phase_w * 0.46,
+                             top=mid_y - dot_r - (n_ms - j) * 0.38 - 0.10,
+                             width=phase_w * 0.92, height=0.36,
+                             font=font, size_pt=9, color=dk1,
+                             bold=False, align='center', line_spacing=1.1)
 
-    for i, phase in enumerate(phases[:n]):
-        label      = phase.get('label', '') if isinstance(phase, dict) else str(phase)
-        milestones = phase.get('milestones', []) if isinstance(phase, dict) else []
-        color      = accents[i % len(accents)]
-        px         = x_start + i * phase_w
-
-        # Bloc de phase sur la bande
-        _h2_rect(slide, left=px + 0.04, top=y_band, width=phase_w - 0.08, height=band_h, color=color)
-        _h2_text(slide, label,
-                 left=px + 0.08, top=y_band + 0.06,
-                 width=phase_w - 0.14, height=band_h - 0.1,
-                 font=font, size_pt=11, color='FFFFFF',
-                 bold=True, align='center')
-
-        # Jalons — espacés sur toute la zone milestones
-        n_ms = min(len(milestones), 5)
-        ms_step = milestones_zone_h / max(n_ms, 1)
-        for j, ms in enumerate(milestones[:n_ms]):
-            my = y_band + band_h + j * ms_step + 0.08
-            _h2_rect(slide, left=px + 0.08, top=my + 0.08, width=0.07, height=0.07, color=color)
-            _h2_text(slide, str(ms),
-                     left=px + 0.22, top=my,
-                     width=phase_w - 0.30, height=ms_step - 0.10,
-                     font=font, size_pt=10, color=dk1,
-                     bold=False, align='left', line_spacing=1.1)
+    elif v == 2:
+        # Cartes de phase horizontales + jalons à l'intérieur + flèche entre cartes
+        card_h = _LY.CB - _LY.CT
+        arrow_w = 0.28
+        total_arrow = arrow_w * (n - 1)
+        card_w = (band_w - total_arrow) / n
+        for i, phase in enumerate(phases[:n]):
+            label      = phase.get('label', '') if isinstance(phase, dict) else str(phase)
+            milestones = phase.get('milestones', []) if isinstance(phase, dict) else []
+            color      = accents[i % len(accents)]
+            cx         = x_start + i * (card_w + arrow_w)
+            _h2_card_bg(slide, cx, _LY.CT, card_w, card_h, tp, i)
+            _h2_rect(slide, left=cx, top=_LY.CT, width=card_w, height=0.06, color=color)
+            # Numéro de phase
+            _h2_text(slide, f'{i+1:02d}',
+                     left=cx + card_w - 0.60, top=_LY.CT + 0.08,
+                     width=0.52, height=0.34,
+                     font=font, size_pt=20, color=color, bold=True, align='right')
+            # Label
+            _h2_text(slide, label,
+                     left=cx + _LY.PAD, top=_LY.CT + 0.14,
+                     width=card_w - _LY.PAD - 0.62, height=0.44,
+                     font=font, size_pt=_LY.T_TITLE, color=dk1, bold=True, align='left')
+            _h2_rect(slide, left=cx + _LY.PAD, top=_LY.CT + 0.62,
+                     width=card_w - _LY.PAD * 2, height=0.025, color='DDDDDD')
+            n_ms = min(len(milestones), 6)
+            for j, ms in enumerate(milestones[:n_ms]):
+                my = _LY.CT + 0.72 + j * 0.46
+                _h2_rect(slide, left=cx + _LY.PAD, top=my + 0.14,
+                         width=0.08, height=0.08, color=color)
+                _h2_text(slide, str(ms),
+                         left=cx + _LY.PAD + 0.16, top=my,
+                         width=card_w - _LY.PAD - 0.22, height=0.44,
+                         font=font, size_pt=10, color=dk1,
+                         bold=False, align='left', line_spacing=1.1)
+            # Flèche MSO vers la prochaine phase
+            if i < n - 1:
+                ax = cx + card_w + 0.02
+                ay = _LY.CT + card_h / 2 - 0.10
+                _h2_autoshape(slide, 13, ax, ay, arrow_w - 0.04, 0.20, color)
 
     return slide
 
@@ -7881,16 +7960,19 @@ def layout_proscons_v4(prs: Presentation, content: dict, tp: dict):
 def layout_table_v4(prs: Presentation, content: dict, tp: dict):
     """
     Tableau natif PowerPoint.
-    Header : fond accent1 + texte blanc. Lignes alternées #F5F5F5 / #FFFFFF.
+    v0: en-tête accent1 + rangées alternées F5F5F5/FFFFFF
+    v1: en-tête sombre (dk1) + première colonne en gras + légères séparations
+    v2: en-tête teinté accent + rangées alternées tint/blanc + première colonne colorée
     content: {title, headers:[str], rows:[[str]], footer}
     """
     slide  = _blank_v4(prs, tp)
     font   = tp.get('font', 'Calibri')
     theme  = tp.get('theme', {})
-    dk1    = theme.get('dk1', '374649')
+    dk1     = theme.get('dk1', '374649')
     accent1 = theme.get('accent1', '009CEA')
     W = tp.get('W', 13.33)
     H = tp.get('H', 7.50)
+    v = _v4_variant(content, 3, tp.get('seed', 0))
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
@@ -7901,25 +7983,20 @@ def layout_table_v4(prs: Presentation, content: dict, tp: dict):
         return slide
 
     n_cols = max(len(headers), max((len(r) for r in rows), default=0))
-    n_rows = len(rows) + 1  # +1 pour l'en-tête
+    n_rows = len(rows) + 1
     if n_cols == 0 or n_rows == 0:
         return slide
 
-    # Dimensions
     t_left = 0.55
     t_top  = 1.65
     t_w    = W - t_left - 0.45
-    t_h    = min(H - 0.65 - t_top, n_rows * 0.52 + 0.1)
-    row_h  = t_h / n_rows
+    t_h    = min(H - 0.65 - t_top, n_rows * 0.52 + 0.10)
 
-    from pptx.util import Emu as _Emu
     table_shape = slide.shapes.add_table(
         n_rows, n_cols,
         Inches(t_left), Inches(t_top), Inches(t_w), Inches(t_h),
     )
     tbl = table_shape.table
-
-    # Largeurs de colonnes égales
     col_w_emu = int(Inches(t_w) / n_cols)
     for col in tbl.columns:
         col.width = col_w_emu
@@ -7927,14 +8004,11 @@ def layout_table_v4(prs: Presentation, content: dict, tp: dict):
     def _set_cell(r, c, text, bg_hex, fg_hex, bold=False, size_pt=11):
         cell = tbl.cell(r, c)
         cell.text = str(text) if text is not None else ''
-        # Fond
         try:
-            fill = cell.fill
-            fill.solid()
-            fill.fore_color.rgb = _h2_parse_hex(bg_hex)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = _h2_parse_hex(bg_hex)
         except Exception:
             pass
-        # Texte
         try:
             para = cell.text_frame.paragraphs[0]
             run  = para.runs[0] if para.runs else para.add_run()
@@ -7945,16 +8019,48 @@ def layout_table_v4(prs: Presentation, content: dict, tp: dict):
         except Exception:
             pass
 
-    # Ligne d'en-tête
-    for c, hdr in enumerate(headers[:n_cols]):
-        _set_cell(0, c, hdr, accent1, 'FFFFFF', bold=True, size_pt=12)
+    if v == 0:
+        # Classique: en-tête accent1 blanc + alternance F5F5F5/FFFFFF
+        for c, hdr in enumerate(headers[:n_cols]):
+            _set_cell(0, c, hdr, accent1, 'FFFFFF', bold=True, size_pt=12)
+        for r, row in enumerate(rows[:n_rows - 1]):
+            bg = 'F5F5F5' if r % 2 == 0 else 'FFFFFF'
+            for c in range(n_cols):
+                val = row[c] if c < len(row) else ''
+                _set_cell(r + 1, c, val, bg, dk1, bold=False, size_pt=11)
 
-    # Lignes de données
-    for r, row in enumerate(rows[:n_rows - 1]):
-        bg = 'F5F5F5' if r % 2 == 0 else 'FFFFFF'
-        for c in range(n_cols):
-            val = row[c] if c < len(row) else ''
-            _set_cell(r + 1, c, val, bg, dk1, bold=False, size_pt=11)
+    elif v == 1:
+        # Sombre: en-tête dk1 blanc + première colonne gras accent1 + lignes épurées
+        for c, hdr in enumerate(headers[:n_cols]):
+            _set_cell(0, c, hdr, dk1, 'FFFFFF', bold=True, size_pt=12)
+        for r, row in enumerate(rows[:n_rows - 1]):
+            bg = 'F8F8F8' if r % 2 == 0 else 'FFFFFF'
+            for c in range(n_cols):
+                val  = row[c] if c < len(row) else ''
+                is_first = (c == 0)
+                _set_cell(r + 1, c, val, bg,
+                          accent1 if is_first else dk1,
+                          bold=is_first, size_pt=11)
+
+    elif v == 2:
+        # Teinté: en-tête teinté accent + alternance accent-léger/blanc + 1ère col colorée
+        r_c, g_c, b_c = int(accent1[0:2],16), int(accent1[2:4],16), int(accent1[4:6],16)
+        hdr_bg = (f'{min(255,int(r_c+(255-r_c)*0.78)):02X}'
+                  f'{min(255,int(g_c+(255-g_c)*0.78)):02X}'
+                  f'{min(255,int(b_c+(255-b_c)*0.78)):02X}')
+        row_bg = (f'{min(255,int(r_c+(255-r_c)*0.93)):02X}'
+                  f'{min(255,int(g_c+(255-g_c)*0.93)):02X}'
+                  f'{min(255,int(b_c+(255-b_c)*0.93)):02X}')
+        for c, hdr in enumerate(headers[:n_cols]):
+            _set_cell(0, c, hdr, hdr_bg, dk1, bold=True, size_pt=12)
+        for r, row in enumerate(rows[:n_rows - 1]):
+            bg = row_bg if r % 2 == 0 else 'FFFFFF'
+            for c in range(n_cols):
+                val      = row[c] if c < len(row) else ''
+                is_first = (c == 0)
+                _set_cell(r + 1, c, val, bg,
+                          accent1 if is_first else dk1,
+                          bold=is_first, size_pt=11)
 
     return slide
 
