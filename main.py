@@ -5541,105 +5541,128 @@ def layout_kpi_grid_v4(prs: Presentation, content: dict, tp: dict):
 
 def layout_funnel_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Entonnoir (funnel) — 2 variantes visuelles déterministes.
-    v0 : rectangles décroissants centrés, accent de plus en plus foncé.
-    v1 : barres horizontales proportionnelles, label gauche + valeur dans la barre.
+    Entonnoir (funnel) — 3 variantes avec vraies formes géométriques.
+    v0 : trapèzes MSO empilés centrés — vrai entonnoir géométrique.
+    v1 : barres horizontales proportionnelles + label + valeur + delta %.
+    v2 : chevrons décroissants — entonnoir horizontal (gauche → droite).
+    content: {title, steps:[{label, value?, percent?, delta?}]}
     """
-    slide  = _blank_v4(prs, tp)
-    font   = tp.get('font', 'Calibri')
-    theme  = tp.get('theme', {})
-    dk1    = theme.get('dk1', '374649')
-    accent1 = theme.get('accent1', '009CEA')
-    accents = tp.get('accent_cycle', [
-        theme.get('accent3', '40A900'),
-        theme.get('accent4', 'F66A00'),
-        accent1,
-    ])
-    W = tp.get('W', 13.33)
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
     steps = content.get('steps', content.get('items', []))
-    n = min(len(steps), 5)
+    n     = min(len(steps), 5)
     if n == 0:
         return slide
 
-    v = _v4_variant(content, 2, tp.get('seed', 0))
+    v = _v4_variant(content, 3, tp.get('seed', 0))
 
-    # Couleur : shades d'accent1
-    try:
-        r0 = int(accent1[0:2], 16)
-        g0 = int(accent1[2:4], 16)
-        b0 = int(accent1[4:6], 16)
-    except Exception:
-        r0, g0, b0 = 0, 156, 234
-
-    def _step_data(step):
+    def _sd(step):
         if isinstance(step, dict):
-            return step.get('label', step.get('title', '')), str(step.get('value', ''))
-        return str(step), ''
+            return (step.get('label', step.get('title', '')),
+                    str(step.get('value', '')),
+                    step.get('percent', None),
+                    step.get('delta', ''))
+        return str(step), '', None, ''
 
     if v == 0:
-        # Variante 0 : entonnoir centré décroissant
+        # True trapezoid funnel — stacked MSO trapezoids, each narrower
         total_h = _LY.CB - _LY.CT
-        level_h = total_h / n - _LY.GAP_XS
-        max_w   = W - 1.2
-        min_w   = max_w * 0.35
+        lvl_h   = total_h / n - _LY.GAP_XS
+        max_w   = _LY.CW * 0.88
+        min_w   = max_w * 0.28
 
         for i, step in enumerate(steps[:n]):
-            label, value = _step_data(step)
+            label, value, pct, delta = _sd(step)
             ratio = 1.0 - i * (1.0 - min_w / max_w) / max(n - 1, 1)
             lw    = max_w * ratio
-            lx    = (W - lw) / 2
-            ly    = _LY.CT + i * (level_h + _LY.GAP_XS)
-            dark  = 1.0 - i * 0.18 / max(n - 1, 1)
-            color = f'{int(r0*dark):02X}{int(g0*dark):02X}{int(b0*dark):02X}'
-            _h2_rect(slide, left=lx, top=ly, width=lw, height=level_h, color=color)
-            txt = f'{label}  {value}' if value else label
-            _h2_text(slide, txt,
-                     left=lx + 0.2, top=ly + (level_h - 0.38) / 2,
-                     width=lw - 0.4, height=0.38,
-                     font=font, size_pt=13, color='FFFFFF',
-                     bold=True, align='center')
-    else:
-        # Variante 1 : barres horizontales proportionnelles
-        total_h  = _LY.CB - _LY.CT
-        level_h  = total_h / n - _LY.GAP_XS
-        lbl_w    = 2.80
-        bar_x    = _LY.CL + lbl_w + 0.20
-        max_bar  = _LY.CR - bar_x - 0.10
+            lx    = _LY.CL + (_LY.CW - lw) / 2
+            ly    = _LY.CT + i * (lvl_h + _LY.GAP_XS)
+            color = accents[i % len(accents)]
+
+            _h2_trapezoid(slide, lx, ly, lw, lvl_h, color)
+
+            # Label + value centred
+            cy2 = ly + (lvl_h - 0.34) / 2
+            txt = label
+            _h2_text(slide, txt, lx + 0.18, cy2, lw * 0.55, 0.34,
+                     font, 12, 'FFFFFF', bold=True, align='left')
+            if value:
+                _h2_text(slide, value, lx + lw * 0.55, cy2, lw * 0.28, 0.34,
+                         font, 14, 'FFFFFF', bold=True, align='center')
+            if delta:
+                _h2_text(slide, delta, lx + lw * 0.83, cy2, lw * 0.14, 0.34,
+                         font, 9, 'FFFFFF', bold=False, align='center')
+
+    elif v == 1:
+        # Horizontal proportional bars + label left + value + optional delta
+        total_h = _LY.CB - _LY.CT
+        lvl_h   = total_h / n - _LY.GAP_XS
+        lbl_w   = 2.60
+        bar_x   = _LY.CL + lbl_w + 0.18
+        max_bar = _LY.CR - bar_x - 0.10
 
         for i, step in enumerate(steps[:n]):
-            label, value = _step_data(step)
-            ly    = _LY.CT + i * (level_h + _LY.GAP_XS)
-            # Ratio décroissant (ou use valeur si numeric)
+            label, value, pct, delta = _sd(step)
+            ly    = _LY.CT + i * (lvl_h + _LY.GAP_XS)
             try:
-                ratio = max(0.15, float(value) / 100) if value else 1.0 - i * 0.18 / max(n - 1, 1)
-            except ValueError:
-                ratio = 1.0 - i * 0.18 / max(n - 1, 1)
+                ratio = max(0.12, float(pct) / 100) if pct is not None else \
+                        max(0.12, 1.0 - i * 0.18 / max(n - 1, 1))
+            except (ValueError, TypeError):
+                ratio = max(0.12, 1.0 - i * 0.18 / max(n - 1, 1))
             bw    = max_bar * min(ratio, 1.0)
             color = accents[i % len(accents)]
 
-            # Fond gris pleine largeur (barre de fond)
-            _h2_rect(slide, left=bar_x, top=ly + _LY.GAP_XS,
-                     width=max_bar, height=level_h - _LY.GAP_XS * 2, color='EEEEEE')
-            # Barre proportionnelle
-            _h2_rect(slide, left=bar_x, top=ly + _LY.GAP_XS,
-                     width=bw, height=level_h - _LY.GAP_XS * 2, color=color)
-            # Label gauche
-            _h2_text(slide, label,
-                     left=_LY.CL, top=ly + (level_h - 0.40) / 2,
-                     width=lbl_w, height=0.40,
-                     font=font, size_pt=12, color=dk1,
-                     bold=True, align='right')
-            # Valeur dans la barre
+            # Background track
+            _h2_rounded_rect(slide, bar_x, ly + _LY.GAP_XS,
+                             max_bar, lvl_h - _LY.GAP_XS * 2, _cbg(tp, 0), _LY.R_SM)
+            # Filled bar
+            _h2_rounded_rect(slide, bar_x, ly + _LY.GAP_XS,
+                             bw, lvl_h - _LY.GAP_XS * 2, color, _LY.R_SM)
+
+            cy2 = ly + (lvl_h - 0.38) / 2
+            _h2_text(slide, label, _LY.CL, cy2, lbl_w, 0.38,
+                     font, 11, dk1, bold=True, align='right')
             if value:
-                _h2_text(slide, value,
-                         left=bar_x + 0.10, top=ly + (level_h - 0.38) / 2,
-                         width=bw - 0.15, height=0.38,
-                         font=font, size_pt=12, color='FFFFFF',
-                         bold=True, align='right')
+                _h2_text(slide, value, bar_x + 0.10, cy2, bw - 0.16, 0.38,
+                         font, 12, 'FFFFFF', bold=True, align='right')
+            if delta:
+                _h2_text(slide, delta, bar_x + bw + 0.06, cy2,
+                         max_bar - bw - 0.06, 0.38, font, 9, dk1, bold=False, align='left')
+
+    else:
+        # v2: Horizontal chevron funnel — steps shrink vertically as they go right
+        chev_w  = (_LY.CW - _LY.GAP_XS * (n - 1)) / n
+        overlap = 0.16
+        max_h   = _LY.CB - _LY.CT
+        min_h   = max_h * 0.30
+        zone_cy = _LY.CT + max_h / 2
+
+        for i, step in enumerate(steps[:n]):
+            label, value, pct, delta = _sd(step)
+            cx     = _LY.CL + i * (chev_w + _LY.GAP_XS - overlap)
+            ratio  = 1.0 - i * (1.0 - min_h / max_h) / max(n - 1, 1)
+            ch     = max_h * ratio
+            cy2    = zone_cy - ch / 2
+            color  = accents[i % len(accents)]
+
+            _h2_chevron(slide, cx, cy2, chev_w + overlap, ch, color)
+
+            # Content inside chevron
+            tx  = cx + 0.14
+            tw  = chev_w - 0.24
+            mid = cy2 + ch / 2
+
+            _h2_text(slide, label, tx, mid - (0.30 if value else 0.15),
+                     tw, 0.28, font, 9, 'FFFFFF', bold=True, align='center')
+            if value:
+                _h2_text(slide, value, tx, mid + 0.02, tw, 0.30,
+                         font, 14, 'FFFFFF', bold=True, align='center')
 
     return slide
 
@@ -10468,8 +10491,8 @@ TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero
                     pricing_table, hub_spoke, diamond_icons, chevron_flow, venn, icon_grid,
                     text_hero
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
-                    section_break, competitor_matrix, pest_analysis, market_sizing
-TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
+                    section_break, competitor_matrix, pest_analysis, market_sizing, funnel
+TIER 3 (éviter) : list_numbered, before_after, pros_cons, pyramid, cycle, roadmap
 TIER 4 (dernier recours, max 1 par présentation) : full_text
 
 Les graphiques (bar_chart, etc.) uniquement avec données chiffrées réelles. Max 1-2.
