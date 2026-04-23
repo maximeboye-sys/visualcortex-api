@@ -9495,6 +9495,168 @@ def layout_market_sizing_v4(prs, content: dict, tp: dict):
     return slide
 
 
+def layout_chevron_flow_v4(prs, content: dict, tp: dict):
+    """
+    Process flow with real chevron/arrow shapes — richer than process_flow.
+    content: {title, steps:[{title, body?, icon?, stat_value?, stat_label?}]}
+    v0: Horizontal chevrons full-height, icon + title + body stacked inside
+    v1: Two rows of chevrons (top row + bottom row offset for zigzag feel)
+    v2: Vertical stack of right-arrows with connecting dot trail
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+
+    title = content.get('title', '')
+    steps = content.get('steps', [])
+    if not steps:
+        steps = [{'title': f'Étape {i+1}', 'body': 'Description'} for i in range(4)]
+    n = min(len(steps), 5)
+    steps = steps[:n]
+    if title:
+        _h2_title(slide, title, tp)
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if v == 0:
+        # Full-width horizontal chevrons, slight overlap
+        zone_h  = _LY.CB - _LY.CT
+        chev_h  = zone_h
+        overlap = 0.22
+        chev_w  = (_LY.CW + overlap * (n - 1)) / n
+        chev_w  = max(chev_w, 1.20)
+
+        for i, step in enumerate(steps):
+            cx    = _LY.CL + i * (chev_w - overlap)
+            color = accents[i % len(accents)]
+            icon  = step.get('icon', '')  if isinstance(step, dict) else ''
+            ttxt  = step.get('title', str(step)) if isinstance(step, dict) else str(step)
+            body  = step.get('body', '')  if isinstance(step, dict) else ''
+            sv    = step.get('stat_value', '') if isinstance(step, dict) else ''
+            sl    = step.get('stat_label', '') if isinstance(step, dict) else ''
+
+            _h2_chevron(slide, cx, _LY.CT, chev_w, chev_h, color)
+
+            # Content centred inside chevron (inset from left, less from right due to arrow tip)
+            text_x = cx + 0.18
+            text_w = chev_w - 0.50
+
+            y = _LY.CT + zone_h * 0.12
+            # Step number badge
+            _h2_rounded_rect(slide, text_x, y, 0.28, 0.28, _darken(color, 0.25), 0.14)
+            _h2_text(slide, str(i + 1), text_x, y, 0.28, 0.28,
+                     font, 9, 'FFFFFF', bold=True, align='center')
+
+            y += 0.34
+            if icon:
+                _h2_text(slide, icon, text_x, y, text_w, 0.42,
+                         font, 22, 'FFFFFF', bold=False, align='center')
+                y += 0.46
+
+            _h2_text(slide, ttxt, text_x, y, text_w, 0.30,
+                     font, 10, 'FFFFFF', bold=True, align='center')
+            y += 0.32
+            if body:
+                _h2_text(slide, body, text_x, y, text_w, zone_h - (y - _LY.CT) - 0.10,
+                         font, 8, 'FFFFFF', bold=False, align='center')
+            if sv:
+                _h2_text(slide, sv, text_x, _LY.CB - 0.48, text_w, 0.32,
+                         font, 16, 'FFFFFF', bold=True, align='center')
+                if sl:
+                    _h2_text(slide, sl, text_x, _LY.CB - 0.20, text_w, 0.18,
+                             font, 7, 'FFFFFF', bold=False, align='center')
+
+    elif v == 1:
+        # Two staggered rows (top 3 + bottom 2, or 2+3, offset half-width)
+        n_top    = (n + 1) // 2
+        n_bot    = n // 2
+        zone_h   = (_LY.CB - _LY.CT - _LY.GAP_SM) / 2
+        overlap  = 0.18
+        chev_w_t = (_LY.CW + overlap * (n_top - 1)) / max(n_top, 1)
+        chev_w_b = (_LY.CW + overlap * (n_bot - 1)) / max(n_bot, 1) if n_bot > 0 else 0
+        offset_b = chev_w_t / 2  # stagger bottom row
+
+        for i, step in enumerate(steps):
+            is_top = i < n_top
+            row_i  = i if is_top else i - n_top
+            chev_w = chev_w_t if is_top else chev_w_b
+            cx     = (_LY.CL + row_i * (chev_w - overlap)) if is_top else \
+                     (_LY.CL + offset_b + row_i * (chev_w - overlap))
+            cy     = _LY.CT if is_top else _LY.CT + zone_h + _LY.GAP_SM
+            color  = accents[i % len(accents)]
+            icon   = step.get('icon', '')  if isinstance(step, dict) else ''
+            ttxt   = step.get('title', str(step)) if isinstance(step, dict) else str(step)
+            body   = step.get('body', '')  if isinstance(step, dict) else ''
+
+            _h2_chevron(slide, cx, cy, chev_w, zone_h, color)
+            tx = cx + 0.16
+            tw = chev_w - 0.46
+            y2 = cy + zone_h * 0.14
+
+            _h2_rounded_rect(slide, tx, y2, 0.26, 0.26, _darken(color, 0.25), 0.13)
+            _h2_text(slide, str(i + 1), tx, y2, 0.26, 0.26,
+                     font, 8, 'FFFFFF', bold=True, align='center')
+            y2 += 0.30
+            if icon:
+                _h2_text(slide, icon, tx, y2, tw, 0.36,
+                         font, 18, 'FFFFFF', bold=False, align='center')
+                y2 += 0.40
+            _h2_text(slide, ttxt, tx, y2, tw, 0.28,
+                     font, 9, 'FFFFFF', bold=True, align='center')
+            y2 += 0.30
+            if body:
+                _h2_text(slide, body, tx, y2, tw, zone_h - (y2 - cy) - 0.08,
+                         font, 8, 'FFFFFF', bold=False, align='center')
+
+    else:
+        # v2: Vertical stack of right-arrows with dot connector trail
+        arrow_h = (_LY.CB - _LY.CT - _LY.GAP_SM * (n - 1)) / max(n, 1)
+        arrow_h = min(arrow_h, 1.10)
+        aw      = _LY.CW * 0.68
+        ax      = _LY.CL + (_LY.CW - aw) / 2
+
+        for i, step in enumerate(steps):
+            ay    = _LY.CT + i * (arrow_h + _LY.GAP_SM)
+            color = accents[i % len(accents)]
+            icon  = step.get('icon', '')  if isinstance(step, dict) else ''
+            ttxt  = step.get('title', str(step)) if isinstance(step, dict) else str(step)
+            body  = step.get('body', '')  if isinstance(step, dict) else ''
+
+            _h2_arrow_right(slide, ax, ay, aw, arrow_h - 0.04, color)
+
+            # Content left-aligned inside arrow
+            tx = ax + 0.18
+            tw = aw - 0.55
+            cy2 = ay + (arrow_h - 0.34) / 2 - (0.18 if body else 0)
+            if icon:
+                _h2_text(slide, icon, tx, cy2 - 0.02, 0.34, 0.34,
+                         font, 16, 'FFFFFF', bold=False, align='center')
+                tx += 0.40
+                tw -= 0.40
+            _h2_text(slide, ttxt, tx, cy2, tw, 0.28,
+                     font, 10, 'FFFFFF', bold=True, align='left')
+            if body:
+                _h2_text(slide, body, tx, cy2 + 0.30, tw, arrow_h - 0.46,
+                         font, 8, 'FFFFFF', bold=False, align='left')
+
+            # Stat or step number on right side of arrow
+            sv = step.get('stat_value', '') if isinstance(step, dict) else ''
+            sl = step.get('stat_label', '') if isinstance(step, dict) else ''
+            rx = ax + aw - 0.75
+            if sv:
+                _h2_text(slide, sv, rx, ay + (arrow_h - 0.34) / 2,
+                         0.60, 0.34, font, 14, 'FFFFFF', bold=True, align='center')
+                if sl:
+                    _h2_text(slide, sl, rx, ay + (arrow_h - 0.34) / 2 + 0.26,
+                             0.60, 0.18, font, 6, 'FFFFFF', bold=False, align='center')
+            else:
+                _h2_text(slide, str(i + 1), rx + 0.10, ay + (arrow_h - 0.30) / 2,
+                         0.40, 0.30, font, 14, 'FFFFFF', bold=True, align='center')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -9834,7 +9996,7 @@ HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
 TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
                     team_grid, stat_banner, icon_row, numbered_features, photo_text,
                     side_panel, circle_stats, mission_vision, photo_grid,
-                    pricing_table, hub_spoke, diamond_icons
+                    pricing_table, hub_spoke, diamond_icons, chevron_flow
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
                     section_break, competitor_matrix, pest_analysis, market_sizing
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
@@ -9957,6 +10119,14 @@ diamond_icons  — Rangée de 3-4 icônes en losanges (variante visuelle de icon
                  Champs OBLIGATOIRES : items:[{{icon(emoji),title}}] — 3 ou 4 items
                  Optionnel : body dans chaque item
                  Usage : features produit, étapes clés, valeurs — impact visuel fort
+
+chevron_flow   — Flux processus en vraies formes chevrons/flèches MSO — TIER 1 visuel
+                 Champs OBLIGATOIRES : steps:[{{title}}] — 3 à 5 étapes
+                 Optionnel : icon(emoji), body, stat_value, stat_label par étape
+                 v0: chevrons pleine hauteur côte-à-côte (horizontal)
+                 v1: 2 rangées décalées de chevrons (zigzag)
+                 v2: flèches verticales empilées avec numéro/stat sur le côté
+                 Usage : processus séquentiels, funnel de conversion, étapes d'onboarding
 
 pest_analysis  — Analyse P.E.S.T (ou tout framework 4 quadrants avec grandes lettres décoratives)
                  Champs OBLIGATOIRES : items:[{{letter,label,body}}] — exactement 4 items
@@ -10310,6 +10480,8 @@ async def run_pipeline_v4(
                 layout_diamond_icons_v4(prs, content, tp)
             elif layout_name in ('market_sizing', 'market'):
                 layout_market_sizing_v4(prs, content, tp)
+            elif layout_name in ('chevron_flow',):
+                layout_chevron_flow_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
