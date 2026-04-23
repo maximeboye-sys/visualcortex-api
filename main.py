@@ -3733,6 +3733,7 @@ class _LY:
     # Géométrie
     PAD      = 0.18  # padding interne
     R_SM     = 0.04  # border-radius petit
+    R_MD     = 0.12  # border-radius moyen
     R_CIRC   = 0.25  # rayon cercle numéroté
     HEAD_H   = 0.50  # hauteur header
     ITEM_H   = 0.48  # hauteur ligne d'item
@@ -3774,11 +3775,16 @@ def layout_quote_v4(prs: Presentation, content: dict, tp: dict):
     quote_h = min(2.8, 0.50 * n_lines)
 
     if v == 0:
-        # Cercles décoratifs en fond — couleurs très légères dérivées du template
-        circ1 = _cbg(tp, 0)   # very light neutral (card_bg_light)
-        circ2 = _cbg(tp, 1)   # slightly darker neutral (card_bg_mid)
-        _h2_circle(slide, cx=1.8, cy=H - 1.2, r=1.9, color=circ1)
-        _h2_circle(slide, cx=W - 1.5, cy=2.0, r=1.4, color=circ2)
+        # Guillemets géants décoratifs en fond (couleur très légère du template)
+        q_bg = _cbg(tp, 0)
+        _h2_text(slide, '“',
+                 left=_LY.CL - 0.15, top=_LY.CT - 0.05,
+                 width=2.8, height=2.2,
+                 font=font, size_pt=200, color=q_bg, bold=True, align='left')
+        _h2_text(slide, '”',
+                 left=_LY.CR - 2.65, top=_LY.CT + 1.5,
+                 width=2.8, height=2.2,
+                 font=font, size_pt=200, color=q_bg, bold=True, align='right')
 
         # Badge pill catégorie (title utilisé comme label de rubrique)
         category = content.get('category', content.get('title', ''))
@@ -6112,16 +6118,18 @@ def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
 
 def layout_pyramid_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Pyramide hiérarchique (niveaux du haut vers le bas).
-    Triangles/trapèzes de largeur croissante, couleur dégradée.
+    Pyramide hiérarchique — 3 variantes avec formes MSO réelles.
+    v0: Pyramide centrée — triangle (sommet) + trapèzes de largeur croissante.
+    v1: Pyramide gauche + labels détaillés à droite avec connecteurs.
+    v2: Pyramide pleine largeur — label + body dans chaque bande.
     content: {title, levels:[{label, body}], footer}
     """
-    slide  = _blank_v4(prs, tp)
-    font   = tp.get('font', 'Calibri')
-    theme  = tp.get('theme', {})
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
     accent1 = theme.get('accent1', '009CEA')
-    W = tp.get('W', 13.33)
-    H = tp.get('H', 7.50)
+    dk1     = theme.get('dk1', '374649')
+    W       = tp.get('W', 13.33)
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
@@ -6131,14 +6139,7 @@ def layout_pyramid_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    # Zone contenu
-    y_start = _LY.CT
-    y_end   = _LY.CB
-    level_h = (y_end - y_start) / n - _LY.GAP_XS
-
-    # Largeurs croissantes du haut vers le bas
-    min_w = W * 0.2
-    max_w = W - 1.2
+    v = _v4_variant(content, 3, tp.get('seed', 0))
 
     try:
         r0 = int(accent1[0:2], 16)
@@ -6147,49 +6148,122 @@ def layout_pyramid_v4(prs: Presentation, content: dict, tp: dict):
     except Exception:
         r0, g0, b0 = 0, 156, 234
 
-    for i, level in enumerate(levels[:n]):
-        ratio = min_w / max_w + i * (1.0 - min_w / max_w) / max(n - 1, 1)
-        lw    = max_w * ratio
-        lx    = (W - lw) / 2
-        ly    = y_start + i * (level_h + 0.06)
+    def shade(i, total):
+        f = 1.0 - (i / max(total - 1, 1)) * 0.55
+        return f'{int(r0 * f):02X}{int(g0 * f):02X}{int(b0 * f):02X}'
 
-        # Couleur de plus en plus foncée
-        dark  = 0.85 - i * 0.15 / max(n - 1, 1)
-        color = f'{int(r0 * dark):02X}{int(g0 * dark):02X}{int(b0 * dark):02X}'
+    def _draw_level(lx, ly, lw, lh, color, is_top):
+        if is_top:
+            _h2_triangle(slide, lx, ly, lw, lh, color)
+        else:
+            shp = _h2_trapezoid(slide, lx, ly, lw, lh, color)
+            if shp and hasattr(shp, 'rotation'):
+                shp.rotation = 180
 
-        _h2_rect(slide, left=lx, top=ly, width=lw, height=level_h, color=color)
+    if v == 0:
+        zone_h  = _LY.CB - _LY.CT
+        level_h = zone_h / n - 0.06
+        min_w   = _LY.CW * 0.20
+        max_w   = _LY.CW * 0.90
 
-        label = level.get('label', '') if isinstance(level, dict) else str(level)
-        body  = level.get('body', '')  if isinstance(level, dict) else ''
-        txt   = f'{label}  —  {body}' if body else label
+        for i, level in enumerate(levels[:n]):
+            lw    = min_w + i * (max_w - min_w) / max(n - 1, 1)
+            lx    = W / 2 - lw / 2
+            ly    = _LY.CT + i * (level_h + 0.06)
+            color = shade(i, n)
+            label = level.get('label', '') if isinstance(level, dict) else str(level)
+            body  = level.get('body', '')  if isinstance(level, dict) else ''
 
-        _h2_text(slide, txt,
-                 left=lx + 0.2, top=ly + (level_h - 0.38) / 2,
-                 width=lw - 0.4, height=0.38,
-                 font=font, size_pt=12, color='FFFFFF',
-                 bold=True, align='center')
+            _draw_level(lx, ly, lw, level_h, color, i == 0)
+            txt = f'{label}  —  {body}' if body else label
+            _h2_text(slide, txt,
+                     left=lx + 0.15, top=ly + (level_h - 0.36) / 2,
+                     width=lw - 0.30, height=0.36,
+                     font=font, size_pt=11, color='FFFFFF', bold=True, align='center')
+
+    elif v == 1:
+        pyr_w   = _LY.CW * 0.50
+        pyr_x   = _LY.CL + _LY.CW * 0.02
+        zone_h  = _LY.CB - _LY.CT
+        level_h = zone_h / n - 0.06
+        label_x = _LY.CL + _LY.CW * 0.56
+
+        for i, level in enumerate(levels[:n]):
+            ratio = 0.20 + i * 0.80 / max(n - 1, 1)
+            lw    = pyr_w * ratio
+            lx    = pyr_x + (pyr_w - lw) / 2
+            ly    = _LY.CT + i * (level_h + 0.06)
+            color = shade(i, n)
+            label = level.get('label', '') if isinstance(level, dict) else str(level)
+            body  = level.get('body', '')  if isinstance(level, dict) else ''
+
+            _draw_level(lx, ly, lw, level_h, color, i == 0)
+            _h2_text(slide, str(i + 1),
+                     left=lx, top=ly + (level_h - 0.36) / 2,
+                     width=lw, height=0.36,
+                     font=font, size_pt=10, color='FFFFFF', bold=True, align='center')
+
+            # Connector line from shape to label
+            _h2_rect(slide, left=lx + lw, top=ly + level_h / 2 - 0.02,
+                     width=max(0.05, label_x - lx - lw - 0.05), height=0.04, color=color)
+            _h2_text(slide, label,
+                     left=label_x, top=ly + 0.04,
+                     width=_LY.CR - label_x - 0.10, height=0.34,
+                     font=font, size_pt=11, color=dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body,
+                         left=label_x, top=ly + 0.38,
+                         width=_LY.CR - label_x - 0.10, height=level_h - 0.42,
+                         font=font, size_pt=9, color='777777', bold=False, align='left',
+                         line_spacing=1.1)
+
+    else:
+        zone_h  = _LY.CB - _LY.CT
+        level_h = zone_h / n - 0.05
+        min_w   = _LY.CW * 0.15
+        max_w   = _LY.CW
+
+        for i, level in enumerate(levels[:n]):
+            lw    = min_w + i * (max_w - min_w) / max(n - 1, 1)
+            lx    = W / 2 - lw / 2
+            ly    = _LY.CT + i * (level_h + 0.05)
+            color = shade(i, n)
+            label = level.get('label', '') if isinstance(level, dict) else str(level)
+            body  = level.get('body', '')  if isinstance(level, dict) else ''
+
+            _draw_level(lx, ly, lw, level_h, color, i == 0)
+            _h2_text(slide, label,
+                     left=lx + 0.12, top=ly + (level_h - 0.36) / 2,
+                     width=lw * 0.44, height=0.36,
+                     font=font, size_pt=11, color='FFFFFF', bold=True, align='left')
+            if body:
+                _h2_text(slide, body,
+                         left=lx + lw * 0.50, top=ly + (level_h - 0.36) / 2,
+                         width=lw * 0.47, height=0.36,
+                         font=font, size_pt=9, color='FFFFFF', bold=False, align='left')
 
     return slide
 
 
 def layout_cycle_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Cycle / roue avec étapes circulaires.
-    Cercles accent_cycle disposés en cercle avec flèches entre eux.
+    Cycle / roue — 3 variantes avec formes MSO réelles.
+    v0: Cercles radiaux + flèches MSO pivotées dans le sens horaire.
+    v1: Chevrons linéaires + flèche de retour (loop visuel).
+    v2: Hexagones en orbite + flèches MSO entre les nœuds.
     content: {title, steps:[{title, body}], footer}
     """
     import math
-    slide  = _blank_v4(prs, tp)
-    font   = tp.get('font', 'Calibri')
-    theme  = tp.get('theme', {})
-    dk1    = theme.get('dk1', '374649')
+    slide   = _blank_v4(prs, tp)
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
     accents = tp.get('accent_cycle', [
         theme.get('accent3', '40A900'),
         theme.get('accent4', 'F66A00'),
         theme.get('accent1', '009CEA'),
     ])
     W = tp.get('W', 13.33)
-    H = tp.get('H', 7.50)
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
@@ -6199,53 +6273,117 @@ def layout_cycle_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    # Centre du cycle dans la zone contenu
+    v         = _v4_variant(content, 3, tp.get('seed', 0))
     cx_center = W / 2
     cy_center = (_LY.CT + _LY.CB) / 2
-    orbit_r   = min((W - 2.0) / 2, (H - 2.2) / 2) * 0.85
-    node_r    = 0.55
 
-    for i, step in enumerate(steps[:n]):
-        angle = -math.pi / 2 + i * 2 * math.pi / n
-        nx    = cx_center + orbit_r * math.cos(angle)
-        ny    = cy_center + orbit_r * math.sin(angle)
-        color = accents[i % len(accents)]
+    if v == 0:
+        # Radial circles + rotated MSO arrow connectors
+        orbit_r = min((_LY.CW - 2.0) / 2, (_LY.CB - _LY.CT) / 2) * 0.82
+        node_r  = 0.52
 
-        title = step.get('title', '') if isinstance(step, dict) else str(step)
-        body  = step.get('body', '')  if isinstance(step, dict) else ''
+        for i, step in enumerate(steps[:n]):
+            angle  = -math.pi / 2 + i * 2 * math.pi / n
+            nx     = cx_center + orbit_r * math.cos(angle)
+            ny     = cy_center + orbit_r * math.sin(angle)
+            color  = accents[i % len(accents)]
+            t_text = step.get('title', '') if isinstance(step, dict) else str(step)
+            b_text = step.get('body',  '') if isinstance(step, dict) else ''
 
-        # Cercle
-        _h2_circle(slide, cx=nx, cy=ny, r=node_r, color=color)
+            _h2_circle(slide, cx=nx, cy=ny, r=node_r, color=color)
+            _h2_text(slide, str(i + 1),
+                     left=nx - node_r, top=ny - node_r * 0.52,
+                     width=node_r * 2, height=node_r * 0.85,
+                     font=font, size_pt=13, color='FFFFFF', bold=True, align='center')
 
-        # Numéro
-        _h2_text(slide, str(i + 1),
-                 left=nx - node_r, top=ny - node_r,
-                 width=node_r * 2, height=node_r * 0.7,
-                 font=font, size_pt=11, color='FFFFFF',
-                 bold=True, align='center')
+            lab_off = node_r + 0.10
+            lab_y   = ny + lab_off if ny + lab_off + 0.52 <= _LY.CB else ny - lab_off - 0.52
+            _h2_text(slide, t_text,
+                     left=nx - 1.15, top=lab_y, width=2.3, height=0.52,
+                     font=font, size_pt=10, color=dk1, bold=True, align='center',
+                     line_spacing=1.1)
+            if b_text:
+                _h2_text(slide, b_text,
+                         left=nx - 1.15, top=lab_y + 0.53, width=2.3, height=0.34,
+                         font=font, size_pt=8, color='777777', bold=False, align='center',
+                         line_spacing=1.1)
 
-        # Label sous le cercle (ou dessus selon position)
-        label_y = ny + node_r + 0.05
-        if label_y + 0.7 > _LY.CB:
-            label_y = ny - node_r - 0.7
+            # Rotated MSO arrow at midpoint between this node and next (clockwise tangent)
+            mid_a = angle + math.pi / n
+            ax    = cx_center + orbit_r * 0.92 * math.cos(mid_a)
+            ay    = cy_center + orbit_r * 0.92 * math.sin(mid_a)
+            rot   = math.degrees(math.atan2(math.cos(mid_a), -math.sin(mid_a))) % 360
+            _h2_autoshape(slide, 13, ax - 0.14, ay - 0.09, 0.28, 0.18, color, rotation=rot)
 
-        _h2_text(slide, title,
-                 left=nx - 1.1, top=label_y,
-                 width=2.2, height=0.55,
-                 font=font, size_pt=11, color=dk1,
-                 bold=True, align='center', line_spacing=1.1)
+    elif v == 1:
+        # Linear chevrons + bottom return arrow (loop visual)
+        chev_h  = (_LY.CB - _LY.CT) * 0.54
+        chev_y  = _LY.CT + (_LY.CB - _LY.CT) * 0.07
+        overlap = 0.17
+        chev_w  = (_LY.CW + overlap * (n - 1)) / n
 
-        # Flèche vers le prochain nœud (arc simplifié)
-        if n > 1:
-            next_angle = angle + 2 * math.pi / n
-            mx = cx_center + orbit_r * math.cos(angle + math.pi / n)
-            my = cy_center + orbit_r * math.sin(angle + math.pi / n)
-            # Simple point de passage — flèche ▶ orientée
-            _h2_text(slide, '▸',
-                     left=mx - 0.15, top=my - 0.15,
-                     width=0.3, height=0.3,
-                     font=font, size_pt=12, color=color,
-                     bold=True, align='center')
+        for i, step in enumerate(steps[:n]):
+            cx_    = _LY.CL + i * (chev_w - overlap)
+            color  = accents[i % len(accents)]
+            t_text = step.get('title', '') if isinstance(step, dict) else str(step)
+            b_text = step.get('body',  '') if isinstance(step, dict) else ''
+
+            _h2_chevron(slide, cx_, chev_y, chev_w + 0.02, chev_h, color)
+
+            tx = cx_ + 0.35
+            tw = chev_w - 0.52
+            _h2_text(slide, str(i + 1),
+                     left=tx, top=chev_y + chev_h * 0.08,
+                     width=tw, height=chev_h * 0.28,
+                     font=font, size_pt=16, color='FFFFFF', bold=True, align='center')
+            _h2_text(slide, t_text,
+                     left=tx, top=chev_y + chev_h * 0.36,
+                     width=tw, height=chev_h * 0.38,
+                     font=font, size_pt=9, color='FFFFFF', bold=True, align='center',
+                     line_spacing=1.1)
+            if b_text:
+                _h2_text(slide, b_text,
+                         left=tx, top=chev_y + chev_h * 0.75,
+                         width=tw, height=chev_h * 0.22,
+                         font=font, size_pt=7, color='FFFFFF', bold=False, align='center')
+
+        # Left-pointing return arrow below the chevrons
+        ret_col = accents[0] if accents else '009CEA'
+        _h2_autoshape(slide, 13, _LY.CL, chev_y + chev_h + 0.16,
+                      _LY.CW, 0.22, ret_col, rotation=180)
+
+    else:
+        # Hexagonal nodes in orbit + rotated MSO arrows
+        orbit_r = min((_LY.CW - 2.0) / 2, (_LY.CB - _LY.CT) / 2) * 0.79
+        hex_w   = 1.05
+        hex_h   = 0.96
+
+        for i, step in enumerate(steps[:n]):
+            angle  = -math.pi / 2 + i * 2 * math.pi / n
+            nx     = cx_center + orbit_r * math.cos(angle)
+            ny     = cy_center + orbit_r * math.sin(angle)
+            color  = accents[i % len(accents)]
+            t_text = step.get('title', '') if isinstance(step, dict) else str(step)
+
+            _h2_hexagon(slide, nx - hex_w / 2, ny - hex_h / 2, hex_w, hex_h, color)
+            _h2_text(slide, str(i + 1),
+                     left=nx - hex_w / 2, top=ny - hex_h * 0.40,
+                     width=hex_w, height=hex_h * 0.46,
+                     font=font, size_pt=14, color='FFFFFF', bold=True, align='center')
+
+            lab_dist = orbit_r + hex_h * 0.58
+            lx = max(_LY.CL, min(_LY.CR - 2.2, cx_center + lab_dist * math.cos(angle) - 1.1))
+            ly = max(_LY.CT, min(_LY.CB - 0.52, cy_center + lab_dist * math.sin(angle) - 0.24))
+            _h2_text(slide, t_text,
+                     left=lx, top=ly, width=2.2, height=0.52,
+                     font=font, size_pt=9, color=dk1, bold=True, align='center',
+                     line_spacing=1.1)
+
+            mid_a = angle + math.pi / n
+            ax    = cx_center + orbit_r * 0.90 * math.cos(mid_a)
+            ay    = cy_center + orbit_r * 0.90 * math.sin(mid_a)
+            rot   = math.degrees(math.atan2(math.cos(mid_a), -math.sin(mid_a))) % 360
+            _h2_autoshape(slide, 13, ax - 0.13, ay - 0.08, 0.26, 0.16, color, rotation=rot)
 
     return slide
 
@@ -8689,8 +8827,8 @@ def layout_pricing_table_v4(prs, content: dict, tp: dict):
     tiers = tiers[:n]
     v     = _v4_variant(content, 3, tp.get('seed', 0))
 
-    if title:
-        _h2_title(slide, title, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
 
     if v == 0:
         gap    = _LY.GAP_SM
@@ -8845,8 +8983,8 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
     clabel = center.get('label', '') if isinstance(center, dict) else str(center)
     cicon  = center.get('icon',  '') if isinstance(center, dict) else ''
 
-    if title:
-        _h2_title(slide, title, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
 
     v = _v4_variant(content, 3, tp.get('seed', 0))
 
@@ -9009,8 +9147,8 @@ def layout_competitor_matrix_v4(prs, content: dict, tp: dict):
     title       = content.get('title', '')
     competitors = content.get('competitors', [])
     features    = content.get('features', [])
-    if title:
-        _h2_title(slide, title, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
 
     nc = min(len(competitors), 5)
     nf = min(len(features), 9)
@@ -9109,8 +9247,8 @@ def layout_pest_analysis_v4(prs, content: dict, tp: dict):
         ]
     n     = min(len(items), 4)
     items = items[:n]
-    if title:
-        _h2_title(slide, title, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
 
     v = _v4_variant(content, 3, tp.get('seed', 0))
 
@@ -9247,8 +9385,8 @@ def _h2_diamond(slide, left, top, width, height, color_hex):
                                 min(width, height) / 2)
 
 
-def _h2_autoshape(slide, mso_type, left, top, width, height, color_hex):
-    """Generic MSO autoshape helper with circle fallback."""
+def _h2_autoshape(slide, mso_type, left, top, width, height, color_hex, rotation=0):
+    """Generic MSO autoshape helper with optional rotation (degrees CW) and circle fallback."""
     from pptx.util import Inches
     from pptx.dml.color import RGBColor
     r, g, b = int(color_hex[0:2], 16), int(color_hex[2:4], 16), int(color_hex[4:6], 16)
@@ -9259,6 +9397,8 @@ def _h2_autoshape(slide, mso_type, left, top, width, height, color_hex):
         shp.fill.solid()
         shp.fill.fore_color.rgb = RGBColor(r, g, b)
         shp.line.fill.background()
+        if rotation:
+            shp.rotation = rotation
         return shp
     except Exception:
         return _h2_rounded_rect(slide, left, top, width, height, color_hex,
@@ -9307,8 +9447,8 @@ def layout_diamond_icons_v4(prs, content: dict, tp: dict):
     items = content.get('items', [])
     n     = min(len(items), 4)
     items = items[:n]
-    if title:
-        _h2_title(slide, title, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
 
     v = _v4_variant(content, 3, tp.get('seed', 0))
 
@@ -9431,8 +9571,8 @@ def layout_market_sizing_v4(prs, content: dict, tp: dict):
         ]
     n        = min(len(segments), 4)
     segments = segments[:n]
-    if title:
-        _h2_title(slide, title, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
 
     v = _v4_variant(content, 3, tp.get('seed', 0))
 
@@ -9573,8 +9713,8 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
         steps = [{'title': f'Étape {i+1}', 'body': 'Description'} for i in range(4)]
     n = min(len(steps), 5)
     steps = steps[:n]
-    if title:
-        _h2_title(slide, title, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
 
     v = _v4_variant(content, 3, tp.get('seed', 0))
 
@@ -9739,8 +9879,8 @@ def layout_venn_v4(prs, content: dict, tp: dict):
         ]
     n = min(len(circles), 3)
     circles = circles[:n]
-    if title:
-        _h2_title(slide, title, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
 
     v = _v4_variant(content, 3, tp.get('seed', 0))
 
@@ -9936,8 +10076,8 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
         items = [{'icon': '⭐', 'label': f'Feature {i+1}'} for i in range(8)]
     n = min(len(items), 12)
     items = items[:n]
-    if title:
-        _h2_title(slide, title, tp)
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
 
     v = _v4_variant(content, 3, tp.get('seed', 0))
 
@@ -10181,6 +10321,197 @@ def layout_text_hero_v4(prs, content: dict, tp: dict):
         if body:
             _h2_text(slide, body, tx, y, tw * 0.75, _LY.CB - y - 0.05,
                      font, 10, dk1, bold=False, align='left')
+
+    return slide
+
+
+def layout_org_chart_v4(prs, content: dict, tp: dict):
+    """
+    Organigramme hiérarchique — boîtes connectées par des lignes.
+    v0: Arbre top-down centré (root → L1 → L2 optionnel).
+    v1: Disposition horizontale gauche-droite.
+    v2: Sous-arbres colorés par département/équipe.
+    content: {title, root:{label,icon?},
+              children:[{label,icon?,children?:[{label,icon?}]}]}
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+    W       = tp.get('W', 13.33)
+
+    _add_template_header_and_footer(slide, content.get('title', ''),
+                                    content.get('footer', ''), tp, content)
+
+    root     = content.get('root', {'label': 'Direction', 'icon': '🏢'})
+    children = content.get('children', [])
+    nc       = min(len(children), 6)
+    children = children[:nc]
+
+    v      = _v4_variant(content, 3, tp.get('seed', 0))
+    BOX_W  = 1.70
+    BOX_H  = 0.62
+    CONN   = 'CCCCCC'
+
+    def _box(cx, cy, label, icon='', color='009CEA', txt_color='FFFFFF', pt=10):
+        bx = cx - BOX_W / 2
+        by = cy - BOX_H / 2
+        _h2_rounded_rect(slide, bx, by, BOX_W, BOX_H, color, _LY.R_SM)
+        txt = f'{icon}  {label}' if icon else label
+        _h2_text(slide, txt,
+                 left=bx + 0.08, top=by + (BOX_H - 0.34) / 2,
+                 width=BOX_W - 0.16, height=0.34,
+                 font=font, size_pt=pt, color=txt_color, bold=True, align='center')
+
+    def _vline(x, y1, y2, color=CONN):
+        if y2 > y1 + 0.01:
+            _h2_rect(slide, x - 0.012, y1, 0.024, y2 - y1, color)
+
+    def _hline(x1, x2, y, color=CONN):
+        lx = min(x1, x2)
+        _h2_rect(slide, lx, y - 0.012, abs(x2 - x1), 0.024, color)
+
+    root_label = root.get('label', '') if isinstance(root, dict) else str(root)
+    root_icon  = root.get('icon',  '') if isinstance(root, dict) else ''
+    root_color = accents[0] if accents else '009CEA'
+    l1_color   = accents[1 % len(accents)] if len(accents) > 1 else accents[0]
+    l2_color   = accents[2 % len(accents)] if len(accents) > 2 else accents[0]
+
+    if v == 0:
+        root_cx = W / 2
+        root_cy = _LY.CT + BOX_H / 2 + 0.10
+        _box(root_cx, root_cy, root_label, root_icon, root_color)
+
+        if nc == 0:
+            return slide
+
+        l1_gap   = min(2.10, _LY.CW / max(nc, 1))
+        l1_total = l1_gap * (nc - 1)
+        l1_y     = root_cy + BOX_H / 2 + 0.60
+        l1_xs    = [W / 2 - l1_total / 2 + i * l1_gap for i in range(nc)]
+
+        bus_y = root_cy + BOX_H / 2 + 0.30
+        _vline(root_cx, root_cy + BOX_H / 2, bus_y)
+        if nc > 1:
+            _hline(l1_xs[0], l1_xs[-1], bus_y)
+
+        for i, child in enumerate(children):
+            cx_     = l1_xs[i]
+            c_label = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_icon  = child.get('icon',  '') if isinstance(child, dict) else ''
+            _vline(cx_, bus_y, l1_y - BOX_H / 2)
+            _box(cx_, l1_y, c_label, c_icon, l1_color)
+
+            gcs = child.get('children', []) if isinstance(child, dict) else []
+            ng  = min(len(gcs), 3)
+            if ng == 0:
+                continue
+            l2_y    = l1_y + BOX_H / 2 + 0.48
+            gc_gap  = min(1.60, l1_gap * 0.90 / max(ng, 1))
+            gc_xs   = [cx_ - gc_gap * (ng - 1) / 2 + j * gc_gap for j in range(ng)]
+            gc_bus  = l1_y + BOX_H / 2 + 0.22
+            _vline(cx_, l1_y + BOX_H / 2, gc_bus)
+            if ng > 1:
+                _hline(gc_xs[0], gc_xs[-1], gc_bus)
+            for j, gc_cx in enumerate(gc_xs):
+                gc = gcs[j]
+                gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                gi = gc.get('icon',  '') if isinstance(gc, dict) else ''
+                _vline(gc_cx, gc_bus, l2_y - BOX_H / 2)
+                _box(gc_cx, l2_y, gl, gi, l2_color, pt=9)
+
+    elif v == 1:
+        root_cx = _LY.CL + BOX_W / 2 + 0.05
+        root_cy = (_LY.CT + _LY.CB) / 2
+        _box(root_cx, root_cy, root_label, root_icon, root_color)
+
+        if nc == 0:
+            return slide
+
+        l1_x   = root_cx + BOX_W / 2 + 1.0
+        row_h  = (_LY.CB - _LY.CT) / max(nc, 1)
+        l1_ys  = [_LY.CT + row_h * (i + 0.5) for i in range(nc)]
+        bus_x  = root_cx + BOX_W / 2 + 0.40
+
+        if nc > 1:
+            _vline(bus_x, min(l1_ys), max(l1_ys))
+        _hline(root_cx + BOX_W / 2, bus_x, root_cy)
+
+        for i, child in enumerate(children):
+            cy_     = l1_ys[i]
+            c_label = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_icon  = child.get('icon',  '') if isinstance(child, dict) else ''
+            _hline(bus_x, l1_x - BOX_W / 2, cy_)
+            _box(l1_x, cy_, c_label, c_icon, l1_color)
+
+            gcs = child.get('children', []) if isinstance(child, dict) else []
+            ng  = min(len(gcs), 2)
+            if ng == 0:
+                continue
+            l2_x   = l1_x + BOX_W / 2 + 0.85
+            gc_h   = row_h * 0.48
+            gc_ys  = [cy_ - gc_h / 2 + j * gc_h for j in range(ng)]
+            gc_bus = l1_x + BOX_W / 2 + 0.35
+            if ng > 1:
+                _vline(gc_bus, min(gc_ys), max(gc_ys))
+            _hline(l1_x + BOX_W / 2, gc_bus, cy_)
+            for j, gc_cy in enumerate(gc_ys):
+                gc = gcs[j]
+                gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                gi = gc.get('icon',  '') if isinstance(gc, dict) else ''
+                _hline(gc_bus, l2_x - BOX_W / 2, gc_cy)
+                _box(l2_x, gc_cy, gl, gi, l2_color, pt=9)
+
+    else:
+        # Color-coded subtrees
+        root_cx = W / 2
+        root_cy = _LY.CT + BOX_H / 2 + 0.10
+        _box(root_cx, root_cy, root_label, root_icon, root_color)
+
+        if nc == 0:
+            return slide
+
+        l1_gap   = min(2.10, _LY.CW / max(nc, 1))
+        l1_total = l1_gap * (nc - 1)
+        l1_y     = root_cy + BOX_H / 2 + 0.60
+        l1_xs    = [W / 2 - l1_total / 2 + i * l1_gap for i in range(nc)]
+        bus_y    = root_cy + BOX_H / 2 + 0.30
+
+        _vline(root_cx, root_cy + BOX_H / 2, bus_y)
+        if nc > 1:
+            _hline(l1_xs[0], l1_xs[-1], bus_y)
+
+        for i, child in enumerate(children):
+            tree_col = accents[i % len(accents)]
+            cx_      = l1_xs[i]
+            c_label  = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_icon   = child.get('icon',  '') if isinstance(child, dict) else ''
+            _vline(cx_, bus_y, l1_y - BOX_H / 2, tree_col)
+            _box(cx_, l1_y, c_label, c_icon, tree_col)
+
+            gcs = child.get('children', []) if isinstance(child, dict) else []
+            ng  = min(len(gcs), 3)
+            if ng == 0:
+                continue
+            l2_y   = l1_y + BOX_H / 2 + 0.48
+            gc_gap = min(1.60, l1_gap * 0.90 / max(ng, 1))
+            gc_xs  = [cx_ - gc_gap * (ng - 1) / 2 + j * gc_gap for j in range(ng)]
+            gc_bus = l1_y + BOX_H / 2 + 0.22
+            _vline(cx_, l1_y + BOX_H / 2, gc_bus, tree_col)
+            if ng > 1:
+                _hline(gc_xs[0], gc_xs[-1], gc_bus, tree_col)
+            for j, gc_cx in enumerate(gc_xs):
+                gc = gcs[j]
+                gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                gi = gc.get('icon',  '') if isinstance(gc, dict) else ''
+                tr = int(tree_col[0:2], 16)
+                tg = int(tree_col[2:4], 16)
+                tb = int(tree_col[4:6], 16)
+                l2_col = (f'{min(255, int(tr + (255 - tr) * 0.35)):02X}'
+                          f'{min(255, int(tg + (255 - tg) * 0.35)):02X}'
+                          f'{min(255, int(tb + (255 - tb) * 0.35)):02X}')
+                _vline(gc_cx, gc_bus, l2_y - BOX_H / 2, tree_col)
+                _box(gc_cx, l2_y, gl, gi, l2_col, pt=9)
 
     return slide
 
@@ -10525,10 +10856,11 @@ TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero
                     team_grid, stat_banner, icon_row, numbered_features, photo_text,
                     side_panel, circle_stats, mission_vision, photo_grid,
                     pricing_table, hub_spoke, diamond_icons, chevron_flow, venn, icon_grid,
-                    text_hero
+                    text_hero, funnel
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
-                    section_break, competitor_matrix, pest_analysis, market_sizing, funnel
-TIER 3 (éviter) : list_numbered, before_after, pros_cons, pyramid, cycle, roadmap
+                    section_break, competitor_matrix, pest_analysis, market_sizing,
+                    org_chart, cycle, pyramid
+TIER 3 (éviter) : list_numbered, before_after, pros_cons, roadmap
 TIER 4 (dernier recours, max 1 par présentation) : full_text
 
 Les graphiques (bar_chart, etc.) uniquement avec données chiffrées réelles. Max 1-2.
@@ -10707,15 +11039,31 @@ section_break  — Slide de rupture dramatique entre sections majeures
                  Optionnel : subtitle, number(numéro de section)
                  Usage : UNIQUEMENT pour séparer des sections importantes
 
+org_chart      — Organigramme hiérarchique : root → enfants → petits-enfants (3 niveaux max)
+                 Champs OBLIGATOIRES : root:{{label,icon?}} + children:[{{label,icon?,children?:[{{label,icon?}}]}}]
+                 Exemple root : {{"label":"Direction Générale","icon":"🏢"}}
+                 Exemple enfant : {{"label":"Marketing","icon":"📣","children":[{{"label":"Digital","icon":"💻"}},{{"label":"Brand","icon":"🎨"}}]}}
+                 v0: arbre top-down centré  |  v1: layout horizontal gauche-droite  |  v2: couleurs par sous-arbre
+                 Usage : structure d'entreprise, hiérarchie projet, taxonomie de produits
+
+funnel         — Entonnoir avec vraies formes géométriques MSO
+                 steps:[{{label,value?}}]×3-5
+                 v0: trapèzes empilés  |  v1: barres proportionnelles  |  v2: chevrons horizontaux
+
+cycle          — Cycle / boucle avec formes MSO réelles et flèches pivotées
+                 steps:[{{title≤5mots,body≤8mots}}]×3-6
+                 v0: cercles radiaux + flèches  |  v1: chevrons + retour  |  v2: hexagones
+
+pyramid        — Pyramide hiérarchique avec triangle MSO + trapèzes
+                 levels:[{{label≤5mots,body≤10mots}}]×3-5 (du sommet vers la base)
+                 v0: pyramide centrée  |  v1: pyramide gauche + labels droite  |  v2: pleine largeur
+
 ─── LAYOUTS STRUCTURE [TIER 3 — UTILISER AVEC PARCIMONIE] ───
 list_numbered  — Liste 3-4 items UNIQUEMENT si séquence logique stricte
                  items:[{{title≤5mots,body≤10mots}}]×3-4 MAX
 
 pros_cons      — Pour/Contre (pros/cons:[≤4 items≤8mots])
 before_after   — Avant/Après (before/after:{{title,items:[≤4 items≤8mots]}})
-funnel         — Entonnoir (steps:[{{label,value}}]×3-5)
-pyramid        — Pyramide (levels:[{{label,body≤10mots}}])
-cycle          — Cycle (steps:[{{title≤5mots,body≤8mots}}]×3-5)
 roadmap        — Roadmap (phases:[{{label,milestones:[≤3 jalons]}}]×2-4)
 
 ─── DONNÉES [UTILISER SEULEMENT SI DONNÉES RÉELLES] ───
@@ -10745,6 +11093,11 @@ full_text      — UNIQUEMENT pour intro/conclusion narrative
     → circle_stats pour données de satisfaction, performance, taux (3 indicateurs en %)
     → photo_grid pour portfolio, projets, cas clients (contenu visuel-first)
     → side_panel pour pages riches avec sidebar éditoriale
+13. Layouts structurés visuels à préférer aux alternatives textuelles :
+    → org_chart pour tout organigramme, hiérarchie, structure entreprise ou équipe
+    → cycle pour tout processus cyclique, lifecycle, boucle d'amélioration continue
+    → pyramid pour tout framework hiérarchique (Maslow, valeurs, priorités)
+    → funnel pour tout processus d'entonnoir (ventes, conversion, acquisition)
 
 FORMAT DE RÉPONSE :
 {{
@@ -10916,10 +11269,7 @@ async def run_pipeline_v4(
     log.info('[V4] Phase 3 : création des slides…')
 
     # Alias V3 → fonction layouts.py pour types sans implémentation V4 native
-    # (pyramid, cycle, roadmap → V3 si disponible, sinon fulltext fallback)
     _V3_ALIAS = {
-        'pyramid': 'pyramid',
-        'cycle':   'cycle',
         'roadmap': 'roadmap',
     }
 
@@ -11039,6 +11389,8 @@ async def run_pipeline_v4(
                 layout_icon_grid_v4(prs, content, tp)
             elif layout_name in ('text_hero',):
                 layout_text_hero_v4(prs, content, tp)
+            elif layout_name in ('org_chart', 'orgchart'):
+                layout_org_chart_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
