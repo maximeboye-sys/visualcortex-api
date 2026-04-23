@@ -5181,115 +5181,151 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
 
 def layout_processflow_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Flux de processus — 2 variantes visuelles déterministes.
-    v0 : horizontal, boîtes accent pleine zone CT→CB + flèches ▶.
-    v1 : vertical, étapes empilées pleine largeur + flèches ↓.
+    Flux de processus — 3 variantes avec vraies formes MSO.
+    v0: horizontal — chevrons MSO imbriqués (flèches directionnelles réelles)
+    v1: vertical — étapes pleine largeur + flèche MSO entre chaque
+    v2: horizontal — boîtes arrondies + flèche MSO right-arrow entre chaque
+    content: {title, steps:[{title, body?, icon?}]}
     """
-    slide  = _blank_v4(prs, tp)
-    font   = tp.get('font', 'Calibri')
-    theme  = tp.get('theme', {})
-    dk1    = theme.get('dk1', '374649')
-    accent1 = theme.get('accent1', '009CEA')
-    accents = tp.get('accent_cycle', [
-        theme.get('accent3', '40A900'),
-        theme.get('accent4', 'F66A00'),
-        accent1,
-    ])
-    W = tp.get('W', 13.33)
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
     steps = content.get('steps', [])
-    n = min(len(steps), 6)
+    n     = min(len(steps), 5)
     if n == 0:
         return slide
 
-    v = _v4_variant(content, 2, tp.get('seed', 0))
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    def _sd(step):
+        if isinstance(step, dict):
+            return (step.get('title', str(step)),
+                    step.get('body', ''),
+                    step.get('icon', ''))
+        return str(step), '', ''
 
     if v == 0:
-        # Variante 0 : horizontal, boîtes pleine zone CT→CB
-        x_start = _LY.CL - 0.05
-        x_end   = _LY.CR + 0.05
-        y_mid   = (_LY.CT + _LY.CB) / 2
-        box_h   = _LY.CB - _LY.CT          # pleine zone contenu
-        box_y   = _LY.CT
-        arrow_w = 0.38
-        total_w = x_end - x_start
-        box_w   = (total_w - (n - 1) * arrow_w) / n
+        # Horizontal chevrons (MSO) — like chevron_flow but lighter, less overlap
+        zone_h  = _LY.CB - _LY.CT
+        overlap = 0.18
+        chev_w  = (_LY.CW + overlap * (n - 1)) / n
+        chev_w  = max(chev_w, 1.10)
 
         for i, step in enumerate(steps[:n]):
+            title, body, icon = _sd(step)
+            cx    = _LY.CL + i * (chev_w - overlap)
             color = accents[i % len(accents)]
-            bx    = x_start + i * (box_w + arrow_w)
-            title = step.get('title', '') if isinstance(step, dict) else str(step)
-            body  = step.get('body', '') if isinstance(step, dict) else ''
 
-            _h2_rounded_rect(slide, left=bx, top=box_y,
-                              width=box_w, height=box_h, color=color, radius=0.07)
-            _h2_text(slide, str(i + 1),
-                     left=bx + 0.10, top=box_y + 0.10,
-                     width=0.35, height=0.33,
-                     font=font, size_pt=11, color='FFFFFF',
-                     bold=True, align='left')
-            _h2_text(slide, title,
-                     left=bx + 0.12, top=box_y + 0.48,
-                     width=box_w - 0.22, height=0.55,
-                     font=font, size_pt=12, color='FFFFFF',
-                     bold=True, align='left', line_spacing=1.1)
+            _h2_chevron(slide, cx, _LY.CT, chev_w, zone_h, color)
+
+            tx = cx + 0.16
+            tw = chev_w - 0.46
+            y  = _LY.CT + zone_h * 0.14
+
+            # Step number
+            _h2_rounded_rect(slide, tx, y, 0.28, 0.28, _darken(color, 0.25), 0.14)
+            _h2_text(slide, str(i + 1), tx, y, 0.28, 0.28,
+                     font, 9, 'FFFFFF', bold=True, align='center')
+            y += 0.32
+
+            if icon:
+                _h2_text(slide, icon, tx, y, tw, 0.38,
+                         font, 20, 'FFFFFF', bold=False, align='center')
+                y += 0.42
+
+            _h2_text(slide, title, tx, y, tw, 0.28,
+                     font, 10, 'FFFFFF', bold=True, align='center')
+            y += 0.30
             if body:
-                _h2_text(slide, body,
-                         left=bx + 0.12, top=box_y + 1.10,
-                         width=box_w - 0.22, height=box_h - 1.22,
-                         font=font, size_pt=10, color='FFFFFF',
-                         bold=False, align='left', line_spacing=1.15)
-            if i < n - 1:
-                ax = bx + box_w + 0.03
-                _h2_text(slide, '▶',
-                         left=ax, top=y_mid - 0.20,
-                         width=arrow_w - 0.06, height=0.40,
-                         font=font, size_pt=16, color=accents[(i + 1) % len(accents)],
-                         bold=True, align='center')
-    else:
-        # Variante 1 : vertical, étapes pleine largeur
-        arrow_h = 0.30
+                _h2_text(slide, body, tx, y, tw, zone_h - (y - _LY.CT) - 0.08,
+                         font, 8, 'FFFFFF', bold=False, align='center')
+
+    elif v == 1:
+        # Vertical stack — card + MSO right-arrow connector between steps
+        arrow_h = 0.36
         total_h = _LY.CB - _LY.CT
         box_h   = (total_h - (n - 1) * arrow_h) / n
 
         for i, step in enumerate(steps[:n]):
-            color = accents[i % len(accents)]
+            title, body, icon = _sd(step)
             by    = _LY.CT + i * (box_h + arrow_h)
-            title = step.get('title', '') if isinstance(step, dict) else str(step)
-            body  = step.get('body', '') if isinstance(step, dict) else ''
+            color = accents[i % len(accents)]
 
-            _h2_rounded_rect(slide, left=_LY.CL, top=by,
-                              width=_LY.CW, height=box_h, color=color, radius=0.06)
-            # Numéro
-            _h2_text(slide, str(i + 1),
-                     left=_LY.CL + 0.12, top=by + (box_h - 0.50) / 2,
-                     width=0.50, height=0.50,
-                     font=font, size_pt=18, color='FFFFFF',
-                     bold=True, align='center')
-            # Titre
-            txt_y = by + (box_h - (0.42 if not body else 0.82)) / 2
-            _h2_text(slide, title,
-                     left=_LY.CL + 0.78, top=txt_y,
-                     width=_LY.CW - 0.90, height=0.42,
-                     font=font, size_pt=13, color='FFFFFF',
-                     bold=True, align='left', line_spacing=1.1)
+            _h2_card_bg(slide, _LY.CL, by, _LY.CW, box_h, tp, i)
+            _h2_rect(slide, _LY.CL, by, _LY.CW, 0.06, color)
+
+            # Circle step number
+            r_num = min(box_h * 0.38, 0.30)
+            _h2_rounded_rect(slide, _LY.CL + 0.14, by + (box_h - r_num * 2) / 2,
+                             r_num * 2, r_num * 2, color, r_num)
+            _h2_text(slide, str(i + 1), _LY.CL + 0.14, by + (box_h - r_num * 2) / 2,
+                     r_num * 2, r_num * 2, font, 11, 'FFFFFF', bold=True, align='center')
+
+            tx  = _LY.CL + 0.14 + r_num * 2 + 0.14
+            tw  = _LY.CW - (tx - _LY.CL) - 0.12
+            ty  = by + (box_h - (0.52 if body else 0.28)) / 2
+            _h2_text(slide, title, tx, ty, tw, 0.28,
+                     font, 11, dk1, bold=True, align='left')
             if body:
-                _h2_text(slide, body,
-                         left=_LY.CL + 0.78, top=txt_y + 0.44,
-                         width=_LY.CW - 0.90, height=0.38,
-                         font=font, size_pt=10, color='FFFFFF',
-                         bold=False, align='left', line_spacing=1.1)
-            # Flèche ↓
+                _h2_text(slide, body, tx, ty + 0.30, tw, 0.24,
+                         font, 9, '555555', bold=False, align='left')
+            if icon:
+                _h2_text(slide, icon, _LY.CR - 0.50, by + (box_h - 0.36) / 2,
+                         0.40, 0.36, font, 18, color, bold=False, align='center')
+
+            # MSO down-arrow connector
             if i < n - 1:
-                ay = by + box_h + 0.01
-                _h2_text(slide, '▼',
-                         left=_LY.CL + _LY.CW / 2 - 0.20, top=ay,
-                         width=0.40, height=arrow_h - 0.02,
-                         font=font, size_pt=12, color=accents[(i + 1) % len(accents)],
-                         bold=True, align='center')
+                arr_y = by + box_h + 0.04
+                arr_w = 0.32
+                arr_x = _LY.CL + _LY.CW / 2 - arr_w / 2
+                _h2_autoshape(slide, 36,  # MSO DOWN_ARROW = 36
+                              arr_x, arr_y, arr_w, arrow_h - 0.08,
+                              accents[(i + 1) % len(accents)])
+
+    else:
+        # v2: Rounded boxes + MSO right-arrow between them (horizontal)
+        arrow_w  = 0.42
+        total_w  = _LY.CW
+        box_w    = (total_w - arrow_w * (n - 1)) / n
+        zone_h   = _LY.CB - _LY.CT
+        y_mid    = _LY.CT + zone_h / 2
+
+        for i, step in enumerate(steps[:n]):
+            title, body, icon = _sd(step)
+            bx    = _LY.CL + i * (box_w + arrow_w)
+            color = accents[i % len(accents)]
+
+            _h2_rounded_rect(slide, bx, _LY.CT, box_w, zone_h, color, _LY.R_SM)
+
+            y = _LY.CT + zone_h * 0.12
+            if icon:
+                _h2_text(slide, icon, bx + 0.10, y, box_w - 0.20, 0.40,
+                         font, 20, 'FFFFFF', bold=False, align='center')
+                y += 0.44
+
+            _h2_text(slide, str(i + 1), bx + 0.10, y, box_w - 0.20, 0.24,
+                     font, 8, 'FFFFFF', bold=True, align='center')
+            y += 0.26
+            _h2_text(slide, title, bx + 0.10, y, box_w - 0.20, 0.30,
+                     font, 10, 'FFFFFF', bold=True, align='center')
+            y += 0.32
+            if body:
+                _h2_text(slide, body, bx + 0.10, y, box_w - 0.20,
+                         zone_h - (y - _LY.CT) - 0.10, font, 8, 'FFFFFF',
+                         bold=False, align='center')
+
+            # MSO right-arrow between boxes
+            if i < n - 1:
+                ax = bx + box_w + 0.04
+                ah = min(zone_h * 0.28, 0.50)
+                _h2_arrow_right(slide, ax, y_mid - ah / 2,
+                                arrow_w - 0.08, ah,
+                                accents[(i + 1) % len(accents)])
 
     return slide
 
