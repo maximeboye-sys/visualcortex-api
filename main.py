@@ -9996,6 +9996,136 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
     return slide
 
 
+def layout_text_hero_v4(prs, content: dict, tp: dict):
+    """
+    Typography-dominant slide: one oversized word/number + accent shape + short body.
+    Breaks the grid monotony — zero cards, pure typographic impact.
+    content: {title, hero_word, hero_size?, subtitle?, body?, accent_word?}
+    v0: Giant hero_word left-aligned, large accent shape right, body below
+    v1: Hero word diagonal/oversized overlapping decorative shape behind, centred
+    v2: Split — thin accent band left, oversized hero right + label above/below
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+    lt1     = tp['lt1']
+
+    title      = content.get('title', '')
+    hero       = content.get('hero_word', content.get('value', ''))
+    subtitle   = content.get('subtitle', '')
+    body       = content.get('body', '')
+    accent_w   = content.get('accent_word', '')
+    zone_h     = _LY.CB - _LY.CT
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+    color  = accents[0]
+    color2 = accents[1 % len(accents)]
+
+    if v == 0:
+        # Giant hero word left, decorative circle right, body below hero
+        # Title as small label above
+        if title:
+            _h2_text(slide, title.upper(), _LY.CL, _LY.CT, _LY.CW * 0.70, 0.28,
+                     font, 9, color, bold=True, align='left')
+
+        # Oversized hero word — fills ~70% height
+        hero_pt = 96
+        _h2_text(slide, hero, _LY.CL - 0.05, _LY.CT + 0.22,
+                 _LY.CW * 0.75, zone_h * 0.68, font, hero_pt, dk1, bold=True, align='left')
+
+        # Decorative large circle (accent) — right side, partially off-slide
+        circle_r = zone_h * 0.45
+        _h2_rounded_rect(slide, _LY.CR - circle_r * 0.85, _LY.CT + zone_h / 2 - circle_r,
+                         circle_r * 2, circle_r * 2, color, circle_r)
+        _set_shape_alpha(slide.shapes[-1], 18)
+
+        # Accent word inside circle
+        if accent_w:
+            _h2_text(slide, accent_w, _LY.CR - circle_r * 0.85,
+                     _LY.CT + zone_h / 2 - 0.20, circle_r * 2, 0.40,
+                     font, 14, 'FFFFFF', bold=True, align='center')
+
+        # Subtitle + body below hero word
+        y = _LY.CT + zone_h * 0.72
+        if subtitle:
+            _h2_text(slide, subtitle, _LY.CL, y, _LY.CW * 0.65, 0.30,
+                     font, 12, color, bold=True, align='left')
+            y += 0.32
+        if body:
+            _h2_text(slide, body, _LY.CL, y, _LY.CW * 0.65, _LY.CB - y - 0.05,
+                     font, 10, dk1, bold=False, align='left')
+
+    elif v == 1:
+        # Centred hero — oversized word over a giant decorative background shape
+        # Background shape: giant circle, very low opacity
+        bg_r = zone_h * 0.58
+        bgx  = _LY.CL + _LY.CW / 2 - bg_r
+        bgy  = _LY.CT + zone_h / 2 - bg_r
+        _h2_rounded_rect(slide, bgx, bgy, bg_r * 2, bg_r * 2, color, bg_r)
+        _set_shape_alpha(slide.shapes[-1], 12)
+
+        # Small label above
+        if title:
+            _h2_text(slide, title.upper(), _LY.CL, _LY.CT + 0.05, _LY.CW, 0.26,
+                     font, 9, color, bold=True, align='center')
+
+        # Hero word — centred, massive
+        _h2_text(slide, hero, _LY.CL - 0.20, _LY.CT + zone_h * 0.08,
+                 _LY.CW + 0.40, zone_h * 0.62, font, 88, dk1, bold=True, align='center')
+
+        # Accent colour bar under hero
+        bar_y = _LY.CT + zone_h * 0.62
+        _h2_rect(slide, _LY.CL + _LY.CW * 0.30, bar_y, _LY.CW * 0.40, 0.055, color)
+
+        # Subtitle + body centred below bar
+        y = bar_y + 0.10
+        if subtitle:
+            _h2_text(slide, subtitle, _LY.CL, y, _LY.CW, 0.28,
+                     font, 11, color, bold=True, align='center')
+            y += 0.30
+        if body:
+            _h2_text(slide, body, _LY.CL + _LY.CW * 0.10, y,
+                     _LY.CW * 0.80, _LY.CB - y - 0.05, font, 10, dk1, bold=False, align='center')
+
+    else:
+        # v2: Thin accent band left + oversized hero right-aligned
+        band_w = 0.28
+        _h2_rect(slide, _LY.CL, _LY.CT, band_w, zone_h, color)
+
+        # Decorative triangle behind text (very faint)
+        tri_size = zone_h * 0.80
+        _h2_triangle(slide, _LY.CL + band_w + _LY.CW * 0.35,
+                     _LY.CT + zone_h * 0.10, tri_size * 0.70, tri_size, color2)
+        _set_shape_alpha(slide.shapes[-1], 10)
+
+        # Title label above, left-aligned (after band)
+        tx = _LY.CL + band_w + 0.20
+        tw = _LY.CW - band_w - 0.20
+        if title:
+            _h2_text(slide, title.upper(), tx, _LY.CT + 0.08, tw, 0.26,
+                     font, 9, color, bold=True, align='left')
+
+        # Hero word — very large, right-aligned feel
+        _h2_text(slide, hero, tx - 0.10, _LY.CT + 0.28, tw + 0.10, zone_h * 0.62,
+                 font, 90, dk1, bold=True, align='left')
+
+        # Accent line
+        ay = _LY.CT + zone_h * 0.64
+        _h2_rect(slide, tx, ay, tw * 0.55, 0.05, color)
+
+        y = ay + 0.10
+        if subtitle:
+            _h2_text(slide, subtitle, tx, y, tw, 0.28,
+                     font, 11, color, bold=True, align='left')
+            y += 0.30
+        if body:
+            _h2_text(slide, body, tx, y, tw * 0.75, _LY.CB - y - 0.05,
+                     font, 10, dk1, bold=False, align='left')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -10335,7 +10465,8 @@ HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
 TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
                     team_grid, stat_banner, icon_row, numbered_features, photo_text,
                     side_panel, circle_stats, mission_vision, photo_grid,
-                    pricing_table, hub_spoke, diamond_icons, chevron_flow, venn, icon_grid
+                    pricing_table, hub_spoke, diamond_icons, chevron_flow, venn, icon_grid,
+                    text_hero
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
                     section_break, competitor_matrix, pest_analysis, market_sizing
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
@@ -10458,6 +10589,14 @@ diamond_icons  — Rangée de 3-4 icônes en losanges (variante visuelle de icon
                  Champs OBLIGATOIRES : items:[{{icon(emoji),title}}] — 3 ou 4 items
                  Optionnel : body dans chaque item
                  Usage : features produit, étapes clés, valeurs — impact visuel fort
+
+text_hero      — Slide typographique : un mot/chiffre géant comme élément design principal
+                 Champs OBLIGATOIRES : hero_word(mot ou chiffre fort, ≤3 mots)
+                 Optionnel : title(≤5mots label au-dessus), subtitle(≤10mots), body(≤20mots), accent_word
+                 v0: hero_word gauche + grand cercle décoratif droit (très transparent)
+                 v1: hero_word centré sur fond cercle fantôme + barre accent + corps centré
+                 v2: bande accent gauche + hero_word à droite + triangle décoratif en filigrane
+                 Usage : intro de section forte, chiffre clé isolé, mot-clé de la présentation
 
 icon_grid      — Grille dense de 6-12 icônes — slides "nos capacités", "fonctionnalités", "offre"
                  Champs OBLIGATOIRES : items:[{{icon(emoji),label}}] — 6 à 12 items
@@ -10839,6 +10978,8 @@ async def run_pipeline_v4(
                 layout_venn_v4(prs, content, tp)
             elif layout_name in ('icon_grid',):
                 layout_icon_grid_v4(prs, content, tp)
+            elif layout_name in ('text_hero',):
+                layout_text_hero_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
