@@ -9657,6 +9657,207 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
     return slide
 
 
+def layout_venn_v4(prs, content: dict, tp: dict):
+    """
+    Venn diagram: 2-3 overlapping circles with content in each zone.
+    content: {title, circles:[{label, icon?, items?:[str], color?}], intersection?:{label,icon?}}
+    v0: 2 circles, horizontal overlap, intersection zone labelled
+    v1: 3 circles, triangular arrangement
+    v2: 2 circles vertical + intersection band highlighted
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+
+    title   = content.get('title', '')
+    circles = content.get('circles', [])
+    inter   = content.get('intersection', {})
+    if not circles:
+        circles = [
+            {'label': 'Groupe A', 'items': ['Point 1', 'Point 2']},
+            {'label': 'Groupe B', 'items': ['Point 3', 'Point 4']},
+        ]
+    n = min(len(circles), 3)
+    circles = circles[:n]
+    if title:
+        _h2_title(slide, title, tp)
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if v == 0 or n == 2:
+        # 2-circle horizontal Venn
+        zone_h  = _LY.CB - _LY.CT
+        r       = min(zone_h / 2, _LY.CW * 0.32)
+        overlap = r * 0.55
+        total_w = r * 2 * 2 - overlap
+        cx1     = _LY.CL + (_LY.CW - total_w) / 2 + r
+        cx2     = cx1 + r * 2 - overlap
+        cy      = _LY.CT + zone_h / 2
+
+        # Circle 1 (semi-transparent)
+        c1 = circles[0]
+        color1 = c1.get('color', accents[0])
+        _h2_rounded_rect(slide, cx1 - r, cy - r, r * 2, r * 2, color1, r)
+        _set_shape_alpha(slide.shapes[-1], 75)
+
+        # Circle 2 (semi-transparent)
+        c2 = circles[1] if n >= 2 else {}
+        color2 = c2.get('color', accents[1 % len(accents)]) if c2 else accents[1 % len(accents)]
+        _h2_rounded_rect(slide, cx2 - r, cy - r, r * 2, r * 2, color2, r)
+        _set_shape_alpha(slide.shapes[-1], 75)
+
+        # Labels and content — circle 1 (left zone)
+        lbl1  = c1.get('label', '') if isinstance(c1, dict) else str(c1)
+        icon1 = c1.get('icon', '')  if isinstance(c1, dict) else ''
+        its1  = c1.get('items', []) if isinstance(c1, dict) else []
+        lx1   = cx1 - r - 0.10
+        lw1   = r - overlap / 2 + 0.10
+        if icon1:
+            _h2_text(slide, icon1, lx1, cy - r + 0.15, lw1, 0.40,
+                     font, 20, 'FFFFFF', bold=False, align='center')
+        _h2_text(slide, lbl1, lx1, cy - r + (0.60 if icon1 else 0.20),
+                 lw1, 0.30, font, 11, 'FFFFFF', bold=True, align='center')
+        for ii, it in enumerate(its1[:4]):
+            _h2_text(slide, f'• {it}', lx1, cy - r + (0.95 if icon1 else 0.55) + ii * 0.26,
+                     lw1, 0.24, font, 8, 'FFFFFF', bold=False, align='center')
+
+        # Labels — circle 2 (right zone)
+        lbl2  = c2.get('label', '') if isinstance(c2, dict) else str(c2)
+        icon2 = c2.get('icon', '')  if isinstance(c2, dict) else ''
+        its2  = c2.get('items', []) if isinstance(c2, dict) else []
+        lx2   = cx2 + overlap / 2
+        lw2   = r - overlap / 2 + 0.10
+        if icon2:
+            _h2_text(slide, icon2, lx2, cy - r + 0.15, lw2, 0.40,
+                     font, 20, 'FFFFFF', bold=False, align='center')
+        _h2_text(slide, lbl2, lx2, cy - r + (0.60 if icon2 else 0.20),
+                 lw2, 0.30, font, 11, 'FFFFFF', bold=True, align='center')
+        for ii, it in enumerate(its2[:4]):
+            _h2_text(slide, f'• {it}', lx2,
+                     cy - r + (0.95 if icon2 else 0.55) + ii * 0.26,
+                     lw2, 0.24, font, 8, 'FFFFFF', bold=False, align='center')
+
+        # Intersection label
+        inter_lbl  = inter.get('label', '') if isinstance(inter, dict) else str(inter)
+        inter_icon = inter.get('icon', '')  if isinstance(inter, dict) else ''
+        ix  = cx1 + r - overlap / 2 - 0.30
+        iw  = overlap + 0.00
+        if inter_icon:
+            _h2_text(slide, inter_icon, ix, cy - 0.36, iw, 0.36,
+                     font, 18, 'FFFFFF', bold=False, align='center')
+        if inter_lbl:
+            _h2_text(slide, inter_lbl, ix, cy + (0.04 if inter_icon else -0.14),
+                     iw, 0.30, font, 9, 'FFFFFF', bold=True, align='center')
+
+    elif v == 1 and n >= 3:
+        # 3-circle triangular Venn
+        import math
+        zone_h = _LY.CB - _LY.CT
+        r      = min(zone_h * 0.38, _LY.CW * 0.24)
+        sep    = r * 1.05  # distance between centres
+        # Top circle centred, bottom-left, bottom-right
+        centres = [
+            (_LY.CL + _LY.CW / 2,                     _LY.CT + zone_h * 0.28),
+            (_LY.CL + _LY.CW / 2 - sep * 0.66,        _LY.CT + zone_h * 0.28 + sep * 0.90),
+            (_LY.CL + _LY.CW / 2 + sep * 0.66,        _LY.CT + zone_h * 0.28 + sep * 0.90),
+        ]
+        colors = [accents[i % len(accents)] for i in range(3)]
+
+        for i, (ccx, ccy) in enumerate(centres):
+            _h2_rounded_rect(slide, ccx - r, ccy - r, r * 2, r * 2, colors[i], r)
+            _set_shape_alpha(slide.shapes[-1], 70)
+
+        for i, (ccx, ccy) in enumerate(centres):
+            c      = circles[i]
+            lbl    = c.get('label', '') if isinstance(c, dict) else str(c)
+            icon   = c.get('icon', '')  if isinstance(c, dict) else ''
+            its    = c.get('items', []) if isinstance(c, dict) else []
+            # Offset label outward from centroid
+            cent_x = _LY.CL + _LY.CW / 2
+            cent_y = sum(p[1] for p in centres) / 3
+            dx     = ccx - cent_x
+            dy     = ccy - cent_y
+            mag    = max(math.sqrt(dx**2 + dy**2), 0.01)
+            ox     = ccx + dx / mag * r * 0.45
+            oy     = ccy + dy / mag * r * 0.35
+            lw     = r * 1.20
+            if icon:
+                _h2_text(slide, icon, ox - lw / 2, oy - 0.36, lw, 0.34,
+                         font, 16, 'FFFFFF', bold=False, align='center')
+                oy += 0.02
+            _h2_text(slide, lbl, ox - lw / 2, oy - (0.14 if not icon else 0.14),
+                     lw, 0.26, font, 9, 'FFFFFF', bold=True, align='center')
+            for ii, it in enumerate(its[:2]):
+                _h2_text(slide, f'• {it}', ox - lw / 2,
+                         oy + (0.14 if not icon else 0.14) + ii * 0.22,
+                         lw, 0.20, font, 7, 'FFFFFF', bold=False, align='center')
+
+        # Centre intersection
+        inter_lbl  = inter.get('label', '') if isinstance(inter, dict) else ''
+        inter_icon = inter.get('icon', '')  if isinstance(inter, dict) else ''
+        cent_cx = _LY.CL + _LY.CW / 2
+        cent_cy = sum(p[1] for p in centres) / 3 + r * 0.08
+        if inter_icon:
+            _h2_text(slide, inter_icon, cent_cx - 0.30, cent_cy - 0.20, 0.60, 0.30,
+                     font, 14, 'FFFFFF', bold=False, align='center')
+        if inter_lbl:
+            _h2_text(slide, inter_lbl, cent_cx - 0.55, cent_cy + (0.14 if inter_icon else -0.12),
+                     1.10, 0.24, font, 8, 'FFFFFF', bold=True, align='center')
+
+    else:
+        # v2: 2 circles vertical + highlighted intersection band
+        zone_h  = _LY.CB - _LY.CT
+        r       = min(_LY.CW * 0.30, zone_h * 0.32)
+        overlap = r * 0.52
+        total_h = r * 2 * 2 - overlap
+        cy1     = _LY.CT + (zone_h - total_h) / 2 + r
+        cy2     = cy1 + r * 2 - overlap
+        cx      = _LY.CL + _LY.CW / 2
+
+        c1     = circles[0]
+        c2     = circles[1] if n >= 2 else {}
+        color1 = c1.get('color', accents[0]) if isinstance(c1, dict) else accents[0]
+        color2 = (c2.get('color', accents[1 % len(accents)])
+                  if isinstance(c2, dict) else accents[1 % len(accents)])
+
+        _h2_rounded_rect(slide, cx - r, cy1 - r, r * 2, r * 2, color1, r)
+        _set_shape_alpha(slide.shapes[-1], 78)
+        _h2_rounded_rect(slide, cx - r, cy2 - r, r * 2, r * 2, color2, r)
+        _set_shape_alpha(slide.shapes[-1], 78)
+
+        for i, (circ, ccy, color) in enumerate(
+                [(c1, cy1, color1), (c2, cy2, color2)]):
+            lbl  = circ.get('label', '') if isinstance(circ, dict) else str(circ)
+            icon = circ.get('icon', '')  if isinstance(circ, dict) else ''
+            its  = circ.get('items', []) if isinstance(circ, dict) else []
+            side = -1 if i == 0 else 1
+            tx   = cx + side * (r * 0.12)
+            iy2  = ccy - r * 0.55
+            if icon:
+                _h2_text(slide, icon, tx - 0.25, iy2, 0.50, 0.38,
+                         font, 18, 'FFFFFF', bold=False, align='center')
+                iy2 += 0.40
+            _h2_text(slide, lbl, tx - 0.80, iy2, 1.60, 0.28,
+                     font, 10, 'FFFFFF', bold=True, align='center')
+            for ii, it in enumerate(its[:3]):
+                _h2_text(slide, f'• {it}', tx - 0.80, iy2 + 0.30 + ii * 0.24,
+                         1.60, 0.22, font, 8, 'FFFFFF', bold=False, align='center')
+
+        inter_lbl  = inter.get('label', '') if isinstance(inter, dict) else ''
+        inter_icon = inter.get('icon', '')  if isinstance(inter, dict) else ''
+        mid_y = (cy1 + cy2) / 2
+        if inter_icon:
+            _h2_text(slide, inter_icon, cx - 0.22, mid_y - 0.18, 0.44, 0.34,
+                     font, 16, 'FFFFFF', bold=False, align='center')
+        if inter_lbl:
+            _h2_text(slide, inter_lbl, cx - 0.70,
+                     mid_y + (0.18 if inter_icon else -0.12), 1.40, 0.26,
+                     font, 9, 'FFFFFF', bold=True, align='center')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -9996,7 +10197,7 @@ HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
 TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
                     team_grid, stat_banner, icon_row, numbered_features, photo_text,
                     side_panel, circle_stats, mission_vision, photo_grid,
-                    pricing_table, hub_spoke, diamond_icons, chevron_flow
+                    pricing_table, hub_spoke, diamond_icons, chevron_flow, venn
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
                     section_break, competitor_matrix, pest_analysis, market_sizing
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
@@ -10119,6 +10320,12 @@ diamond_icons  — Rangée de 3-4 icônes en losanges (variante visuelle de icon
                  Champs OBLIGATOIRES : items:[{{icon(emoji),title}}] — 3 ou 4 items
                  Optionnel : body dans chaque item
                  Usage : features produit, étapes clés, valeurs — impact visuel fort
+
+venn           — Diagramme de Venn : 2-3 cercles semi-transparents qui se chevauchent
+                 Champs OBLIGATOIRES : circles:[{{label,icon?,items?:[str]}}] — 2 ou 3 cercles
+                 Optionnel : intersection:{{label,icon?}} pour la zone centrale commune
+                 Exemple cercle : {{"label":"Technologie","icon":"💻","items":["IA","Cloud","Data"]}}
+                 Usage : intersection de concepts, synergies, positionnement, comparaison
 
 chevron_flow   — Flux processus en vraies formes chevrons/flèches MSO — TIER 1 visuel
                  Champs OBLIGATOIRES : steps:[{{title}}] — 3 à 5 étapes
@@ -10482,6 +10689,8 @@ async def run_pipeline_v4(
                 layout_market_sizing_v4(prs, content, tp)
             elif layout_name in ('chevron_flow',):
                 layout_chevron_flow_v4(prs, content, tp)
+            elif layout_name in ('venn',):
+                layout_venn_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
