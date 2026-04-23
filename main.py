@@ -9858,6 +9858,144 @@ def layout_venn_v4(prs, content: dict, tp: dict):
     return slide
 
 
+def layout_icon_grid_v4(prs, content: dict, tp: dict):
+    """
+    Dense icon matrix: 6-12 items, each with circle icon + label (+ optional body).
+    content: {title, items:[{icon, label, body?}]}
+    v0: Uniform grid — circle icon + label below, tightest packing
+    v1: Rows with alternating accent background — icon left, label+body right
+    v2: Hexagonal-feel grid — icons in coloured circles, label below, 4-col layout
+    """
+    slide   = _blank_v4(prs, tp)
+    font    = tp['font']
+    accents = tp['accents']
+    dk1     = tp['dk1']
+
+    title = content.get('title', '')
+    items = content.get('items', [])
+    if not items:
+        items = [{'icon': '⭐', 'label': f'Feature {i+1}'} for i in range(8)]
+    n = min(len(items), 12)
+    items = items[:n]
+    if title:
+        _h2_title(slide, title, tp)
+
+    v = _v4_variant(content, 3, tp.get('seed', 0))
+
+    if v == 0:
+        # Uniform grid — circle + label, 3-4 cols depending on n
+        n_cols  = 4 if n >= 7 else 3
+        n_rows  = (n + n_cols - 1) // n_cols
+        gap_x   = _LY.GAP_SM
+        gap_y   = _LY.GAP_SM
+        cell_w  = (_LY.CW - gap_x * (n_cols - 1)) / n_cols
+        cell_h  = (_LY.CB - _LY.CT - gap_y * (n_rows - 1)) / max(n_rows, 1)
+        r_icon  = min(cell_w * 0.28, cell_h * 0.38, 0.42)
+
+        for i, item in enumerate(items):
+            col_i  = i % n_cols
+            row_i  = i // n_cols
+            cx     = _LY.CL + col_i * (cell_w + gap_x)
+            cy     = _LY.CT + row_i * (cell_h + gap_y)
+            color  = accents[i % len(accents)]
+            icon   = item.get('icon',  '') if isinstance(item, dict) else ''
+            label  = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            body   = item.get('body',  '') if isinstance(item, dict) else ''
+
+            # Subtle card bg
+            _h2_card_bg(slide, cx, cy, cell_w, cell_h, tp, i)
+
+            # Icon circle centred in upper part
+            icx = cx + cell_w / 2 - r_icon
+            icy = cy + cell_h * 0.10
+            _h2_rounded_rect(slide, icx, icy, r_icon * 2, r_icon * 2, color, r_icon)
+            if icon:
+                _h2_text(slide, icon, icx, icy, r_icon * 2, r_icon * 2,
+                         font, int(r_icon * 28), 'FFFFFF', bold=False, align='center')
+
+            # Label
+            ty = icy + r_icon * 2 + 0.08
+            _h2_text(slide, label, cx + 0.06, ty, cell_w - 0.12, 0.26,
+                     font, 9, dk1, bold=True, align='center')
+            # Body (only if space allows)
+            if body and cell_h > 1.10:
+                _h2_text(slide, body, cx + 0.06, ty + 0.28, cell_w - 0.12,
+                         cell_h - (ty - cy) - 0.34, font, 7, '666666', bold=False, align='center')
+
+    elif v == 1:
+        # Row list — icon circle left + label + body right, alternating row bg
+        row_h = min((_LY.CB - _LY.CT) / max(n, 1), 0.72)
+        r_icon = min(row_h * 0.36, 0.26)
+
+        for i, item in enumerate(items):
+            ry    = _LY.CT + i * row_h
+            color = accents[i % len(accents)]
+            icon  = item.get('icon',  '') if isinstance(item, dict) else ''
+            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body',  '') if isinstance(item, dict) else ''
+
+            if i % 2 == 0:
+                _h2_rect(slide, _LY.CL, ry, _LY.CW, row_h, _cbg(tp, 0))
+
+            # Accent left bar
+            _h2_rect(slide, _LY.CL, ry, 0.06, row_h, color)
+
+            # Icon circle
+            icy = ry + (row_h - r_icon * 2) / 2
+            _h2_rounded_rect(slide, _LY.CL + 0.16, icy, r_icon * 2, r_icon * 2, color, r_icon)
+            if icon:
+                _h2_text(slide, icon, _LY.CL + 0.16, icy, r_icon * 2, r_icon * 2,
+                         font, int(r_icon * 24), 'FFFFFF', bold=False, align='center')
+
+            tx = _LY.CL + 0.16 + r_icon * 2 + 0.14
+            tw = _LY.CW - (tx - _LY.CL) - 0.10
+
+            # Label + body
+            ty = ry + (row_h - (0.48 if body else 0.26)) / 2
+            _h2_text(slide, label, tx, ty, tw, 0.26,
+                     font, 10, dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body, tx, ty + 0.28, tw, 0.22,
+                         font, 8, '666666', bold=False, align='left')
+
+    else:
+        # v2: hexagonal-feel — 4 cols, icons in hexagons, label below
+        n_cols  = 4 if n >= 7 else 3
+        n_rows  = (n + n_cols - 1) // n_cols
+        gap_x   = _LY.GAP_MD
+        gap_y   = _LY.GAP_SM
+        cell_w  = (_LY.CW - gap_x * (n_cols - 1)) / n_cols
+        cell_h  = (_LY.CB - _LY.CT - gap_y * (n_rows - 1)) / max(n_rows, 1)
+        r_hex   = min(cell_w * 0.30, cell_h * 0.40, 0.44)
+
+        for i, item in enumerate(items):
+            col_i  = i % n_cols
+            row_i  = i // n_cols
+            cx     = _LY.CL + col_i * (cell_w + gap_x)
+            cy     = _LY.CT + row_i * (cell_h + gap_y)
+            color  = accents[i % len(accents)]
+            icon   = item.get('icon',  '') if isinstance(item, dict) else ''
+            label  = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            body   = item.get('body',  '') if isinstance(item, dict) else ''
+
+            # Hexagon icon shape
+            hx = cx + cell_w / 2 - r_hex
+            hy = cy + cell_h * 0.08
+            _h2_hexagon(slide, hx, hy, r_hex * 2, r_hex * 2, color)
+            if icon:
+                _h2_text(slide, icon, hx, hy, r_hex * 2, r_hex * 2,
+                         font, int(r_hex * 26), 'FFFFFF', bold=False, align='center')
+
+            ty = hy + r_hex * 2 + 0.08
+            _h2_text(slide, label, cx + 0.04, ty, cell_w - 0.08, 0.26,
+                     font, 9, dk1, bold=True, align='center')
+            if body and cell_h > 1.10:
+                _h2_text(slide, body, cx + 0.04, ty + 0.28, cell_w - 0.08,
+                         cell_h - (ty - cy) - 0.34, font, 7, '666666', bold=False, align='center')
+
+    return slide
+
+
 # Types servis par les vrais layouts du template (placeholders natifs)
 _V4_NATIVE_TYPES = frozenset({
     # Anciens noms (compat V3)
@@ -10197,7 +10335,7 @@ HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
 TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
                     team_grid, stat_banner, icon_row, numbered_features, photo_text,
                     side_panel, circle_stats, mission_vision, photo_grid,
-                    pricing_table, hub_spoke, diamond_icons, chevron_flow, venn
+                    pricing_table, hub_spoke, diamond_icons, chevron_flow, venn, icon_grid
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
                     section_break, competitor_matrix, pest_analysis, market_sizing
 TIER 3 (éviter) : list_numbered, before_after, pros_cons, funnel, pyramid, cycle, roadmap
@@ -10320,6 +10458,14 @@ diamond_icons  — Rangée de 3-4 icônes en losanges (variante visuelle de icon
                  Champs OBLIGATOIRES : items:[{{icon(emoji),title}}] — 3 ou 4 items
                  Optionnel : body dans chaque item
                  Usage : features produit, étapes clés, valeurs — impact visuel fort
+
+icon_grid      — Grille dense de 6-12 icônes — slides "nos capacités", "fonctionnalités", "offre"
+                 Champs OBLIGATOIRES : items:[{{icon(emoji),label}}] — 6 à 12 items
+                 Optionnel : body(≤8mots) par item
+                 v0: grille uniforme cercles + label sous chaque icône
+                 v1: rangées horizontales avec fond alterné — icône gauche + label/body droite
+                 v2: hexagones + label sous chaque forme (variante graphique)
+                 Usage : liste de fonctionnalités, catalogue de services, carte de compétences
 
 venn           — Diagramme de Venn : 2-3 cercles semi-transparents qui se chevauchent
                  Champs OBLIGATOIRES : circles:[{{label,icon?,items?:[str]}}] — 2 ou 3 cercles
@@ -10691,6 +10837,8 @@ async def run_pipeline_v4(
                 layout_chevron_flow_v4(prs, content, tp)
             elif layout_name in ('venn',):
                 layout_venn_v4(prs, content, tp)
+            elif layout_name in ('icon_grid',):
+                layout_icon_grid_v4(prs, content, tp)
 
             # ── Routing V3 fallback (résiduel — ne devrait plus être atteint) ─
             else:
