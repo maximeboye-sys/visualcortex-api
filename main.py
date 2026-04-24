@@ -7067,7 +7067,7 @@ def layout_entity_v4(prs: Presentation, content: dict, tp: dict):
         return slide
 
     n = min(len(entities), 4)
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     def _ent(e):
         if not isinstance(e, dict):
@@ -7173,61 +7173,166 @@ def layout_entity_v4(prs: Presentation, content: dict, tp: dict):
                          bold=False, align='left', line_spacing=1.1)
         return slide
 
-    # Variante 2 : tableau comparatif — entités en colonnes, critères en lignes
-    n2       = min(n, 4)
-    hdr_h    = 0.70
-    body_h   = _LY.CB - _LY.CT - hdr_h
-    col_w    = _LY.CW / n2
-    criteria = []
-    for e in entities[:n2]:
-        if isinstance(e, dict):
-            for it in e.get('items', []):
-                if it not in criteria:
-                    criteria.append(it)
-    # Limit rows
-    max_rows = int(body_h / 0.44)
-    criteria = criteria[:max_rows]
-    n_rows   = len(criteria)
-    row_h    = body_h / max(n_rows, 1) if n_rows else body_h
-
-    # Entêtes de colonnes
-    for i in range(n2):
-        cx    = _LY.CL + i * col_w
-        color = accents[i % len(accents)]
-        icon, name, badge, label, items, sv, sl = _ent(entities[i])
-        _h2_rect(slide, left=cx, top=_LY.CT, width=col_w, height=hdr_h, color=color)
-        x_txt = cx + 0.10
-        w_txt = col_w - 0.20
-        if icon:
-            _h2_text(slide, icon, left=cx, top=_LY.CT + 0.06,
-                     width=0.50, height=hdr_h - 0.10,
-                     font=font, size_pt=18, color='FFFFFF', bold=False, align='center')
-            x_txt = cx + 0.52
-            w_txt = col_w - 0.60
-        _h2_text(slide, name, left=x_txt, top=_LY.CT + 0.16,
-                 width=w_txt, height=hdr_h - 0.20,
-                 font=font, size_pt=11, color='FFFFFF', bold=True, align='left')
-
-    # Lignes de critères
-    entity_items = [
-        (e.get('items', []) if isinstance(e, dict) else []) for e in entities[:n2]
-    ]
-    for j, crit in enumerate(criteria):
-        ry  = _LY.CT + hdr_h + j * row_h
-        bg  = 'F0F4F8' if j % 2 == 0 else 'FAFAFA'
-        _h2_rect(slide, left=_LY.CL, top=ry, width=_LY.CW, height=row_h, color=bg)
+    if v == 2:
+        # Tableau comparatif — entités en colonnes, critères en lignes avec ✓/–
+        n2       = min(n, 4)
+        hdr_h    = 0.70
+        body_h   = _LY.CB - _LY.CT - hdr_h
+        col_w    = _LY.CW / n2
+        criteria = []
+        for e in entities[:n2]:
+            if isinstance(e, dict):
+                for it in e.get('items', []):
+                    if it not in criteria:
+                        criteria.append(it)
+        max_rows = int(body_h / 0.44)
+        criteria = criteria[:max_rows]
+        n_rows   = len(criteria)
+        row_h    = body_h / max(n_rows, 1) if n_rows else body_h
         for i in range(n2):
             cx    = _LY.CL + i * col_w
             color = accents[i % len(accents)]
-            val   = crit if crit in entity_items[i] else '–'
-            tick  = '✓' if crit in entity_items[i] else '–'
-            c_txt = color if tick == '✓' else 'BBBBBB'
-            _h2_text(slide, tick, left=cx + 0.10, top=ry + (row_h - 0.28) / 2,
-                     width=0.26, height=0.28,
-                     font=font, size_pt=12, color=c_txt, bold=True, align='center')
-            _h2_text(slide, crit, left=cx + 0.38, top=ry + (row_h - 0.28) / 2,
-                     width=col_w - 0.44, height=0.28,
-                     font=font, size_pt=9, color=dk1, bold=False, align='left')
+            icon, name, badge, label, items, sv, sl = _ent(entities[i])
+            _h2_rect(slide, left=cx, top=_LY.CT, width=col_w, height=hdr_h, color=color)
+            x_txt, w_txt = cx + 0.10, col_w - 0.20
+            if icon:
+                _h2_text(slide, icon, left=cx, top=_LY.CT + 0.06,
+                         width=0.50, height=hdr_h - 0.10,
+                         font=font, size_pt=18, color='FFFFFF', bold=False, align='center')
+                x_txt, w_txt = cx + 0.52, col_w - 0.60
+            _h2_text(slide, name, left=x_txt, top=_LY.CT + 0.16,
+                     width=w_txt, height=hdr_h - 0.20,
+                     font=font, size_pt=11, color='FFFFFF', bold=True, align='left')
+        entity_items = [(e.get('items', []) if isinstance(e, dict) else []) for e in entities[:n2]]
+        for j, crit in enumerate(criteria):
+            ry  = _LY.CT + hdr_h + j * row_h
+            _h2_rect(slide, left=_LY.CL, top=ry, width=_LY.CW, height=row_h,
+                     color='F0F4F8' if j % 2 == 0 else 'FAFAFA')
+            for i in range(n2):
+                cx    = _LY.CL + i * col_w
+                color = accents[i % len(accents)]
+                tick  = '✓' if crit in entity_items[i] else '–'
+                _h2_text(slide, tick, left=cx + 0.10, top=ry + (row_h - 0.28) / 2,
+                         width=0.26, height=0.28, font=font, size_pt=12,
+                         color=color if tick == '✓' else 'BBBBBB', bold=True, align='center')
+                _h2_text(slide, crit, left=cx + 0.38, top=ry + (row_h - 0.28) / 2,
+                         width=col_w - 0.44, height=0.28, font=font, size_pt=9,
+                         color=dk1, bold=False, align='left')
+
+    elif v == 3:
+        # Spotlight: première entité en panneau hero pleine hauteur (gauche 42%) + autres en grille (droite)
+        feat_w = _LY.CW * 0.42
+        rest_x = _LY.CL + feat_w + _LY.GAP_MD
+        rest_w = _LY.CR - rest_x
+        icon, name, badge, label, items, sv, sl = _ent(entities[0])
+        color0 = accents[0]
+        _h2_rect(slide, _LY.CL, _LY.CT, feat_w, _LY.CB - _LY.CT, color0)
+        y = _LY.CT + 0.24
+        if icon:
+            _h2_text(slide, icon, _LY.CL + 0.10, y, feat_w - 0.20, 0.62,
+                     font=font, size_pt=32, color='FFFFFF', bold=False, align='center')
+            y += 0.66
+        _h2_text(slide, name, _LY.CL + 0.10, y, feat_w - 0.20, 0.44,
+                 font=font, size_pt=16, color='FFFFFF', bold=True, align='center')
+        y += 0.46
+        if badge:
+            _h2_rounded_rect(slide, _LY.CL + (feat_w - 1.50) / 2, y, 1.50, 0.26,
+                              _darken(color0, 0.75), 0.08)
+            _h2_text(slide, badge, _LY.CL + (feat_w - 1.50) / 2, y + 0.02, 1.50, 0.22,
+                     font=font, size_pt=8, color='FFFFFF', bold=True, align='center')
+            y += 0.32
+        _h2_rect(slide, _LY.CL + 0.20, y, feat_w - 0.40, 0.025, 'FFFFFF')
+        y += 0.12
+        for it in items[:5]:
+            _h2_text(slide, f'• {it}', _LY.CL + 0.20, y, feat_w - 0.30, 0.28,
+                     font=font, size_pt=10, color='FFFFFF', bold=False, align='left')
+            y += 0.30
+        if sv:
+            _h2_text(slide, sv, _LY.CL, _LY.CB - 0.82, feat_w, 0.52,
+                     font=font, size_pt=28, color='FFFFFF', bold=True, align='center')
+            if sl:
+                _h2_text(slide, sl, _LY.CL, _LY.CB - 0.28, feat_w, 0.22,
+                         font=font, size_pt=8, color='FFFFFF', bold=True, align='center')
+        rest_n = min(n - 1, 3)
+        if rest_n > 0:
+            gap    = _LY.GAP_SM
+            card_h = (_LY.CB - _LY.CT - gap * (rest_n - 1)) / rest_n
+            for i in range(rest_n):
+                eid  = i + 1
+                icon, name, badge, label, items, sv, sl = _ent(entities[eid])
+                color = accents[eid % len(accents)]
+                cy   = _LY.CT + i * (card_h + gap)
+                _h2_card_bg(slide, rest_x, cy, rest_w, card_h, tp, i)
+                _h2_rect(slide, rest_x, cy, rest_w, 0.055, color)
+                y = cy + 0.16
+                if icon:
+                    _h2_text(slide, icon, rest_x + _LY.PAD, y, 0.38, 0.32,
+                             font=font, size_pt=17, color=color, bold=False, align='left')
+                    _h2_text(slide, name, rest_x + _LY.PAD + 0.40, y + 0.04,
+                             rest_w - _LY.PAD - 0.46, 0.28,
+                             font=font, size_pt=11, color=dk1, bold=True, align='left')
+                    y += 0.36
+                else:
+                    _h2_text(slide, name, rest_x + _LY.PAD, y, rest_w - _LY.PAD * 2, 0.28,
+                             font=font, size_pt=11, color=dk1, bold=True, align='left')
+                    y += 0.30
+                if badge:
+                    _h2_rounded_rect(slide, rest_x + _LY.PAD, y, 1.10, 0.22, color, 0.06)
+                    _h2_text(slide, badge, rest_x + _LY.PAD, y + 0.02, 1.10, 0.18,
+                             font=font, size_pt=7, color='FFFFFF', bold=True, align='center')
+                    y += 0.28
+                n_fit = max(1, int((card_h - (y - cy) - 0.08) / 0.26))
+                for it in items[:n_fit]:
+                    _h2_text(slide, f'• {it}', rest_x + _LY.PAD, y,
+                             rest_w - _LY.PAD * 2, 0.24,
+                             font=font, size_pt=9, color=dk1, bold=False, align='left')
+                    y += 0.26
+
+    elif v == 4:
+        # Scorecard: rangées pleine largeur — panneau entité coloré gauche + items en chips droite
+        n4     = min(n, 4)
+        gap    = _LY.GAP_XS
+        row_h  = (_LY.CB - _LY.CT - gap * (n4 - 1)) / n4
+        ent_w  = 2.80
+        tags_x = _LY.CL + ent_w + _LY.GAP_MD
+        tags_w = _LY.CR - tags_x
+        for i in range(n4):
+            icon, name, badge, label, items, sv, sl = _ent(entities[i])
+            color = accents[i % len(accents)]
+            cy    = _LY.CT + i * (row_h + gap)
+            r_c, g_c, b_c = int(color[0:2],16), int(color[2:4],16), int(color[4:6],16)
+            tint = (f'{min(255,int(r_c+(255-r_c)*0.90)):02X}'
+                    f'{min(255,int(g_c+(255-g_c)*0.90)):02X}'
+                    f'{min(255,int(b_c+(255-b_c)*0.90)):02X}')
+            # Panneau entité (gauche coloré)
+            _h2_rounded_rect(slide, _LY.CL, cy, ent_w, row_h, color, _LY.R_SM)
+            y_inner = cy + (row_h - (0.78 if icon else 0.38)) / 2
+            if icon:
+                _h2_text(slide, icon, _LY.CL, y_inner, ent_w, 0.38,
+                         font=font, size_pt=20, color='FFFFFF', bold=False, align='center')
+                y_inner += 0.40
+            _h2_text(slide, name, _LY.CL + 0.10, y_inner, ent_w - 0.20, 0.36,
+                     font=font, size_pt=12, color='FFFFFF', bold=True, align='center')
+            if sv:
+                _h2_text(slide, sv, _LY.CL + 0.10, cy + row_h - 0.34,
+                         ent_w - 0.20, 0.28,
+                         font=font, size_pt=16, color='FFFFFF', bold=True, align='center')
+            # Zone tags (droite)
+            _h2_card_bg(slide, tags_x, cy, tags_w, row_h, tp, i)
+            _h2_rect(slide, tags_x, cy, 0.04, row_h, color)
+            pill_w = min((tags_w - 0.20) / 3 - 0.08, 2.90)
+            pill_h = 0.28
+            cols   = max(1, int((tags_w - 0.20) / (pill_w + 0.08)))
+            for j, it in enumerate(items[:9]):
+                col = j % cols
+                rw  = j // cols
+                px  = tags_x + 0.14 + col * (pill_w + 0.08)
+                py  = cy + 0.14 + rw * (pill_h + 0.10)
+                if py + pill_h > cy + row_h - 0.08:
+                    break
+                _h2_rounded_rect(slide, px, py, pill_w, pill_h, tint, 0.08)
+                _h2_text(slide, str(it), px + 0.08, py + 0.02, pill_w - 0.12, pill_h - 0.04,
+                         font=font, size_pt=9, color=dk1, bold=False, align='left')
 
     return slide
 
@@ -7639,7 +7744,7 @@ def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    v      = _v4_variant(content, 3, tp.get('seed', 0))
+    v      = _v4_variant(content, 5, tp.get('seed', 0))
 
     def _item_data(item, idx):
         if isinstance(item, dict):
@@ -7728,6 +7833,74 @@ def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
                              width=W - x_text - 0.5, height=0.32,
                              font=font, size_pt=_LY.T_SMALL, color='777777',
                              bold=False, align='left')
+
+    if v == 3:
+        # Timeline verticale: ligne centrale + cercles numérotés + labels alternés
+        line_x  = _LY.CL + 0.40
+        step_h  = (_LY.CB - _LY.CT) / n
+        dot_r   = 0.16
+        _h2_rect(slide, left=line_x - 0.02, top=_LY.CT + step_h * 0.5,
+                 width=0.04, height=(_LY.CB - _LY.CT) - step_h, color='DDDDDD')
+        for i in range(n):
+            number, label, sublabel = _item_data(items[i], i)
+            color = accents[i % len(accents)]
+            cy    = _LY.CT + (i + 0.5) * step_h
+            # Dot
+            _h2_rect(slide, left=line_x - dot_r, top=cy - dot_r,
+                     width=dot_r * 2, height=dot_r * 2, color=color)
+            _h2_text(slide, str(number),
+                     left=line_x - dot_r, top=cy - dot_r,
+                     width=dot_r * 2, height=dot_r * 2,
+                     font=font, size_pt=9, color='FFFFFF', bold=True, align='center')
+            # Label (right of line, always)
+            tx = line_x + dot_r + 0.16
+            tw = _LY.CR - tx - 0.10
+            lbl_h = 0.32 if sublabel else 0.42
+            _h2_text(slide, label, left=tx, top=cy - lbl_h / 2,
+                     width=tw, height=lbl_h,
+                     font=font, size_pt=14, color=dk1, bold=False, align='left')
+            if sublabel:
+                _h2_text(slide, sublabel, left=tx, top=cy + lbl_h / 2 - 0.08,
+                         width=tw, height=0.26,
+                         font=font, size_pt=_LY.T_SMALL, color='888888',
+                         bold=False, align='left')
+            # Accent tick on line
+            _h2_rect(slide, left=line_x - 0.12, top=cy - 0.015,
+                     width=0.24, height=0.03, color=color)
+
+    elif v == 4:
+        # Grand numéro filigrane: chiffre géant très pâle + label en dk1
+        step_h = (_LY.CB - _LY.CT) / n
+        for i in range(n):
+            number, label, sublabel = _item_data(items[i], i)
+            color  = accents[i % len(accents)]
+            iy     = _LY.CT + i * step_h
+            r_c, g_c, b_c = int(color[0:2],16), int(color[2:4],16), int(color[4:6],16)
+            ghost  = (f'{min(255,int(r_c+(255-r_c)*0.92)):02X}'
+                      f'{min(255,int(g_c+(255-g_c)*0.92)):02X}'
+                      f'{min(255,int(b_c+(255-b_c)*0.92)):02X}')
+            # Ghost number
+            _h2_text(slide, f'{number:02d}' if isinstance(number, int) else str(number),
+                     left=_LY.CL - 0.08, top=iy,
+                     width=1.60, height=step_h,
+                     font=font, size_pt=70, color=ghost, bold=True, align='left')
+            # Label text
+            tx = _LY.CL + 1.40
+            tw = _LY.CW - 1.40
+            lbl_h = 0.36 if sublabel else min(0.48, step_h - 0.10)
+            _h2_text(slide, label,
+                     left=tx, top=iy + (step_h - lbl_h) / 2 - (0.16 if sublabel else 0),
+                     width=tw, height=lbl_h,
+                     font=font, size_pt=16, color=dk1, bold=True, align='left')
+            if sublabel:
+                _h2_text(slide, sublabel,
+                         left=tx, top=iy + (step_h + lbl_h) / 2 - 0.14,
+                         width=tw, height=0.28,
+                         font=font, size_pt=_LY.T_SMALL, color='888888',
+                         bold=False, align='left')
+            if i < n - 1:
+                _h2_rect(slide, left=_LY.CL, top=iy + step_h - 0.006,
+                         width=_LY.CW, height=0.006, color='EEEEEE')
 
     return slide
 
@@ -11766,8 +11939,13 @@ list_numbered  — Liste 3-4 items UNIQUEMENT si séquence logique stricte
 pros_cons      — Pour/Contre (pros/cons:[≤4 items≤8mots])
 
 ─── DONNÉES [UTILISER SEULEMENT SI DONNÉES RÉELLES] ───
-bar_chart/line_chart/pie_chart/stacked_bar/waterfall/radar
-  → OBLIGATOIRE : analysis(2 phrases d'interprétation)
+bar_chart      — Barres groupées  → categories:[str] + series:[{{name,values:[n]}}] + analysis(2 phrases)
+line_chart     — Courbes          → categories:[str] + series:[{{name,values:[n]}}] + analysis(2 phrases)
+pie_chart      — Camembert/anneau → slices:[{{label,value}}] + analysis(2 phrases) + doughnut?:bool
+stacked_bar    — Barres empilées  → categories:[str] + series:[{{name,values:[n]}}] + analysis(2 phrases)
+waterfall      — Cascade          → items:[{{label,value}}] (positifs=gains, négatifs=pertes) + analysis
+radar          — Radar            → axes:[str] + series:[{{name,values:[n]}}] + analysis(2 phrases)
+  Optionnel pour tous : key_metrics:[{{label,value}}]×1-3 (affichés dans la sidebar en variante v1)
 
 ─── LAYOUT TEXTE [TIER 4 — DERNIER RECOURS, 1 MAX] ───
 full_text      — UNIQUEMENT pour intro/conclusion narrative
