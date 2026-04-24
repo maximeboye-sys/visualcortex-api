@@ -5141,7 +5141,7 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     if v == 0:
         # Variante 0 : frise horizontale jalons alternés
@@ -5254,7 +5254,7 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
                          font=font, size_pt=9, color='555555',
                          align='left', line_spacing=1.1)
 
-    else:
+    elif v == 2:
         # Variante 2 : cartes colorées en rangée — grand numéro + date pill + contenu
         n_cols  = min(n, 4)
         n_rows  = (n + n_cols - 1) // n_cols
@@ -5304,6 +5304,82 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
                          font=font, size_pt=9, color='777777',
                          bold=False, align='left', line_spacing=1.1)
 
+    elif v == 3:
+        # Variante 3 : bandes accordéon pleine largeur — bordure accent, badge numéro, date pill
+        row_gap = _LY.GAP_XS
+        row_h   = (_LY.CB - _LY.CT - row_gap * (n - 1)) / max(n, 1)
+        for i, step in enumerate(steps[:n]):
+            color = accents[i % len(accents)]
+            date  = step.get('date', '') if isinstance(step, dict) else ''
+            title = step.get('title', '') if isinstance(step, dict) else str(step)
+            body  = step.get('body', '') if isinstance(step, dict) else ''
+            ry    = _LY.CT + i * (row_h + row_gap)
+            _h2_rounded_rect(slide, _LY.CL, ry, _LY.CW, row_h, 'F4F7FA', _LY.R_SM)
+            _h2_rect(slide, _LY.CL, ry, 0.06, row_h, color)
+            num_r = 0.15
+            num_x = _LY.CL + 0.12
+            num_y = ry + (row_h - num_r * 2) / 2
+            _h2_rounded_rect(slide, num_x, num_y, num_r * 2, num_r * 2, color, num_r)
+            _h2_text(slide, str(i + 1), num_x, num_y, num_r * 2, num_r * 2,
+                     font, 8, 'FFFFFF', bold=True, align='center')
+            cx = num_x + num_r * 2 + 0.12
+            if date:
+                dw = min(1.80, len(date) * 0.11 + 0.40)
+                dh = 0.24
+                dy = ry + (row_h - dh) / 2
+                _h2_rounded_rect(slide, cx, dy, dw, dh, color, 0.12)
+                _h2_text(slide, date, cx, dy, dw, dh,
+                         font, 8, 'FFFFFF', bold=True, align='center')
+                cx += dw + 0.14
+            tw = _LY.CR - cx - 0.10
+            if body:
+                ty = ry + row_h * 0.12
+                _h2_text(slide, title, cx, ty, tw, min(0.36, row_h * 0.44),
+                         font, 12, dk1, bold=True, align='left', line_spacing=1.1)
+                _h2_text(slide, body, cx, ty + 0.38, tw,
+                         max(0.22, row_h * 0.88 - 0.48),
+                         font, 9, '555555', align='left', line_spacing=1.15)
+            else:
+                _h2_text(slide, title, cx, ry + (row_h - 0.32) / 2, tw,
+                         0.32, font, 12, dk1, bold=True, align='left', line_spacing=1.1)
+
+    elif v == 4:
+        # Variante 4 : deux colonnes — colonne date teintée gauche + carte contenu droite
+        date_col_w = 1.80
+        gap_col    = 0.14
+        card_x     = _LY.CL + date_col_w + gap_col
+        card_w     = _LY.CR - card_x
+        row_gap    = _LY.GAP_SM
+        row_h      = (_LY.CB - _LY.CT - row_gap * (n - 1)) / max(n, 1)
+        for i, step in enumerate(steps[:n]):
+            color = accents[i % len(accents)]
+            date  = step.get('date', '') if isinstance(step, dict) else ''
+            title = step.get('title', '') if isinstance(step, dict) else str(step)
+            body  = step.get('body', '') if isinstance(step, dict) else ''
+            ry    = _LY.CT + i * (row_h + row_gap)
+            r_c, g_c, b_c = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
+            tint = (f'{min(255,int(r_c+(255-r_c)*0.88)):02X}'
+                    f'{min(255,int(g_c+(255-g_c)*0.88)):02X}'
+                    f'{min(255,int(b_c+(255-b_c)*0.88)):02X}')
+            _h2_rounded_rect(slide, _LY.CL, ry, date_col_w, row_h, tint, _LY.R_SM)
+            _h2_rect(slide, _LY.CL, ry, 0.05, row_h, color)
+            _h2_text(slide, date if date else str(i + 1),
+                     _LY.CL + 0.05, ry, date_col_w - 0.05, row_h,
+                     font, (11 if date else 20), color, bold=True, align='center')
+            _h2_rounded_rect(slide, card_x, ry, card_w, row_h, 'FFFFFF', _LY.R_SM)
+            if body:
+                ty = ry + row_h * 0.14
+                _h2_text(slide, title, card_x + 0.12, ty, card_w - 0.22,
+                         min(0.36, row_h * 0.42),
+                         font, 11, dk1, bold=True, align='left', line_spacing=1.1)
+                _h2_text(slide, body, card_x + 0.12, ty + 0.38, card_w - 0.22,
+                         max(0.22, row_h * 0.86 - 0.48),
+                         font, 9, '555555', align='left', line_spacing=1.15)
+            else:
+                _h2_text(slide, title, card_x + 0.12, ry + (row_h - 0.32) / 2,
+                         card_w - 0.22, 0.32,
+                         font, 11, dk1, bold=True, align='left', line_spacing=1.1)
+
     return slide
 
 
@@ -5328,7 +5404,7 @@ def layout_processflow_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     def _sd(step):
         if isinstance(step, dict):
@@ -5415,7 +5491,7 @@ def layout_processflow_v4(prs: Presentation, content: dict, tp: dict):
                               arr_x, arr_y, arr_w, arrow_h - 0.08,
                               accents[(i + 1) % len(accents)])
 
-    else:
+    elif v == 2:
         # v2: Rounded boxes + MSO right-arrow between them (horizontal)
         arrow_w  = 0.42
         total_w  = _LY.CW
@@ -5454,6 +5530,87 @@ def layout_processflow_v4(prs: Presentation, content: dict, tp: dict):
                 _h2_arrow_right(slide, ax, y_mid - ah / 2,
                                 arrow_w - 0.08, ah,
                                 accents[(i + 1) % len(accents)])
+
+    elif v == 3:
+        # v3: Bandes accordéon pleine largeur — ligne connecteur verticale gauche, dot coloré
+        row_gap = _LY.GAP_XS
+        row_h   = (_LY.CB - _LY.CT - row_gap * (n - 1)) / max(n, 1)
+        line_x  = _LY.CL + 0.26
+        dot_r   = 0.15
+        _h2_rect(slide, left=line_x - 0.018, top=_LY.CT + dot_r,
+                 width=0.036, height=_LY.CB - _LY.CT - dot_r * 2, color='DDDDDD')
+        for i, step in enumerate(steps[:n]):
+            title, body, icon = _sd(step)
+            color  = accents[i % len(accents)]
+            ry     = _LY.CT + i * (row_h + row_gap)
+            cy     = ry + row_h / 2
+            card_x = _LY.CL + 0.56
+            card_w = _LY.CR - card_x
+            _h2_rounded_rect(slide, card_x, ry, card_w, row_h, 'F4F7FA', _LY.R_SM)
+            _h2_circle(slide, cx=line_x, cy=cy, r=dot_r, color=color)
+            _h2_text(slide, str(i + 1), line_x - dot_r, cy - dot_r,
+                     dot_r * 2, dot_r * 2, font, 8, 'FFFFFF', bold=True, align='center')
+            _h2_rect(slide, left=line_x + dot_r, top=cy - 0.018,
+                     width=card_x - (line_x + dot_r), height=0.036, color=color)
+            tw = card_w - 0.20
+            if icon:
+                _h2_text(slide, icon, card_x + card_w - 0.44, ry + (row_h - 0.34) / 2,
+                         0.36, 0.34, font, 16, color, bold=False, align='center')
+                tw -= 0.44
+            if body:
+                ty = ry + row_h * 0.12
+                _h2_text(slide, title, card_x + 0.12, ty, tw,
+                         min(0.34, row_h * 0.44),
+                         font, 11, dk1, bold=True, align='left', line_spacing=1.1)
+                _h2_text(slide, body, card_x + 0.12, ty + 0.36, tw,
+                         max(0.22, row_h * 0.88 - 0.46),
+                         font, 9, '555555', align='left', line_spacing=1.15)
+            else:
+                _h2_text(slide, title, card_x + 0.12, ry + (row_h - 0.30) / 2, tw,
+                         0.30, font, 11, dk1, bold=True, align='left', line_spacing=1.1)
+
+    elif v == 4:
+        # v4: Grille 2 colonnes — numéro fantôme + badge/icône + titre + corps
+        n_cols  = 2
+        n_rows  = (n + n_cols - 1) // n_cols
+        gap_x   = _LY.GAP_MD
+        gap_y   = _LY.GAP_SM
+        card_w  = (_LY.CW - gap_x) / n_cols
+        card_h  = (_LY.CB - _LY.CT - gap_y * (n_rows - 1)) / max(n_rows, 1)
+        for i, step in enumerate(steps[:n]):
+            title, body, icon = _sd(step)
+            col   = i % n_cols
+            row   = i // n_cols
+            cx    = _LY.CL + col * (card_w + gap_x)
+            cy    = _LY.CT + row * (card_h + gap_y)
+            color = accents[i % len(accents)]
+            r_c, g_c, b_c = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
+            ghost = (f'{min(255,int(r_c+(255-r_c)*0.88)):02X}'
+                     f'{min(255,int(g_c+(255-g_c)*0.88)):02X}'
+                     f'{min(255,int(b_c+(255-b_c)*0.88)):02X}')
+            _h2_card_bg(slide, cx, cy, card_w, card_h, tp, i)
+            _h2_rect(slide, cx, cy, 0.06, card_h, color)
+            _h2_text(slide, str(i + 1),
+                     left=cx + card_w * 0.55, top=cy + 0.04,
+                     width=card_w * 0.40, height=card_h * 0.72,
+                     font=font, size_pt=64, color=ghost, bold=True, align='right')
+            y = cy + 0.14
+            if icon:
+                _h2_text(slide, icon, cx + 0.12, y, 0.38, 0.38,
+                         font, 18, color, bold=False, align='center')
+                y += 0.44
+            else:
+                _h2_rounded_rect(slide, cx + 0.12, y, 0.28, 0.28, color, 0.14)
+                _h2_text(slide, str(i + 1), cx + 0.12, y, 0.28, 0.28,
+                         font, 9, 'FFFFFF', bold=True, align='center')
+                y += 0.34
+            tw = card_w * 0.54
+            _h2_text(slide, title, cx + 0.12, y, tw, min(0.38, card_h * 0.40),
+                     font, 11, dk1, bold=True, align='left', line_spacing=1.1)
+            if body:
+                _h2_text(slide, body, cx + 0.12, y + 0.40, tw,
+                         max(0.22, card_h - (y - cy) - 0.50),
+                         font, 9, '555555', align='left', line_spacing=1.15)
 
     return slide
 
