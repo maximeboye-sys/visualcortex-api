@@ -5884,6 +5884,83 @@ def _add_chart_analysis(slide, content: dict, tp: dict) -> None:
              bold=False, align='left', line_spacing=1.2)
 
 
+def _chart_sidebar_v1(slide, content: dict, tp: dict, sidebar_x: float = 8.60) -> None:
+    """
+    Panneau latéral droit pour variante v1 des graphiques.
+    Affiche 'analysis'/'insight' + key_metrics:[{label,value}] jusqu'à 3 items.
+    """
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    sb_w    = _LY.CR - sidebar_x
+    sb_h    = _LY.CB - _LY.CT
+    _h2_rounded_rect(slide, left=sidebar_x, top=_LY.CT,
+                     width=sb_w, height=sb_h, color='F4F7FA', radius=_LY.R_SM)
+    _h2_rect(slide, left=sidebar_x, top=_LY.CT, width=0.05, height=sb_h, color=accent1)
+    analysis = (content.get('analysis') or content.get('interpretation') or
+                content.get('insight') or content.get('body', ''))
+    y = _LY.CT + 0.18
+    if analysis:
+        ah = min(1.60, max(0.30, len(str(analysis)) / 35 * 0.36))
+        _h2_text(slide, str(analysis),
+                 left=sidebar_x + 0.18, top=y,
+                 width=sb_w - 0.26, height=ah,
+                 font=font, size_pt=10, color=dk1,
+                 bold=False, align='left', line_spacing=1.3)
+        y += ah + 0.20
+    for metric in content.get('key_metrics', [])[:3]:
+        val = metric.get('value', '') if isinstance(metric, dict) else str(metric)
+        lbl = metric.get('label', '') if isinstance(metric, dict) else ''
+        if not val:
+            continue
+        _h2_rect(slide, left=sidebar_x + 0.18, top=y,
+                 width=sb_w - 0.26, height=0.025, color='DDDDDD')
+        y += 0.08
+        _h2_text(slide, str(val),
+                 left=sidebar_x + 0.18, top=y,
+                 width=sb_w - 0.26, height=0.42,
+                 font=font, size_pt=22, color=accent1, bold=True, align='left')
+        if lbl:
+            _h2_text(slide, str(lbl),
+                     left=sidebar_x + 0.18, top=y + 0.40,
+                     width=sb_w - 0.26, height=0.22,
+                     font=font, size_pt=8, color='888888', bold=True, align='left')
+            y += 0.66
+        else:
+            y += 0.46
+
+
+def _chart_analysis_prominent_v2(slide, content: dict, tp: dict,
+                                  chart_h: float) -> None:
+    """
+    Bloc analyse proéminent (grand format) pour variante v2 des graphiques.
+    Remplace _add_chart_analysis avec plus de hauteur et une icône 💡.
+    """
+    analysis = (content.get('analysis') or content.get('interpretation') or
+                content.get('insight') or content.get('body', ''))
+    if not analysis:
+        return
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    a_top = _LY.CT + chart_h + 0.12
+    a_h   = max(0.40, _LY.CB - a_top - 0.05)
+    _h2_rounded_rect(slide, left=_LY.CL, top=a_top,
+                     width=_LY.CW, height=a_h, color='F0F4F8', radius=_LY.R_SM)
+    _h2_rect(slide, left=_LY.CL, top=a_top, width=0.06, height=a_h, color=accent1)
+    _h2_text(slide, '💡',
+             left=_LY.CL + 0.18, top=a_top + 0.10,
+             width=0.34, height=0.32,
+             font=font, size_pt=14, color=accent1, bold=False, align='left')
+    _h2_text(slide, str(analysis),
+             left=_LY.CL + 0.58, top=a_top + 0.10,
+             width=_LY.CW - 0.68, height=a_h - 0.18,
+             font=font, size_pt=12, color=dk1,
+             bold=False, align='left', line_spacing=1.3)
+
+
 def h2_bar_chart(slide, left: float, top: float, width: float, height: float,
                  categories: list, series: list, font: str, theme: dict):
     """
@@ -5932,21 +6009,35 @@ def h2_bar_chart(slide, left: float, top: float, width: float, height: float,
 
 
 def layout_barchart_v4(prs: Presentation, content: dict, tp: dict):
-    """Slide graphique barres groupées (COLUMN_CLUSTERED) + bloc analyse."""
+    """
+    Graphique barres groupées (COLUMN_CLUSTERED).
+    v0: pleine largeur + bande analyse bas
+    v1: graphique 65% largeur + sidebar insights droite
+    v2: graphique légèrement réduit + grand bloc analyse proéminent
+    """
     slide = _blank_v4(prs, tp)
+    v = _v4_variant(content, 3, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
-
     categories = content.get('categories', [])
     series     = content.get('series', [])
     if not categories or not series:
         return slide
-
-    h2_bar_chart(slide,
-                 left=0.5, top=_LY.CT, width=12.0, height=_CHART_H,
-                 categories=categories, series=series,
-                 font=tp.get('font', 'Calibri'), theme=tp.get('theme', {}))
-    _add_chart_analysis(slide, content, tp)
+    font  = tp.get('font', 'Calibri')
+    theme = tp.get('theme', {})
+    if v == 0:
+        h2_bar_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=_CHART_H,
+                     categories=categories, series=series, font=font, theme=theme)
+        _add_chart_analysis(slide, content, tp)
+    elif v == 1:
+        h2_bar_chart(slide, left=0.5, top=_LY.CT, width=7.80, height=_CHART_H + 0.40,
+                     categories=categories, series=series, font=font, theme=theme)
+        _chart_sidebar_v1(slide, content, tp, sidebar_x=8.60)
+    elif v == 2:
+        ch = _CHART_H - 0.50
+        h2_bar_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=ch,
+                     categories=categories, series=series, font=font, theme=theme)
+        _chart_analysis_prominent_v2(slide, content, tp, chart_h=ch)
     return slide
 
 
@@ -6001,21 +6092,35 @@ def h2_line_chart(slide, left: float, top: float, width: float, height: float,
 
 
 def layout_linechart_v4(prs: Presentation, content: dict, tp: dict):
-    """Slide graphique en lignes (LINE_MARKERS) + bloc analyse."""
+    """
+    Graphique en lignes (LINE_MARKERS).
+    v0: pleine largeur + bande analyse bas
+    v1: graphique 65% largeur + sidebar insights droite
+    v2: graphique légèrement réduit + grand bloc analyse proéminent
+    """
     slide = _blank_v4(prs, tp)
+    v = _v4_variant(content, 3, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
-
     categories = content.get('categories', [])
     series     = content.get('series', [])
     if not categories or not series:
         return slide
-
-    h2_line_chart(slide,
-                  left=0.5, top=_LY.CT, width=12.0, height=_CHART_H,
-                  categories=categories, series=series,
-                  font=tp.get('font', 'Calibri'), theme=tp.get('theme', {}))
-    _add_chart_analysis(slide, content, tp)
+    font  = tp.get('font', 'Calibri')
+    theme = tp.get('theme', {})
+    if v == 0:
+        h2_line_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=_CHART_H,
+                      categories=categories, series=series, font=font, theme=theme)
+        _add_chart_analysis(slide, content, tp)
+    elif v == 1:
+        h2_line_chart(slide, left=0.5, top=_LY.CT, width=7.80, height=_CHART_H + 0.40,
+                      categories=categories, series=series, font=font, theme=theme)
+        _chart_sidebar_v1(slide, content, tp, sidebar_x=8.60)
+    elif v == 2:
+        ch = _CHART_H - 0.50
+        h2_line_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=ch,
+                      categories=categories, series=series, font=font, theme=theme)
+        _chart_analysis_prominent_v2(slide, content, tp, chart_h=ch)
     return slide
 
 
@@ -6074,21 +6179,35 @@ def h2_pie_chart(slide, left: float, top: float, width: float, height: float,
 
 
 def layout_piechart_v4(prs: Presentation, content: dict, tp: dict):
-    """Slide graphique camembert / anneau + bloc analyse."""
+    """
+    Graphique camembert / anneau.
+    v0: centré + bande analyse bas
+    v1: graphique gauche + sidebar insights droite
+    v2: graphique centré légèrement réduit + grand bloc analyse proéminent
+    """
     slide = _blank_v4(prs, tp)
+    v = _v4_variant(content, 3, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
-
     slices   = content.get('slices', [])
     doughnut = bool(content.get('doughnut', False))
     if not slices:
         return slide
-
-    h2_pie_chart(slide,
-                 left=1.5, top=_LY.CT, width=10.0, height=_CHART_H,
-                 slices=slices, font=tp.get('font', 'Calibri'),
-                 theme=tp.get('theme', {}), doughnut=doughnut)
-    _add_chart_analysis(slide, content, tp)
+    font  = tp.get('font', 'Calibri')
+    theme = tp.get('theme', {})
+    if v == 0:
+        h2_pie_chart(slide, left=1.5, top=_LY.CT, width=10.0, height=_CHART_H,
+                     slices=slices, font=font, theme=theme, doughnut=doughnut)
+        _add_chart_analysis(slide, content, tp)
+    elif v == 1:
+        h2_pie_chart(slide, left=0.5, top=_LY.CT, width=7.80, height=_CHART_H + 0.40,
+                     slices=slices, font=font, theme=theme, doughnut=doughnut)
+        _chart_sidebar_v1(slide, content, tp, sidebar_x=8.60)
+    elif v == 2:
+        ch = _CHART_H - 0.50
+        h2_pie_chart(slide, left=1.5, top=_LY.CT, width=10.0, height=ch,
+                     slices=slices, font=font, theme=theme, doughnut=doughnut)
+        _chart_analysis_prominent_v2(slide, content, tp, chart_h=ch)
     return slide
 
 
@@ -6171,32 +6290,50 @@ def h2_waterfall_chart(slide, left: float, top: float, width: float, height: flo
 
 
 def layout_waterfall_v4(prs: Presentation, content: dict, tp: dict):
-    """Slide cascade financière (waterfall) + bloc analyse."""
+    """
+    Cascade financière (waterfall).
+    v0: pleine largeur + bande analyse bas
+    v1: graphique 65% largeur + sidebar insights droite
+    v2: graphique légèrement réduit + grand bloc analyse proéminent
+    """
     slide = _blank_v4(prs, tp)
+    v = _v4_variant(content, 3, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
-
     items = content.get('items', [])
     if not items:
         return slide
-
-    h2_waterfall_chart(slide,
-                       left=0.5, top=_LY.CT, width=12.0, height=_CHART_H,
-                       items=items, font=tp.get('font', 'Calibri'),
-                       theme=tp.get('theme', {}))
-    _add_chart_analysis(slide, content, tp)
+    font  = tp.get('font', 'Calibri')
+    theme = tp.get('theme', {})
+    if v == 0:
+        h2_waterfall_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=_CHART_H,
+                           items=items, font=font, theme=theme)
+        _add_chart_analysis(slide, content, tp)
+    elif v == 1:
+        h2_waterfall_chart(slide, left=0.5, top=_LY.CT, width=7.80, height=_CHART_H + 0.40,
+                           items=items, font=font, theme=theme)
+        _chart_sidebar_v1(slide, content, tp, sidebar_x=8.60)
+    elif v == 2:
+        ch = _CHART_H - 0.50
+        h2_waterfall_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=ch,
+                           items=items, font=font, theme=theme)
+        _chart_analysis_prominent_v2(slide, content, tp, chart_h=ch)
     return slide
 
 
 def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
     """
-    Graphique radar (RADAR_MARKERS) natif PowerPoint + bloc analyse.
+    Graphique radar (RADAR_MARKERS).
+    v0: centré + bande analyse bas
+    v1: graphique gauche + sidebar insights droite
+    v2: graphique centré légèrement réduit + grand bloc analyse proéminent
     content: {title, axes:[str], series:[{name, values:[n]}], analysis, footer}
     """
     from pptx.chart.data import CategoryChartData
     from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 
     slide = _blank_v4(prs, tp)
+    v = _v4_variant(content, 3, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
@@ -6205,19 +6342,28 @@ def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
     if not axes or not series:
         return slide
 
+    theme  = tp.get('theme', {})
+    colors = _chart_series_colors(theme)
+
+    if v == 0:
+        r_left, r_top, r_w, r_h = 1.5, _LY.CT, 10.0, _CHART_H
+    elif v == 1:
+        r_left, r_top, r_w, r_h = 0.5, _LY.CT, 7.80, _CHART_H + 0.40
+    else:
+        r_left, r_top, r_w, r_h = 1.5, _LY.CT, 10.0, _CHART_H - 0.50
+
     chart_data = CategoryChartData()
     chart_data.categories = [str(a) for a in axes]
     for s in series:
-        vals = tuple(float(v) if v is not None else 0.0 for v in s.get('values', []))
+        vals = tuple(float(v2) if v2 is not None else 0.0 for v2 in s.get('values', []))
         chart_data.add_series(s.get('name', ''), vals)
 
     chart_shape = slide.shapes.add_chart(
         XL_CHART_TYPE.RADAR_MARKERS,
-        Inches(1.5), Inches(_LY.CT), Inches(10.0), Inches(_CHART_H),
+        Inches(r_left), Inches(r_top), Inches(r_w), Inches(r_h),
         chart_data,
     )
-    chart  = chart_shape.chart
-    colors = _chart_series_colors(tp.get('theme', {}))
+    chart = chart_shape.chart
 
     for i, ser in enumerate(chart.series):
         c = _h2_parse_hex(colors[i % len(colors)])
@@ -6234,7 +6380,12 @@ def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
     else:
         chart.has_legend = False
 
-    _add_chart_analysis(slide, content, tp)
+    if v == 0:
+        _add_chart_analysis(slide, content, tp)
+    elif v == 1:
+        _chart_sidebar_v1(slide, content, tp, sidebar_x=8.60)
+    elif v == 2:
+        _chart_analysis_prominent_v2(slide, content, tp, chart_h=r_h)
     return slide
 
 
@@ -6664,13 +6815,16 @@ def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
 def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
     """
     Barres empilées 100 % (COLUMN_STACKED_100).
-    Idéal pour parts de marché, répartition, compositions.
+    v0: pleine largeur + bande analyse bas
+    v1: graphique 65% largeur + sidebar insights droite
+    v2: graphique légèrement réduit + grand bloc analyse proéminent
     content: {title, categories:[str], series:[{name, values:[n]}], footer}
     """
     from pptx.chart.data import CategoryChartData
     from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 
     slide = _blank_v4(prs, tp)
+    v = _v4_variant(content, 3, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
@@ -6679,15 +6833,22 @@ def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
     if not categories or not series:
         return slide
 
+    if v == 0:
+        c_left, c_w, c_h = 0.5, 12.0, _CHART_H
+    elif v == 1:
+        c_left, c_w, c_h = 0.5, 7.80, _CHART_H + 0.40
+    else:
+        c_left, c_w, c_h = 0.5, 12.0, _CHART_H - 0.50
+
     chart_data = CategoryChartData()
     chart_data.categories = [str(c) for c in categories]
     for s in series:
-        vals = tuple(float(v) if v is not None else 0.0 for v in s.get('values', []))
+        vals = tuple(float(val) if val is not None else 0.0 for val in s.get('values', []))
         chart_data.add_series(s.get('name', ''), vals)
 
     chart_shape = slide.shapes.add_chart(
         XL_CHART_TYPE.COLUMN_STACKED_100,
-        Inches(0.5), Inches(_LY.CT), Inches(12.0), Inches(_CHART_H),
+        Inches(c_left), Inches(_LY.CT), Inches(c_w), Inches(c_h),
         chart_data,
     )
     chart  = chart_shape.chart
@@ -6710,7 +6871,12 @@ def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
     chart.legend.position = XL_LEGEND_POSITION.BOTTOM
     chart.legend.include_in_layout = False
 
-    _add_chart_analysis(slide, content, tp)
+    if v == 0:
+        _add_chart_analysis(slide, content, tp)
+    elif v == 1:
+        _chart_sidebar_v1(slide, content, tp, sidebar_x=8.60)
+    elif v == 2:
+        _chart_analysis_prominent_v2(slide, content, tp, chart_h=c_h)
     return slide
 
 
