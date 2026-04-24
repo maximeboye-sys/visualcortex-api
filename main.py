@@ -4965,7 +4965,7 @@ def layout_infographic_v4(prs: Presentation, content: dict, tp: dict):
     label   = content.get('label', '')
     context = content.get('context', '')
     bars    = content.get('bars', [])
-    v       = _v4_variant(content, 3, tp.get('seed', 0))
+    v       = _v4_variant(content, 5, tp.get('seed', 0))
 
     if not value and not bars:
         return slide
@@ -5055,6 +5055,90 @@ def layout_infographic_v4(prs: Presentation, content: dict, tp: dict):
             _h2_text(slide, bl, left=bx, top=_LY.CB - 0.28,
                      width=bar_w, height=0.26,
                      font=font, size_pt=8, color=dk1, bold=False, align='center')
+        return slide
+
+    if v == 3:
+        # v3: Bande héro en haut + tuiles de barres horizontales en bas
+        hero_h    = (_LY.CB - _LY.CT) * 0.36
+        tile_y    = _LY.CT + hero_h + _LY.GAP_SM
+        tile_zone = _LY.CB - tile_y
+        n_bars    = min(len(bars), 5)
+        tile_h    = (tile_zone - _LY.GAP_XS * max(n_bars - 1, 0)) / max(n_bars, 1)
+        _h2_rounded_rect(slide, _LY.CL, _LY.CT, _LY.CW, hero_h, 'F0F4F8', _LY.R_SM)
+        _h2_rect(slide, _LY.CL, _LY.CT, _LY.CW, 0.06, accent1)
+        _h2_text(slide, value,
+                 _LY.CL, _LY.CT + 0.10, _LY.CW, hero_h * 0.68,
+                 font, 52, accent1, bold=True, align='center')
+        if label:
+            _h2_text(slide, label,
+                     _LY.CL, _LY.CT + hero_h * 0.72, _LY.CW, hero_h * 0.26,
+                     font, 13, dk1, bold=False, align='center')
+        for i, b in enumerate(bars[:n_bars]):
+            bl    = b.get('label', '') if isinstance(b, dict) else str(b)
+            pct   = float(b.get('percent', b.get('pct', 50)) if isinstance(b, dict) else 50) / 100
+            pct   = max(0.0, min(1.0, pct))
+            color = b.get('color', accents[i % len(accents)]) if isinstance(b, dict) else accents[i % len(accents)]
+            ty    = tile_y + i * (tile_h + _LY.GAP_XS)
+            _h2_rounded_rect(slide, _LY.CL, ty, _LY.CW, tile_h, 'F8F8F8', _LY.R_SM)
+            _h2_rounded_rect(slide, _LY.CL, ty, 0.28, tile_h, color, _LY.R_SM)
+            _h2_text(slide, bl, _LY.CL + 0.38, ty, _LY.CW * 0.42, tile_h,
+                     font, 10, dk1, bold=False, align='left')
+            bar_bh = min(0.16, tile_h * 0.35)
+            bar_by = ty + (tile_h - bar_bh) / 2
+            bar_x  = _LY.CL + _LY.CW * 0.46
+            bar_w  = _LY.CW * 0.42
+            _h2_rect(slide, bar_x, bar_by, bar_w, bar_bh, 'EEEEEE')
+            _h2_rect(slide, bar_x, bar_by, max(0.06, bar_w * pct), bar_bh, color)
+            _h2_text(slide, f'{int(pct * 100)}%',
+                     _LY.CL + _LY.CW * 0.90, ty,
+                     _LY.CR - (_LY.CL + _LY.CW * 0.90) - 0.04, tile_h,
+                     font, 11, color, bold=True, align='right')
+        return slide
+
+    if v == 4:
+        # v4: Carte héro gauche + grille de cartes métriques droite (2 colonnes)
+        hero_w  = _LY.CW * 0.34
+        grid_x  = _LY.CL + hero_w + _LY.GAP_LG
+        grid_w  = _LY.CR - grid_x
+        n_bars  = min(len(bars), 6)
+        n_cols  = 2
+        n_rows  = (n_bars + n_cols - 1) // n_cols
+        gap     = _LY.GAP_SM
+        card_w  = (grid_w - gap) / n_cols
+        card_h  = (_LY.CB - _LY.CT - gap * (n_rows - 1)) / max(n_rows, 1)
+        _h2_rounded_rect(slide, _LY.CL, _LY.CT, hero_w, _LY.CB - _LY.CT, 'F0F4F8', _LY.R_SM)
+        _h2_rect(slide, _LY.CL, _LY.CT, hero_w, 0.07, accent1)
+        y_mid_h = (_LY.CT + _LY.CB) / 2
+        _h2_text(slide, value,
+                 _LY.CL, y_mid_h - 0.70, hero_w, 1.30,
+                 font, 44, accent1, bold=True, align='center')
+        if label:
+            _h2_text(slide, label,
+                     _LY.CL, y_mid_h + 0.64, hero_w, 0.38,
+                     font, 12, dk1, bold=False, align='center')
+        if context:
+            _h2_text(slide, context,
+                     _LY.CL + 0.12, y_mid_h + 1.06, hero_w - 0.24, 0.80,
+                     font, 9, '666666', bold=False, align='center', line_spacing=1.3)
+        for i, b in enumerate(bars[:n_bars]):
+            bl    = b.get('label', '') if isinstance(b, dict) else str(b)
+            pct   = float(b.get('percent', b.get('pct', 50)) if isinstance(b, dict) else 50) / 100
+            pct   = max(0.0, min(1.0, pct))
+            color = b.get('color', accents[i % len(accents)]) if isinstance(b, dict) else accents[i % len(accents)]
+            cx    = grid_x + (i % n_cols) * (card_w + gap)
+            cy    = _LY.CT + (i // n_cols) * (card_h + gap)
+            _h2_rounded_rect(slide, cx, cy, card_w, card_h, 'F8F8F8', _LY.R_SM)
+            _h2_rect(slide, cx, cy, card_w, 0.06, color)
+            _h2_text(slide, f'{int(pct * 100)}%',
+                     cx, cy + 0.10, card_w, card_h * 0.55,
+                     font, 28, color, bold=True, align='center')
+            _h2_text(slide, bl,
+                     cx + 0.08, cy + card_h * 0.60, card_w - 0.16, card_h * 0.24,
+                     font, 9, dk1, bold=False, align='center', line_spacing=1.1)
+            pb_y = cy + card_h - 0.16
+            pb_w = card_w - 0.16
+            _h2_rect(slide, cx + 0.08, pb_y, pb_w, 0.10, 'DDDDDD')
+            _h2_rect(slide, cx + 0.08, pb_y, max(0.06, pb_w * pct), 0.10, color)
         return slide
 
     # Variante 2 : blocs empilés (donut simplifié) + légende + contexte
@@ -5881,7 +5965,7 @@ def layout_funnel_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     def _sd(step):
         if isinstance(step, dict):
@@ -5956,7 +6040,7 @@ def layout_funnel_v4(prs: Presentation, content: dict, tp: dict):
                 _h2_text(slide, delta, bar_x + bw + 0.06, cy2,
                          max_bar - bw - 0.06, 0.38, font, 9, dk1, bold=False, align='left')
 
-    else:
+    elif v == 2:
         # v2: Horizontal chevron funnel — steps shrink vertically as they go right
         chev_w  = (_LY.CW - _LY.GAP_XS * (n - 1)) / n
         overlap = 0.16
@@ -5984,6 +6068,75 @@ def layout_funnel_v4(prs: Presentation, content: dict, tp: dict):
             if value:
                 _h2_text(slide, value, tx, mid + 0.02, tw, 0.30,
                          font, 14, 'FFFFFF', bold=True, align='center')
+
+    elif v == 3:
+        # v3: Pyramide de cartes centrées — largeur décroissante proportionnelle au rang
+        total_h = _LY.CB - _LY.CT
+        lvl_h   = total_h / n - _LY.GAP_XS
+        max_w   = _LY.CW
+        for i, step in enumerate(steps[:n]):
+            label, value, pct, delta = _sd(step)
+            try:
+                ratio = max(0.25, float(pct) / 100) if pct is not None else \
+                        1.0 - i * (1.0 - 0.25) / max(n - 1, 1)
+            except (ValueError, TypeError):
+                ratio = 1.0 - i * (1.0 - 0.25) / max(n - 1, 1)
+            lw    = max_w * ratio
+            lx    = _LY.CL + (max_w - lw) / 2
+            ly    = _LY.CT + i * (lvl_h + _LY.GAP_XS)
+            color = accents[i % len(accents)]
+            _h2_rounded_rect(slide, lx, ly, lw, lvl_h, color, _LY.R_SM)
+            cy2 = ly + (lvl_h - 0.34) / 2
+            _h2_rounded_rect(slide, lx + 0.12, cy2 + 0.02, 0.28, 0.28, _darken(color, 0.75), 0.14)
+            _h2_text(slide, str(i + 1), lx + 0.12, cy2 + 0.02, 0.28, 0.28,
+                     font, 9, 'FFFFFF', bold=True, align='center')
+            _h2_text(slide, label, lx + 0.48, cy2, lw * 0.50, 0.34,
+                     font, 11, 'FFFFFF', bold=True, align='left')
+            if value:
+                _h2_text(slide, value, lx + lw * 0.62, cy2, lw * 0.26, 0.34,
+                         font, 14, 'FFFFFF', bold=True, align='right')
+            if delta:
+                _h2_text(slide, delta, lx + lw * 0.89, cy2, lw * 0.10, 0.34,
+                         font, 9, 'FFFFFF', bold=False, align='center')
+
+    elif v == 4:
+        # v4: Dashboard liste — badge rang + label + barre proportionnelle + valeur + delta
+        total_h = _LY.CB - _LY.CT
+        lvl_h   = total_h / n - _LY.GAP_XS
+        lbl_x   = _LY.CL + 0.50
+        lbl_w   = _LY.CW * 0.34
+        bar_x   = lbl_x + lbl_w + 0.12
+        val_w   = 1.30
+        dlt_w   = 0.80
+        max_bar = _LY.CR - bar_x - val_w - dlt_w - 0.10
+        for i, step in enumerate(steps[:n]):
+            label, value, pct, delta = _sd(step)
+            ly    = _LY.CT + i * (lvl_h + _LY.GAP_XS)
+            color = accents[i % len(accents)]
+            try:
+                ratio = max(0.05, float(pct) / 100) if pct is not None else \
+                        max(0.05, 1.0 - i * 0.18 / max(n - 1, 1))
+            except (ValueError, TypeError):
+                ratio = max(0.05, 1.0 - i * 0.18 / max(n - 1, 1))
+            _h2_rounded_rect(slide, _LY.CL, ly, _LY.CW, lvl_h, 'F4F7FA', _LY.R_SM)
+            _h2_rect(slide, _LY.CL, ly, 0.06, lvl_h, color)
+            _h2_rounded_rect(slide, _LY.CL + 0.10, ly + (lvl_h - 0.28) / 2,
+                             0.28, 0.28, color, 0.14)
+            _h2_text(slide, str(i + 1), _LY.CL + 0.10, ly + (lvl_h - 0.28) / 2,
+                     0.28, 0.28, font, 9, 'FFFFFF', bold=True, align='center')
+            cy2 = ly + (lvl_h - 0.28) / 2
+            _h2_text(slide, label, lbl_x, cy2, lbl_w, 0.28,
+                     font, 11, dk1, bold=True, align='left')
+            bh  = min(0.14, lvl_h * 0.34)
+            bby = ly + (lvl_h - bh) / 2
+            _h2_rect(slide, bar_x, bby, max_bar, bh, 'EEEEEE')
+            _h2_rect(slide, bar_x, bby, max(0.06, max_bar * ratio), bh, color)
+            if value:
+                _h2_text(slide, value, bar_x + max_bar + 0.08, cy2, val_w, 0.28,
+                         font, 12, color, bold=True, align='center')
+            if delta:
+                _h2_text(slide, delta, bar_x + max_bar + val_w + 0.10, cy2, dlt_w, 0.28,
+                         font, 9, dk1, bold=False, align='left')
 
     return slide
 
@@ -6703,7 +6856,7 @@ def layout_cycle_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    v         = _v4_variant(content, 3, tp.get('seed', 0))
+    v         = _v4_variant(content, 5, tp.get('seed', 0))
     cx_center = W / 2
     cy_center = (_LY.CT + _LY.CB) / 2
 
@@ -6782,7 +6935,7 @@ def layout_cycle_v4(prs: Presentation, content: dict, tp: dict):
         _h2_autoshape(slide, 13, _LY.CL, chev_y + chev_h + 0.16,
                       _LY.CW, 0.22, ret_col, rotation=180)
 
-    else:
+    elif v == 2:
         # Hexagonal nodes in orbit + rotated MSO arrows
         orbit_r = min((_LY.CW - 2.0) / 2, (_LY.CB - _LY.CT) / 2) * 0.79
         hex_w   = 1.05
@@ -6814,6 +6967,105 @@ def layout_cycle_v4(prs: Presentation, content: dict, tp: dict):
             ay    = cy_center + orbit_r * 0.90 * math.sin(mid_a)
             rot   = math.degrees(math.atan2(math.cos(mid_a), -math.sin(mid_a))) % 360
             _h2_autoshape(slide, 13, ax - 0.13, ay - 0.08, 0.26, 0.16, color, rotation=rot)
+
+    elif v == 3:
+        # v3: Grille cyclique 2 rangées — haut gauche→droite, bas droite→gauche
+        n_top  = (n + 1) // 2
+        n_bot  = n - n_top
+        arr_w  = 0.34
+        zone_h = _LY.CB - _LY.CT
+        row_h  = zone_h * 0.38
+        gap_y  = zone_h - row_h * 2
+        top_y  = _LY.CT
+        bot_y  = _LY.CT + row_h + gap_y
+        c_w1   = (_LY.CW - arr_w * max(n_top - 1, 0)) / max(n_top, 1)
+        for j in range(n_top):
+            step   = steps[j]
+            color  = accents[j % len(accents)]
+            t_text = step.get('title', '') if isinstance(step, dict) else str(step)
+            b_text = step.get('body',  '') if isinstance(step, dict) else ''
+            bx     = _LY.CL + j * (c_w1 + arr_w)
+            _h2_rounded_rect(slide, bx, top_y, c_w1, row_h, color, _LY.R_SM)
+            _h2_text(slide, str(j + 1), bx, top_y + row_h * 0.05,
+                     c_w1, row_h * 0.30, font, 16, 'FFFFFF', bold=True, align='center')
+            _h2_text(slide, t_text, bx + 0.10, top_y + row_h * 0.36,
+                     c_w1 - 0.20, row_h * 0.44,
+                     font, 9, 'FFFFFF', bold=True, align='center', line_spacing=1.1)
+            if b_text:
+                _h2_text(slide, b_text, bx + 0.10, top_y + row_h * 0.80,
+                         c_w1 - 0.20, row_h * 0.17,
+                         font, 7, 'FFFFFF', bold=False, align='center')
+            if j < n_top - 1:
+                _h2_autoshape(slide, 13,
+                              bx + c_w1 + 0.03, top_y + (row_h - 0.22) / 2,
+                              arr_w - 0.06, 0.22, accents[(j + 1) % len(accents)])
+        if n_bot > 0:
+            c_w2 = (_LY.CW - arr_w * max(n_bot - 1, 0)) / max(n_bot, 1)
+            for j in range(n_bot):
+                step_i = n_top + j
+                step   = steps[step_i]
+                color  = accents[step_i % len(accents)]
+                t_text = step.get('title', '') if isinstance(step, dict) else str(step)
+                b_text = step.get('body',  '') if isinstance(step, dict) else ''
+                bx     = _LY.CR - (j + 1) * c_w2 - j * arr_w
+                _h2_rounded_rect(slide, bx, bot_y, c_w2, row_h, color, _LY.R_SM)
+                _h2_text(slide, str(step_i + 1), bx, bot_y + row_h * 0.05,
+                         c_w2, row_h * 0.30, font, 16, 'FFFFFF', bold=True, align='center')
+                _h2_text(slide, t_text, bx + 0.10, bot_y + row_h * 0.36,
+                         c_w2 - 0.20, row_h * 0.44,
+                         font, 9, 'FFFFFF', bold=True, align='center', line_spacing=1.1)
+                if b_text:
+                    _h2_text(slide, b_text, bx + 0.10, bot_y + row_h * 0.80,
+                             c_w2 - 0.20, row_h * 0.17,
+                             font, 7, 'FFFFFF', bold=False, align='center')
+                if j < n_bot - 1:
+                    ax = bx - arr_w + 0.03
+                    _h2_autoshape(slide, 13, ax, bot_y + (row_h - 0.22) / 2,
+                                  arr_w - 0.06, 0.22,
+                                  accents[(step_i + 1) % len(accents)], rotation=180)
+            _h2_autoshape(slide, 36, _LY.CR - 0.22, top_y + row_h + 0.04,
+                          0.22, gap_y - 0.08, accents[n_top % len(accents)])
+            ret_h = _LY.CB - bot_y - row_h
+            if ret_h > 0.14:
+                _h2_autoshape(slide, 36, _LY.CL, bot_y + row_h + (ret_h - 0.28) / 2,
+                              0.22, 0.28, accents[0], rotation=180)
+
+    elif v == 4:
+        # v4: Cycle liste verticale — ligne connecteur verticale + flèche retour
+        line_x  = _LY.CL + 0.30
+        dot_r   = 0.16
+        row_gap = _LY.GAP_XS
+        row_h   = (_LY.CB - _LY.CT - row_gap * (n - 1)) / max(n, 1)
+        card_x  = line_x + dot_r + 0.28
+        card_w  = _LY.CR - card_x - 0.05
+        _h2_rect(slide, left=line_x - 0.018, top=_LY.CT + dot_r,
+                 width=0.036, height=_LY.CB - _LY.CT - dot_r * 2, color='DDDDDD')
+        _h2_autoshape(slide, 36, line_x - 0.14, _LY.CB - 0.36, 0.28, 0.36,
+                      accents[0], rotation=180)
+        for i, step in enumerate(steps[:n]):
+            t_text = step.get('title', '') if isinstance(step, dict) else str(step)
+            b_text = step.get('body',  '') if isinstance(step, dict) else ''
+            color  = accents[i % len(accents)]
+            ry     = _LY.CT + i * (row_h + row_gap)
+            cy     = ry + row_h / 2
+            _h2_rounded_rect(slide, card_x, ry, card_w, row_h, 'F4F7FA', _LY.R_SM)
+            _h2_circle(slide, cx=line_x, cy=cy, r=dot_r, color=color)
+            _h2_text(slide, str(i + 1), line_x - dot_r, cy - dot_r,
+                     dot_r * 2, dot_r * 2, font, 8, 'FFFFFF', bold=True, align='center')
+            _h2_rect(slide, left=line_x + dot_r, top=cy - 0.018,
+                     width=card_x - (line_x + dot_r), height=0.036, color=color)
+            if b_text:
+                ty = ry + row_h * 0.12
+                _h2_text(slide, t_text, card_x + 0.10, ty, card_w - 0.20,
+                         min(0.34, row_h * 0.44),
+                         font, 11, dk1, bold=True, align='left', line_spacing=1.1)
+                _h2_text(slide, b_text, card_x + 0.10, ty + 0.36, card_w - 0.20,
+                         max(0.22, row_h * 0.88 - 0.46),
+                         font, 9, '555555', align='left', line_spacing=1.15)
+            else:
+                _h2_text(slide, t_text, card_x + 0.10, ry + (row_h - 0.30) / 2,
+                         card_w - 0.20, 0.30, font, 11, dk1,
+                         bold=True, align='left', line_spacing=1.1)
 
     return slide
 
