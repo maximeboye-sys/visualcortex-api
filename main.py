@@ -11546,8 +11546,8 @@ TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero
                     text_hero, funnel
 TIER 2 (utiliser) : two_col, highlight_box, quote, timeline, process_flow, matrix_2x2, swot,
                     section_break, competitor_matrix, pest_analysis, market_sizing,
-                    org_chart, cycle, pyramid
-TIER 3 (éviter) : list_numbered, before_after, pros_cons, roadmap
+                    org_chart, cycle, pyramid, table, roadmap, before_after
+TIER 3 (éviter) : list_numbered, pros_cons
 TIER 4 (dernier recours, max 1 par présentation) : full_text
 
 Les graphiques (bar_chart, etc.) uniquement avec données chiffrées réelles. Max 1-2.
@@ -11614,6 +11614,11 @@ matrix_2x2     — Matrice 2×2 (Impact/Effort, Urgence/Importance...)
 
 swot           — Analyse SWOT
                  strengths/weaknesses/opportunities/threats:[≤4 items≤8mots chacun]
+
+table          — Tableau de données natif PowerPoint
+                 Champs OBLIGATOIRES : headers:[str] + rows:[[str]] — jusqu'à 8 colonnes, 12 lignes
+                 v0: en-tête accent1 + rangées alternées | v1: en-tête sombre + 1ère colonne colorée | v2: teinté accent
+                 Usage : tableaux de données chiffrées, benchmarks détaillés, grilles comparatives
 
 ─── LAYOUTS VISUELS ENRICHIS [TIER 1 — PRÉFÉRER POUR IMPACT VISUEL] ───
 team_grid      — Équipe / personnes avec avatars circulaires
@@ -11745,13 +11750,20 @@ pyramid        — Pyramide hiérarchique avec triangle MSO + trapèzes
                  levels:[{{label≤5mots,body≤10mots}}]×3-5 (du sommet vers la base)
                  v0: pyramide centrée  |  v1: pyramide gauche + labels droite  |  v2: pleine largeur
 
+roadmap        — Feuille de route avec phases et jalons
+                 Champs OBLIGATOIRES : phases:[{{label,milestones:[str]}}] — 2 à 5 phases
+                 v0: bande de phases en haut + jalons listés | v1: timeline central alternant haut/bas | v2: cartes horizontales avec flèches MSO
+                 Usage : roadmap produit, plan stratégique, calendrier de déploiement
+
+before_after   — Avant/Après comparatif
+                 Champs OBLIGATOIRES : before:{{title,items:[str]}} + after:{{title,items:[str]}}
+                 v0: deux colonnes avec header coloré + flèche | v1: items ✗/✓ avec fond différencié | v2: panneaux pleine couleur
+
 ─── LAYOUTS STRUCTURE [TIER 3 — UTILISER AVEC PARCIMONIE] ───
 list_numbered  — Liste 3-4 items UNIQUEMENT si séquence logique stricte
                  items:[{{title≤5mots,body≤10mots}}]×3-4 MAX
 
 pros_cons      — Pour/Contre (pros/cons:[≤4 items≤8mots])
-before_after   — Avant/Après (before/after:{{title,items:[≤4 items≤8mots]}})
-roadmap        — Roadmap (phases:[{{label,milestones:[≤3 jalons]}}]×2-4)
 
 ─── DONNÉES [UTILISER SEULEMENT SI DONNÉES RÉELLES] ───
 bar_chart/line_chart/pie_chart/stacked_bar/waterfall/radar
@@ -11764,7 +11776,7 @@ full_text      — UNIQUEMENT pour intro/conclusion narrative
 ─── RÈGLES ABSOLUES ───
 1. La première slide est toujours "cover", la dernière "closing".
 2. Chaque slide : section_label (MAJUSCULES ≤4 mots) + subtitle (accroche ≤10 mots).
-3. "style": alterner 0/1/2/3/4 entre les slides pour maximiser la diversité visuelle.
+3. "style": alterner 0/1/2 entre les slides pour maximiser la diversité visuelle.
 4. "presentation_seed": entier aléatoire 1-999999 à la racine.
 5. footer_text = baseline société (≤8 mots).
 6. Répondre UNIQUEMENT avec le JSON demandé, sans commentaire ni markdown.
@@ -11785,6 +11797,8 @@ full_text      — UNIQUEMENT pour intro/conclusion narrative
     → cycle pour tout processus cyclique, lifecycle, boucle d'amélioration continue
     → pyramid pour tout framework hiérarchique (Maslow, valeurs, priorités)
     → funnel pour tout processus d'entonnoir (ventes, conversion, acquisition)
+14. table : utiliser quand les données sont réellement tabulaires (lignes × colonnes) ;
+    toujours inclure headers + au moins 3 rows. Préférer kpi_grid ou entity pour ≤6 valeurs isolées.
 
 FORMAT DE RÉPONSE :
 {{
