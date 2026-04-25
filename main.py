@@ -12241,7 +12241,7 @@ def layout_venn_v4(prs, content: dict, tp: dict):
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     if v == 0 or n == 2:
         # 2-circle horizontal Venn
@@ -12363,7 +12363,7 @@ def layout_venn_v4(prs, content: dict, tp: dict):
             _h2_text(slide, inter_lbl, cent_cx - 0.55, cent_cy + (0.14 if inter_icon else -0.12),
                      1.10, 0.24, font, 8, 'FFFFFF', bold=True, align='center')
 
-    else:
+    elif v == 2:
         # v2: 2 circles vertical + highlighted intersection band
         zone_h  = _LY.CB - _LY.CT
         r       = min(_LY.CW * 0.30, zone_h * 0.32)
@@ -12413,6 +12413,86 @@ def layout_venn_v4(prs, content: dict, tp: dict):
                      mid_y + (0.18 if inter_icon else -0.12), 1.40, 0.26,
                      font, 9, 'FFFFFF', bold=True, align='center')
 
+    elif v == 3:
+        # v3 : deux panneaux colorés avec zone intersection blanche au centre
+        c1      = circles[0] if n >= 1 else {}
+        c2      = circles[1] if n >= 2 else {}
+        zone_h  = _LY.CB - _LY.CT
+        ov_w    = 1.30
+        pw3     = (_LY.CW - ov_w) / 2
+        color1  = c1.get('color', accents[0]) if isinstance(c1, dict) else accents[0]
+        color2  = (c2.get('color', accents[1 % len(accents)])
+                   if isinstance(c2, dict) else accents[1 % len(accents)])
+        _h2_rounded_rect(slide, _LY.CL, _LY.CT, pw3 + ov_w / 2, zone_h, color1, _LY.R_MD)
+        _h2_rounded_rect(slide, _LY.CL + pw3 + ov_w / 2, _LY.CT,
+                         pw3 + ov_w / 2, zone_h, color2, _LY.R_MD)
+        cx3 = _LY.CL + pw3
+        _h2_rounded_rect(slide, cx3, _LY.CT + zone_h * 0.08,
+                         ov_w, zone_h * 0.84, 'FFFFFF', _LY.R_SM)
+        inter_lbl  = inter.get('label', '') if isinstance(inter, dict) else ''
+        inter_icon = inter.get('icon', '')  if isinstance(inter, dict) else ''
+        iy3 = _LY.CT + zone_h * 0.38
+        if inter_icon:
+            _h2_text(slide, inter_icon, cx3, iy3, ov_w, 0.38, font, 18, dk1,
+                     bold=False, align='center')
+            iy3 += 0.40
+        if inter_lbl:
+            _h2_text(slide, inter_lbl, cx3, iy3, ov_w, 0.28, font, 9, dk1,
+                     bold=True, align='center')
+        for ci, (circ, color3, lx3, lw3, al3) in enumerate([
+                (c1, color1, _LY.CL + 0.18, pw3 - 0.18, 'left'),
+                (c2, color2, cx3 + ov_w + 0.06, pw3 - 0.12, 'left'),
+        ]):
+            lbl3  = circ.get('label', '') if isinstance(circ, dict) else str(circ)
+            icon3 = circ.get('icon', '')  if isinstance(circ, dict) else ''
+            its3  = circ.get('items', []) if isinstance(circ, dict) else []
+            y3    = _LY.CT + 0.20
+            if icon3:
+                _h2_text(slide, icon3, lx3, y3, lw3, 0.40, font, 20, 'FFFFFF',
+                         bold=False, align=al3)
+                y3 += 0.44
+            _h2_text(slide, lbl3, lx3, y3, lw3, 0.30, font, 12, 'FFFFFF',
+                     bold=True, align=al3)
+            y3 += 0.34
+            for it in its3[:5]:
+                _h2_text(slide, f'• {it}', lx3, y3, lw3, 0.24, font, 8, 'FFFFFF',
+                         bold=False, align=al3)
+                y3 += 0.26
+
+    elif v == 4:
+        # v4 : cartes côte-à-côte — chaque cercle comme panneau coloré avec icône
+        nc4    = min(n, 3)
+        pw4    = (_LY.CW - _LY.GAP_SM * (nc4 - 1)) / nc4
+        zone_h = _LY.CB - _LY.CT
+        for i in range(nc4):
+            c4     = circles[i]
+            cx4    = _LY.CL + i * (pw4 + _LY.GAP_SM)
+            color4 = (c4.get('color', accents[i % len(accents)])
+                      if isinstance(c4, dict) else accents[i % len(accents)])
+            lbl4   = c4.get('label', '') if isinstance(c4, dict) else str(c4)
+            icon4  = c4.get('icon', '')  if isinstance(c4, dict) else ''
+            its4   = c4.get('items', []) if isinstance(c4, dict) else []
+            _h2_rounded_rect(slide, cx4, _LY.CT, pw4, zone_h, color4, _LY.R_MD)
+            r4 = min(pw4 * 0.38, zone_h * 0.34)
+            ri4, gi4, bi4 = int(color4[:2],16), int(color4[2:4],16), int(color4[4:],16)
+            dk4 = (f'{max(0,int(ri4*0.72)):02X}'
+                   f'{max(0,int(gi4*0.72)):02X}'
+                   f'{max(0,int(bi4*0.72)):02X}')
+            _h2_rounded_rect(slide, cx4 + pw4 / 2 - r4, _LY.CT + zone_h * 0.06,
+                             r4 * 2, r4 * 2, dk4, r4)
+            if icon4:
+                _h2_text(slide, icon4, cx4 + pw4 / 2 - r4,
+                         _LY.CT + zone_h * 0.06, r4 * 2, r4 * 2,
+                         font, int(r4 * 28), 'FFFFFF', bold=False, align='center')
+            y4 = _LY.CT + zone_h * 0.06 + r4 * 2 + 0.14
+            _h2_text(slide, lbl4, cx4 + _LY.PAD, y4, pw4 - _LY.PAD * 2, 0.30,
+                     font, 12, 'FFFFFF', bold=True, align='center')
+            y4 += 0.34
+            for it in its4[:5]:
+                _h2_text(slide, f'• {it}', cx4 + _LY.PAD, y4, pw4 - _LY.PAD * 2,
+                         0.24, font, 8, 'EEEEEE', bold=False, align='center')
+                y4 += 0.26
+
     return slide
 
 
@@ -12438,7 +12518,7 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     if v == 0:
         # Uniform grid — circle + label, 3-4 cols depending on n
@@ -12516,7 +12596,7 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
                 _h2_text(slide, body, tx, ty + 0.28, tw, 0.22,
                          font, 8, '666666', bold=False, align='left')
 
-    else:
+    elif v == 2:
         # v2: hexagonal-feel — 4 cols, icons in hexagons, label below
         n_cols  = 4 if n >= 7 else 3
         n_rows  = (n + n_cols - 1) // n_cols
@@ -12551,6 +12631,78 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
                 _h2_text(slide, body, cx + 0.04, ty + 0.28, cell_w - 0.08,
                          cell_h - (ty - cy) - 0.34, font, 7, '666666', bold=False, align='center')
 
+    elif v == 3:
+        # v3: feature list cards — left color strip + icon circle + label + body
+        n_cols = 3 if n >= 7 else 2
+        n_rows = (n + n_cols - 1) // n_cols
+        gap_x  = _LY.GAP_SM
+        gap_y  = _LY.GAP_XS
+        cell_w = (_LY.CW - gap_x * (n_cols - 1)) / n_cols
+        cell_h = (_LY.CB - _LY.CT - gap_y * (n_rows - 1)) / max(n_rows, 1)
+        r_icon = min(cell_h * 0.28, 0.28)
+
+        for i, item in enumerate(items):
+            col_i = i % n_cols
+            row_i = i // n_cols
+            cx    = _LY.CL + col_i * (cell_w + gap_x)
+            cy    = _LY.CT + row_i * (cell_h + gap_y)
+            color = accents[i % len(accents)]
+            icon  = item.get('icon',  '') if isinstance(item, dict) else ''
+            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body',  '') if isinstance(item, dict) else ''
+
+            _h2_rounded_rect(slide, cx, cy, cell_w, cell_h, 'F4F7FA', _LY.R_SM)
+            _h2_rounded_rect(slide, cx, cy, 0.10, cell_h, color, _LY.R_SM)
+            _h2_rect(slide, cx + _LY.R_SM, cy, 0.10 - _LY.R_SM, cell_h, color)
+
+            icy = cy + (cell_h - r_icon * 2) / 2
+            _h2_rounded_rect(slide, cx + 0.20, icy, r_icon * 2, r_icon * 2, color, r_icon)
+            if icon:
+                _h2_text(slide, icon, cx + 0.20, icy, r_icon * 2, r_icon * 2,
+                         font, int(r_icon * 24), 'FFFFFF', bold=False, align='center')
+
+            tx = cx + 0.20 + r_icon * 2 + 0.12
+            tw = cell_w - (tx - cx) - 0.08
+            ty = cy + (cell_h - (0.48 if body else 0.26)) / 2
+            _h2_text(slide, label, tx, ty, tw, 0.26,
+                     font, 10, dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body, tx, ty + 0.28, tw,
+                         cell_h - (ty - cy) - 0.34, font, 8, '555555', bold=False, align='left')
+
+    elif v == 4:
+        # v4: full-color tiles — colored rounded rect + icon + label below
+        n_cols = 4 if n >= 9 else (3 if n >= 5 else 2)
+        n_rows = (n + n_cols - 1) // n_cols
+        gap_x  = _LY.GAP_SM
+        gap_y  = _LY.GAP_SM
+        cell_w = (_LY.CW - gap_x * (n_cols - 1)) / n_cols
+        cell_h = (_LY.CB - _LY.CT - gap_y * (n_rows - 1)) / max(n_rows, 1)
+
+        for i, item in enumerate(items):
+            col_i = i % n_cols
+            row_i = i // n_cols
+            cx    = _LY.CL + col_i * (cell_w + gap_x)
+            cy    = _LY.CT + row_i * (cell_h + gap_y)
+            color = accents[i % len(accents)]
+            icon  = item.get('icon',  '') if isinstance(item, dict) else ''
+            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body',  '') if isinstance(item, dict) else ''
+
+            _h2_rounded_rect(slide, cx, cy, cell_w, cell_h, color, _LY.R_MD)
+            r_ic = min(cell_w * 0.24, cell_h * 0.28, 0.36)
+            icx  = cx + cell_w / 2 - r_ic
+            icy  = cy + cell_h * 0.12
+            if icon:
+                _h2_text(slide, icon, icx, icy, r_ic * 2, r_ic * 2,
+                         font, int(r_ic * 28), 'FFFFFF', bold=False, align='center')
+            ty = cy + cell_h * 0.56
+            _h2_text(slide, label, cx + 0.06, ty, cell_w - 0.12, 0.26,
+                     font, 9, 'FFFFFF', bold=True, align='center')
+            if body and cell_h > 1.10:
+                _h2_text(slide, body, cx + 0.06, ty + 0.28, cell_w - 0.12,
+                         cell_h - (ty - cy) - 0.34, font, 7, 'EEEEEE', bold=False, align='center')
+
     return slide
 
 
@@ -12576,7 +12728,7 @@ def layout_text_hero_v4(prs, content: dict, tp: dict):
     accent_w   = content.get('accent_word', '')
     zone_h     = _LY.CB - _LY.CT
 
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
     color  = accents[0]
     color2 = accents[1 % len(accents)]
 
@@ -12646,7 +12798,7 @@ def layout_text_hero_v4(prs, content: dict, tp: dict):
             _h2_text(slide, body, _LY.CL + _LY.CW * 0.10, y,
                      _LY.CW * 0.80, _LY.CB - y - 0.05, font, 10, dk1, bold=False, align='center')
 
-    else:
+    elif v == 2:
         # v2: Thin accent band left + oversized hero right-aligned
         band_w = 0.28
         _h2_rect(slide, _LY.CL, _LY.CT, band_w, zone_h, color)
@@ -12681,6 +12833,61 @@ def layout_text_hero_v4(prs, content: dict, tp: dict):
             _h2_text(slide, body, tx, y, tw * 0.75, _LY.CB - y - 0.05,
                      font, 10, dk1, bold=False, align='left')
 
+    elif v == 3:
+        # v3: full dark background — white hero word + accent underline
+        W3 = tp.get('W', 13.33)
+        _h2_rect(slide, 0, 0, W3, 7.50, dk1)
+        bg_r = zone_h * 0.60
+        _h2_rounded_rect(slide, _LY.CR - bg_r * 0.85, _LY.CT + zone_h / 2 - bg_r,
+                         bg_r * 2, bg_r * 2, color, bg_r)
+        _set_shape_alpha(slide.shapes[-1], 14)
+        if title:
+            _h2_text(slide, title.upper(), _LY.CL, _LY.CT + 0.08, _LY.CW, 0.26,
+                     font, 9, color, bold=True, align='left')
+        _h2_text(slide, hero, _LY.CL - 0.05, _LY.CT + 0.24, _LY.CW * 0.80, zone_h * 0.60,
+                 font, 90, 'FFFFFF', bold=True, align='left')
+        ay = _LY.CT + zone_h * 0.62
+        _h2_rect(slide, _LY.CL, ay, _LY.CW * 0.42, 0.055, color)
+        y = ay + 0.12
+        if subtitle:
+            _h2_text(slide, subtitle, _LY.CL, y, _LY.CW * 0.70, 0.28,
+                     font, 11, color, bold=True, align='left')
+            y += 0.30
+        if body:
+            _h2_text(slide, body, _LY.CL, y, _LY.CW * 0.70, _LY.CB - y - 0.05,
+                     font, 10, 'AAAAAA', bold=False, align='left')
+
+    elif v == 4:
+        # v4: magazine split — accent left panel + hero + body right
+        W4 = tp.get('W', 13.33)
+        split_x = _LY.CL + _LY.CW * 0.38
+        _h2_rect(slide, 0, 0, split_x, 7.50, color)
+        lw = split_x - _LY.CL - 0.15
+        if title:
+            _h2_text(slide, title.upper(), _LY.CL + 0.25, _LY.CT + 0.10, lw, 0.26,
+                     font, 9, 'FFFFFF', bold=True, align='left')
+        _h2_text(slide, hero, _LY.CL + 0.20, _LY.CT + 0.30, lw, zone_h * 0.56,
+                 font, 72, 'FFFFFF', bold=True, align='left')
+        ay4 = _LY.CT + zone_h * 0.60
+        _h2_rect(slide, _LY.CL + 0.25, ay4, lw * 0.55, 0.05, 'FFFFFF')
+        _set_shape_alpha(slide.shapes[-1], 60)
+        if subtitle:
+            _h2_text(slide, subtitle, _LY.CL + 0.25, ay4 + 0.12, lw, 0.28,
+                     font, 10, 'FFFFFF', bold=True, align='left')
+        rx = split_x + 0.35
+        rw = _LY.CR - rx
+        ry = _LY.CT + zone_h * 0.15
+        if accent_w:
+            _h2_text(slide, accent_w, rx, ry, rw, zone_h * 0.38,
+                     font, 60, color, bold=True, align='left')
+            ry += zone_h * 0.40
+        if body:
+            _h2_text(slide, body, rx, ry, rw, _LY.CB - ry - 0.05,
+                     font, 11, dk1, bold=False, align='left')
+        elif subtitle and not accent_w:
+            _h2_text(slide, subtitle, rx, ry, rw, _LY.CB - ry - 0.05,
+                     font, 13, dk1, bold=True, align='left')
+
     return slide
 
 
@@ -12707,7 +12914,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
     nc       = min(len(children), 6)
     children = children[:nc]
 
-    v      = _v4_variant(content, 3, tp.get('seed', 0))
+    v      = _v4_variant(content, 5, tp.get('seed', 0))
     BOX_W  = 1.70
     BOX_H  = 0.62
     CONN   = 'CCCCCC'
@@ -12821,7 +13028,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
                 _hline(gc_bus, l2_x - BOX_W / 2, gc_cy)
                 _box(l2_x, gc_cy, gl, gi, l2_color, pt=9)
 
-    else:
+    elif v == 2:
         # Color-coded subtrees
         root_cx = W / 2
         root_cy = _LY.CT + BOX_H / 2 + 0.10
@@ -12871,6 +13078,98 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
                           f'{min(255, int(tb + (255 - tb) * 0.35)):02X}')
                 _vline(gc_cx, gc_bus, l2_y - BOX_H / 2, tree_col)
                 _box(gc_cx, l2_y, gl, gi, l2_col, pt=9)
+
+    elif v == 3:
+        # v3: card-style — L1 children as two-tone cards (colored header + white body with grandchildren)
+        CARD_W = min(2.20, (_LY.CW - _LY.GAP_SM * max(nc - 1, 0)) / max(nc, 1))
+        CARD_H = 0.90
+        HDRH   = 0.34
+        root_cx = W / 2
+        root_cy = _LY.CT + BOX_H / 2 + 0.10
+        _box(root_cx, root_cy, root_label, root_icon, root_color)
+
+        if nc == 0:
+            return slide
+
+        l1_total = CARD_W * nc + _LY.GAP_SM * (nc - 1)
+        l1_y     = root_cy + BOX_H / 2 + 0.70
+        l1_xs    = [W / 2 - l1_total / 2 + i * (CARD_W + _LY.GAP_SM) + CARD_W / 2 for i in range(nc)]
+        bus_y3   = root_cy + BOX_H / 2 + 0.32
+
+        _vline(root_cx, root_cy + BOX_H / 2, bus_y3)
+        if nc > 1:
+            _hline(l1_xs[0], l1_xs[-1], bus_y3)
+
+        for i, child in enumerate(children):
+            cx_     = l1_xs[i]
+            c_label = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_icon  = child.get('icon',  '') if isinstance(child, dict) else ''
+            color_i = accents[i % len(accents)]
+            _vline(cx_, bus_y3, l1_y - CARD_H / 2)
+            bx = cx_ - CARD_W / 2
+            by = l1_y - CARD_H / 2
+            _h2_rounded_rect(slide, bx, by, CARD_W, CARD_H, color_i, _LY.R_SM)
+            _h2_rounded_rect(slide, bx, by + HDRH, CARD_W, CARD_H - HDRH, 'FFFFFF', _LY.R_SM)
+            _h2_rect(slide, bx, by + HDRH, CARD_W, _LY.R_SM, 'FFFFFF')
+            if c_icon:
+                _h2_text(slide, c_icon, bx + 0.06, by + 0.02, 0.30, HDRH - 0.04,
+                         font, 12, 'FFFFFF', bold=False, align='center')
+            _h2_text(slide, c_label, bx + (0.36 if c_icon else 0.08), by + 0.04,
+                     CARD_W - (0.44 if c_icon else 0.16), HDRH - 0.08,
+                     font, 9, 'FFFFFF', bold=True, align='left')
+            gcs = child.get('children', []) if isinstance(child, dict) else []
+            ng  = min(len(gcs), 3)
+            if ng > 0:
+                gc_h = (CARD_H - HDRH - 0.08) / ng
+                for j in range(ng):
+                    gc = gcs[j]
+                    gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                    _h2_text(slide, f'· {gl}', bx + 0.10, by + HDRH + 0.04 + j * gc_h,
+                             CARD_W - 0.20, gc_h - 0.02, font, 8, dk1, bold=False, align='left')
+
+    elif v == 4:
+        # v4: flat team grid — all L1 children as equal colored tiles with avatar circle + label
+        n_show = max(nc, 1)
+        TILE_W = min((_LY.CW - _LY.GAP_SM * (n_show - 1)) / n_show, 2.40)
+        TILE_H = min(_LY.CB - _LY.CT - 1.20, 2.20)
+        R_TILE = min(TILE_W * 0.28, TILE_H * 0.30, 0.50)
+        tile_y = _LY.CT + (_LY.CB - _LY.CT - TILE_H) / 2 + 0.20
+
+        _h2_text(slide, root_label, _LY.CL, _LY.CT, _LY.CW, 0.40,
+                 font, _LY.T_LABEL, root_color, bold=True, align='center')
+        _h2_rect(slide, _LY.CL + _LY.CW * 0.35, _LY.CT + 0.42, _LY.CW * 0.30, 0.04, root_color)
+
+        tile_total = TILE_W * n_show + _LY.GAP_SM * (n_show - 1)
+        x0 = W / 2 - tile_total / 2
+
+        for i, child in enumerate(children):
+            tx      = x0 + i * (TILE_W + _LY.GAP_SM)
+            color_i = accents[i % len(accents)]
+            c_label = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_icon  = child.get('icon',  '') if isinstance(child, dict) else ''
+            _h2_rounded_rect(slide, tx, tile_y, TILE_W, TILE_H, color_i, _LY.R_MD)
+            icx = tx + TILE_W / 2 - R_TILE
+            icy = tile_y + TILE_H * 0.12
+            _h2_rounded_rect(slide, icx, icy, R_TILE * 2, R_TILE * 2, 'FFFFFF', R_TILE)
+            if c_icon:
+                r_i = int(color_i[0:2], 16)
+                g_i = int(color_i[2:4], 16)
+                b_i = int(color_i[4:6], 16)
+                dark_c = (f'{max(0, int(r_i * 0.70)):02X}'
+                          f'{max(0, int(g_i * 0.70)):02X}'
+                          f'{max(0, int(b_i * 0.70)):02X}')
+                _h2_text(slide, c_icon, icx, icy, R_TILE * 2, R_TILE * 2,
+                         font, int(R_TILE * 24), dark_c, bold=False, align='center')
+            _h2_text(slide, c_label, tx + 0.08, icy + R_TILE * 2 + 0.10, TILE_W - 0.16, 0.28,
+                     font, 10, 'FFFFFF', bold=True, align='center')
+            gcs = child.get('children', []) if isinstance(child, dict) else []
+            ng  = min(len(gcs), 3)
+            gc_y = tile_y + TILE_H * 0.60
+            for j in range(ng):
+                gc = gcs[j]
+                gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                _h2_text(slide, f'· {gl}', tx + 0.08, gc_y + j * 0.26, TILE_W - 0.16, 0.24,
+                         font, 8, 'EEEEEE', bold=False, align='center')
 
     return slide
 
