@@ -11610,7 +11610,7 @@ def layout_diamond_icons_v4(prs, content: dict, tp: dict):
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     if v == 0:
         d_size = 1.15
@@ -11675,7 +11675,7 @@ def layout_diamond_icons_v4(prs, content: dict, tp: dict):
                 _h2_text(slide, body, dx - 0.10, ty + 0.30, d_size + 0.20,
                          _LY.CB - ty - 0.36, font, 8, '555555', bold=False, align='center')
 
-    else:
+    elif v == 2:
         # v2: diamond centred in card background
         gap    = _LY.GAP_SM
         card_w = (_LY.CW - gap * (n - 1)) / n
@@ -11704,6 +11704,65 @@ def layout_diamond_icons_v4(prs, content: dict, tp: dict):
             if body:
                 _h2_text(slide, body, cx + 0.10, ty + 0.30, card_w - 0.20,
                          _LY.CB - ty - 0.36, font, 8, '555555', bold=False, align='center')
+
+    elif v == 3:
+        # v3 : accordion rows — losange gauche + titre/body droite
+        zone_h = _LY.CB - _LY.CT
+        row_h  = (zone_h - _LY.GAP_XS * (n - 1)) / n
+        d_size = min(row_h * 0.68, 0.90)
+        for i, item in enumerate(items):
+            ry    = _LY.CT + i * (row_h + _LY.GAP_XS)
+            color = accents[i % len(accents)]
+            icon  = item.get('icon',  '') if isinstance(item, dict) else ''
+            ttxt  = item.get('title', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body',  '') if isinstance(item, dict) else ''
+            _h2_rounded_rect(slide, _LY.CL, ry, _LY.CW, row_h, 'F4F7FA', _LY.R_SM)
+            dx = _LY.CL + (1.30 - d_size) / 2
+            dy = ry + (row_h - d_size) / 2
+            _h2_diamond(slide, dx, dy, d_size, d_size, color)
+            if icon:
+                _h2_text(slide, icon, dx, dy + d_size * 0.20, d_size, d_size * 0.58,
+                         font, int(d_size * 22), 'FFFFFF', bold=False, align='center')
+            tx3 = _LY.CL + 1.36
+            tw3 = _LY.CW - 1.42
+            _h2_text(slide, ttxt, tx3, ry + (row_h - 0.30) * 0.24, tw3, 0.30,
+                     font, _LY.T_HEADER, dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body, tx3, ry + 0.40, tw3, row_h - 0.48,
+                         font, _LY.T_SMALL, '555555', bold=False, align='left',
+                         line_spacing=1.2)
+
+    elif v == 4:
+        # v4 : cartes fond coloré + losange en haut + titre + body
+        gap    = _LY.GAP_SM
+        card_w = (_LY.CW - gap * (n - 1)) / n
+        zone_h = _LY.CB - _LY.CT
+        d_size = min(card_w * 0.46, 0.96)
+        for i, item in enumerate(items):
+            cx    = _LY.CL + i * (card_w + gap)
+            color = accents[i % len(accents)]
+            icon  = item.get('icon',  '') if isinstance(item, dict) else ''
+            ttxt  = item.get('title', str(item)) if isinstance(item, dict) else str(item)
+            body  = item.get('body',  '') if isinstance(item, dict) else ''
+            _h2_rounded_rect(slide, cx, _LY.CT, card_w, zone_h, color, _LY.R_SM)
+            dx4 = cx + (card_w - d_size) / 2
+            dy4 = _LY.CT + 0.18
+            r4, g4, b4 = int(color[:2], 16), int(color[2:4], 16), int(color[4:], 16)
+            dark_c = f'{max(0,int(r4*0.72)):02X}{max(0,int(g4*0.72)):02X}{max(0,int(b4*0.72)):02X}'
+            _h2_diamond(slide, dx4, dy4, d_size, d_size, dark_c)
+            if icon:
+                _h2_text(slide, icon, dx4, dy4 + d_size * 0.20, d_size, d_size * 0.58,
+                         font, int(d_size * 22), 'FFFFFF', bold=False, align='center')
+            ty4 = dy4 + d_size + 0.16
+            _h2_rect(slide, cx + _LY.PAD, ty4, card_w - _LY.PAD * 2, 0.03, 'FFFFFF')
+            ty4 += 0.10
+            _h2_text(slide, ttxt, cx + _LY.PAD, ty4, card_w - _LY.PAD * 2, 0.28,
+                     font, 10, 'FFFFFF', bold=True, align='center')
+            ty4 += 0.30
+            if body:
+                _h2_text(slide, body, cx + _LY.PAD, ty4, card_w - _LY.PAD * 2,
+                         zone_h - (ty4 - _LY.CT) - 0.10,
+                         font, 8, 'EEEEEE', bold=False, align='center')
 
     return slide
 
@@ -11734,7 +11793,7 @@ def layout_market_sizing_v4(prs, content: dict, tp: dict):
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     if v == 0:
         # Staircase: decreasing-width rows, centered, largest at top
@@ -11810,7 +11869,7 @@ def layout_market_sizing_v4(prs, content: dict, tp: dict):
                 _h2_text(slide, desc, cx + _LY.PAD, cy + ch - 0.30,
                          cw - _LY.PAD * 2, 0.24, font, 8, '888888', bold=False, align='left')
 
-    else:
+    elif v == 2:
         # v2: Nested concentric rectangles (TAM outer → SOM inner) + labels left
         lbl_w  = _LY.CW * 0.34
         box_x  = _LY.CL + lbl_w + _LY.GAP_MD
@@ -11851,6 +11910,72 @@ def layout_market_sizing_v4(prs, content: dict, tp: dict):
                 _h2_text(slide, f'{arrow} {change}', _LY.CL + 0.28, ly + lh / 2 + 0.26,
                          lbl_w - 0.30, 0.22, font, 8, ac, bold=True, align='left')
 
+    elif v == 3:
+        # v3 : barres horizontales — label gauche + barre + valeur
+        zone_h = _LY.CB - _LY.CT
+        row_h  = (zone_h - _LY.GAP_XS * (n - 1)) / n
+        lbl_w  = 1.60
+        for i, seg in enumerate(segments):
+            ry     = _LY.CT + i * (row_h + _LY.GAP_XS)
+            label  = seg.get('label',  f'Seg {i+1}') if isinstance(seg, dict) else str(seg)
+            value  = seg.get('value',  '')            if isinstance(seg, dict) else ''
+            change = seg.get('change', '')            if isinstance(seg, dict) else ''
+            trend  = seg.get('trend',  'up')          if isinstance(seg, dict) else 'up'
+            desc   = seg.get('description', '')       if isinstance(seg, dict) else ''
+            color  = accents[i % len(accents)]
+            up     = trend != 'down'
+            arrow  = '▲' if up else '▼'
+            ac     = '27AE60' if up else 'E74C3C'
+            _h2_rounded_rect(slide, _LY.CL + lbl_w, ry + _LY.GAP_XS,
+                             _LY.CW - lbl_w, row_h - _LY.GAP_XS * 2, 'EEEEEE', _LY.R_SM)
+            bar_w  = (_LY.CW - lbl_w) * (1.0 - i * 0.12)
+            _h2_rounded_rect(slide, _LY.CL + lbl_w, ry + _LY.GAP_XS,
+                             bar_w, row_h - _LY.GAP_XS * 2, color, _LY.R_SM)
+            _h2_text(slide, label, _LY.CL, ry + (row_h - 0.30) * 0.20,
+                     lbl_w - 0.10, 0.30, font, 10, dk1, bold=True, align='right')
+            _h2_text(slide, value, _LY.CL + lbl_w + bar_w - 1.60,
+                     ry + (row_h - 0.36) / 2, 1.50, 0.36,
+                     font, 18, 'FFFFFF', bold=True, align='right')
+            if change:
+                _h2_text(slide, f'{arrow} {change}',
+                         _LY.CL + lbl_w + _LY.GAP_SM, ry + (row_h - 0.22) * 0.75,
+                         1.20, 0.22, font, 8, 'FFFFFF', bold=True, align='left')
+
+    elif v == 4:
+        # v4 : cartes KPI compactes fond coloré + valeur géante + label + trend
+        gap    = _LY.GAP_SM
+        n_cols = min(n, 4)
+        card_w = (_LY.CW - gap * (n_cols - 1)) / n_cols
+        zone_h = _LY.CB - _LY.CT
+        for i, seg in enumerate(segments[:n_cols]):
+            cx     = _LY.CL + i * (card_w + gap)
+            label  = seg.get('label',  f'Seg {i+1}') if isinstance(seg, dict) else str(seg)
+            value  = seg.get('value',  '')            if isinstance(seg, dict) else ''
+            change = seg.get('change', '')            if isinstance(seg, dict) else ''
+            trend  = seg.get('trend',  'up')          if isinstance(seg, dict) else 'up'
+            desc   = seg.get('description', '')       if isinstance(seg, dict) else ''
+            color  = accents[i % len(accents)]
+            up     = trend != 'down'
+            arrow  = '▲' if up else '▼'
+            _h2_rounded_rect(slide, cx, _LY.CT, card_w, zone_h, color, _LY.R_MD)
+            _h2_text(slide, label, cx + _LY.PAD, _LY.CT + 0.18,
+                     card_w - _LY.PAD * 2, 0.28,
+                     font, 10, 'EEEEEE', bold=True, align='center')
+            _h2_text(slide, value, cx + _LY.PAD, _LY.CT + zone_h * 0.28,
+                     card_w - _LY.PAD * 2, zone_h * 0.38,
+                     font, _LY.T_KPI, 'FFFFFF', bold=True, align='center')
+            _h2_rect(slide, cx + card_w * 0.25, _LY.CT + zone_h * 0.68,
+                     card_w * 0.50, 0.04, 'FFFFFF')
+            if change:
+                ac4 = 'AAFFAA' if up else 'FFAAAA'
+                _h2_text(slide, f'{arrow} {change}', cx + _LY.PAD,
+                         _LY.CT + zone_h * 0.72, card_w - _LY.PAD * 2, 0.28,
+                         font, 10, ac4, bold=True, align='center')
+            if desc:
+                _h2_text(slide, desc, cx + _LY.PAD, _LY.CT + zone_h * 0.80,
+                         card_w - _LY.PAD * 2, zone_h * 0.16,
+                         font, 8, 'DDDDDD', bold=False, align='center')
+
     return slide
 
 
@@ -11876,7 +12001,7 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
 
     if v == 0:
         # Full-width horizontal chevrons, slight overlap
@@ -11968,7 +12093,7 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
                 _h2_text(slide, body, tx, y2, tw, zone_h - (y2 - cy) - 0.08,
                          font, 8, 'FFFFFF', bold=False, align='center')
 
-    else:
+    elif v == 2:
         # v2: Vertical stack of right-arrows with dot connector trail
         arrow_h = (_LY.CB - _LY.CT - _LY.GAP_SM * (n - 1)) / max(n, 1)
         arrow_h = min(arrow_h, 1.10)
@@ -11984,7 +12109,6 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
 
             _h2_arrow_right(slide, ax, ay, aw, arrow_h - 0.04, color)
 
-            # Content left-aligned inside arrow
             tx = ax + 0.18
             tw = aw - 0.55
             cy2 = ay + (arrow_h - 0.34) / 2 - (0.18 if body else 0)
@@ -11999,7 +12123,6 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
                 _h2_text(slide, body, tx, cy2 + 0.30, tw, arrow_h - 0.46,
                          font, 8, 'FFFFFF', bold=False, align='left')
 
-            # Stat or step number on right side of arrow
             sv = step.get('stat_value', '') if isinstance(step, dict) else ''
             sl = step.get('stat_label', '') if isinstance(step, dict) else ''
             rx = ax + aw - 0.75
@@ -12012,6 +12135,82 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
             else:
                 _h2_text(slide, str(i + 1), rx + 0.10, ay + (arrow_h - 0.30) / 2,
                          0.40, 0.30, font, 14, 'FFFFFF', bold=True, align='center')
+
+    elif v == 3:
+        # v3 : accordion rows — chevron tronqué gauche + titre/body droite
+        zone_h  = _LY.CB - _LY.CT
+        row_h   = (zone_h - _LY.GAP_XS * (n - 1)) / n
+        chev_w  = 2.20
+        for i, step in enumerate(steps):
+            ry    = _LY.CT + i * (row_h + _LY.GAP_XS)
+            color = accents[i % len(accents)]
+            icon  = step.get('icon', '')  if isinstance(step, dict) else ''
+            ttxt  = step.get('title', str(step)) if isinstance(step, dict) else str(step)
+            body  = step.get('body', '')  if isinstance(step, dict) else ''
+            sv    = step.get('stat_value', '') if isinstance(step, dict) else ''
+            _h2_rounded_rect(slide, _LY.CL, ry, _LY.CW, row_h, 'F4F7FA', _LY.R_SM)
+            _h2_chevron(slide, _LY.CL, ry, chev_w, row_h, color)
+            if icon:
+                _h2_text(slide, icon, _LY.CL, ry, chev_w * 0.56, row_h,
+                         font, int(row_h * 22), 'FFFFFF', bold=False, align='center')
+            else:
+                _h2_text(slide, str(i + 1), _LY.CL, ry, chev_w * 0.56, row_h,
+                         font, int(row_h * 28), 'FFFFFF', bold=True, align='center')
+            tx3 = _LY.CL + chev_w + 0.16
+            tw3 = _LY.CW - chev_w - 0.22 - (1.20 if sv else 0)
+            _h2_text(slide, ttxt, tx3, ry + (row_h - 0.30) * 0.22, tw3, 0.30,
+                     font, _LY.T_HEADER, dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body, tx3, ry + 0.38, tw3, row_h - 0.46,
+                         font, _LY.T_SMALL, '555555', bold=False, align='left',
+                         line_spacing=1.2)
+            if sv:
+                _h2_text(slide, sv, _LY.CR - 1.10, ry + (row_h - 0.38) / 2,
+                         1.00, 0.38, font, 20, color, bold=True, align='right')
+
+    elif v == 4:
+        # v4 : timeline numérotée — ligne verticale + cartes étapes
+        dot_x   = _LY.CL + 0.40
+        zone_h  = _LY.CB - _LY.CT
+        row_h   = (zone_h - _LY.GAP_SM * (n - 1)) / n
+        _h2_rect(slide, dot_x - 0.01, _LY.CT, 0.02, zone_h, 'DDDDDD')
+        for i, step in enumerate(steps):
+            ry    = _LY.CT + i * (row_h + _LY.GAP_SM)
+            color = accents[i % len(accents)]
+            icon  = step.get('icon', '')  if isinstance(step, dict) else ''
+            ttxt  = step.get('title', str(step)) if isinstance(step, dict) else str(step)
+            body  = step.get('body', '')  if isinstance(step, dict) else ''
+            sv    = step.get('stat_value', '') if isinstance(step, dict) else ''
+            sl    = step.get('stat_label', '') if isinstance(step, dict) else ''
+            _h2_rounded_rect(slide, _LY.CL, ry + row_h / 2 - 0.22,
+                             0.80, 0.44, color, _LY.R_SM)
+            _h2_text(slide, str(i + 1), _LY.CL, ry + row_h / 2 - 0.22,
+                     0.80, 0.44, font, 16, 'FFFFFF', bold=True, align='center')
+            _h2_rect(slide, dot_x + 0.01, ry + row_h / 2 - 0.01,
+                     0.38, 0.02, color)
+            cx4 = _LY.CL + 0.86
+            cw4 = _LY.CW - 0.86 - (1.10 if sv else 0)
+            _h2_rounded_rect(slide, cx4, ry + _LY.GAP_XS,
+                             _LY.CW - 0.86, row_h - _LY.GAP_XS * 2, 'F8F8F8', _LY.R_SM)
+            _h2_rect(slide, cx4, ry + _LY.GAP_XS, 0.04, row_h - _LY.GAP_XS * 2, color)
+            if icon:
+                _h2_text(slide, icon, cx4 + 0.10, ry + (row_h - 0.36) / 2,
+                         0.36, 0.36, font, 16, color, bold=False, align='center')
+                tx4 = cx4 + 0.52
+            else:
+                tx4 = cx4 + 0.14
+            _h2_text(slide, ttxt, tx4, ry + (row_h - 0.28) * 0.22, cw4 - 0.10, 0.28,
+                     font, _LY.T_HEADER, dk1, bold=True, align='left')
+            if body:
+                _h2_text(slide, body, tx4, ry + 0.36, cw4 - 0.10, row_h - 0.44,
+                         font, _LY.T_SMALL, '666666', bold=False, align='left',
+                         line_spacing=1.2)
+            if sv:
+                _h2_text(slide, sv, _LY.CR - 1.00, ry + (row_h - 0.36) / 2,
+                         0.90, 0.36, font, 18, color, bold=True, align='right')
+                if sl:
+                    _h2_text(slide, sl, _LY.CR - 1.00, ry + (row_h - 0.36) / 2 + 0.28,
+                             0.90, 0.18, font, 7, '999999', bold=False, align='right')
 
     return slide
 
