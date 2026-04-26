@@ -6434,6 +6434,80 @@ def _chart_analysis_prominent_v2(slide, content: dict, tp: dict,
              bold=False, align='left', line_spacing=1.3)
 
 
+
+def _chart_kpi_grid_v3(slide, content: dict, tp: dict,
+                        panel_x: float = 8.20, chart_h: float = 3.70) -> None:
+    """
+    Panneau KPI droit pour variante v3 — key_metrics en grand format coloré.
+    Repli sur 'analysis' si pas de key_metrics.
+    """
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    panel_w = _LY.CR - panel_x
+    panel_h = chart_h
+    _h2_rounded_rect(slide, left=panel_x, top=_LY.CT,
+                     width=panel_w, height=panel_h, color='F4F7FA', radius=_LY.R_SM)
+    _h2_rect(slide, left=panel_x, top=_LY.CT, width=panel_w, height=0.05, color=accent1)
+    metrics = content.get('key_metrics', [])[:4]
+    if metrics:
+        cell_h = panel_h / max(len(metrics), 1)
+        tc = [theme.get('accent1', '009CEA'), theme.get('accent2', 'ED0000'),
+              theme.get('accent3', '40A900'), theme.get('accent4', 'F5A623')]
+        for i, metric in enumerate(metrics):
+            val = metric.get('value', '') if isinstance(metric, dict) else str(metric)
+            lbl = metric.get('label', '') if isinstance(metric, dict) else ''
+            cy  = _LY.CT + i * cell_h
+            col = tc[i % len(tc)]
+            if i > 0:
+                _h2_rect(slide, left=panel_x + 0.10, top=cy,
+                         width=panel_w - 0.20, height=0.02, color='DDDDDD')
+            _h2_text(slide, str(val),
+                     left=panel_x + 0.10, top=cy + 0.10,
+                     width=panel_w - 0.20, height=0.48,
+                     font=font, size_pt=22, color=col, bold=True, align='center')
+            if lbl:
+                _h2_text(slide, str(lbl),
+                         left=panel_x + 0.10, top=cy + 0.56,
+                         width=panel_w - 0.20, height=0.28,
+                         font=font, size_pt=9, color='888888', bold=False, align='center')
+    else:
+        analysis = (content.get('analysis') or content.get('interpretation') or
+                   content.get('insight') or content.get('body', ''))
+        if analysis:
+            _h2_text(slide, str(analysis),
+                     left=panel_x + 0.16, top=_LY.CT + 0.18,
+                     width=panel_w - 0.24, height=panel_h - 0.28,
+                     font=font, size_pt=10, color=dk1,
+                     bold=False, align='left', line_spacing=1.3)
+
+
+def _chart_dark_analysis_v4(slide, content: dict, tp: dict,
+                              chart_h: float) -> None:
+    """
+    Panneau analyse fond dk1 blanc sous le graphique — variante v4 des graphiques.
+    """
+    analysis = (content.get('analysis') or content.get('interpretation') or
+               content.get('insight') or content.get('body', ''))
+    if not analysis:
+        return
+    font    = tp.get('font', 'Calibri')
+    theme   = tp.get('theme', {})
+    dk1     = theme.get('dk1', '374649')
+    accent1 = theme.get('accent1', '009CEA')
+    a_top = _LY.CT + chart_h + 0.12
+    a_h   = max(0.40, _LY.CB - a_top - 0.05)
+    _h2_rounded_rect(slide, left=_LY.CL, top=a_top,
+                     width=_LY.CW, height=a_h, color=dk1, radius=_LY.R_SM)
+    _h2_rect(slide, left=_LY.CL, top=a_top, width=0.06, height=a_h, color=accent1)
+    _h2_text(slide, str(analysis),
+             left=_LY.CL + 0.18, top=a_top + 0.12,
+             width=_LY.CW - 0.26, height=a_h - 0.20,
+             font=font, size_pt=11, color='FFFFFF',
+             bold=False, align='left', line_spacing=1.3)
+
+
 def h2_bar_chart(slide, left: float, top: float, width: float, height: float,
                  categories: list, series: list, font: str, theme: dict):
     """
@@ -6489,7 +6563,7 @@ def layout_barchart_v4(prs: Presentation, content: dict, tp: dict):
     v2: graphique légèrement réduit + grand bloc analyse proéminent
     """
     slide = _blank_v4(prs, tp)
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
     categories = content.get('categories', [])
@@ -6511,6 +6585,16 @@ def layout_barchart_v4(prs: Presentation, content: dict, tp: dict):
         h2_bar_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=ch,
                      categories=categories, series=series, font=font, theme=theme)
         _chart_analysis_prominent_v2(slide, content, tp, chart_h=ch)
+    elif v == 3:
+        ch3 = _CHART_H + 0.20
+        h2_bar_chart(slide, left=0.5, top=_LY.CT, width=7.50, height=ch3,
+                     categories=categories, series=series, font=font, theme=theme)
+        _chart_kpi_grid_v3(slide, content, tp, panel_x=8.20, chart_h=ch3)
+    elif v == 4:
+        ch4 = _CHART_H + 0.60
+        h2_bar_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=ch4,
+                     categories=categories, series=series, font=font, theme=theme)
+        _chart_dark_analysis_v4(slide, content, tp, chart_h=ch4)
     return slide
 
 
@@ -6572,7 +6656,7 @@ def layout_linechart_v4(prs: Presentation, content: dict, tp: dict):
     v2: graphique légèrement réduit + grand bloc analyse proéminent
     """
     slide = _blank_v4(prs, tp)
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
     categories = content.get('categories', [])
@@ -6594,6 +6678,16 @@ def layout_linechart_v4(prs: Presentation, content: dict, tp: dict):
         h2_line_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=ch,
                       categories=categories, series=series, font=font, theme=theme)
         _chart_analysis_prominent_v2(slide, content, tp, chart_h=ch)
+    elif v == 3:
+        ch3 = _CHART_H + 0.20
+        h2_line_chart(slide, left=0.5, top=_LY.CT, width=7.50, height=ch3,
+                      categories=categories, series=series, font=font, theme=theme)
+        _chart_kpi_grid_v3(slide, content, tp, panel_x=8.20, chart_h=ch3)
+    elif v == 4:
+        ch4 = _CHART_H + 0.60
+        h2_line_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=ch4,
+                      categories=categories, series=series, font=font, theme=theme)
+        _chart_dark_analysis_v4(slide, content, tp, chart_h=ch4)
     return slide
 
 
@@ -6659,7 +6753,7 @@ def layout_piechart_v4(prs: Presentation, content: dict, tp: dict):
     v2: graphique centré légèrement réduit + grand bloc analyse proéminent
     """
     slide = _blank_v4(prs, tp)
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
     slices   = content.get('slices', [])
@@ -6681,6 +6775,16 @@ def layout_piechart_v4(prs: Presentation, content: dict, tp: dict):
         h2_pie_chart(slide, left=1.5, top=_LY.CT, width=10.0, height=ch,
                      slices=slices, font=font, theme=theme, doughnut=doughnut)
         _chart_analysis_prominent_v2(slide, content, tp, chart_h=ch)
+    elif v == 3:
+        ch3 = _CHART_H + 0.20
+        h2_pie_chart(slide, left=0.5, top=_LY.CT, width=7.50, height=ch3,
+                     slices=slices, font=font, theme=theme, doughnut=doughnut)
+        _chart_kpi_grid_v3(slide, content, tp, panel_x=8.20, chart_h=ch3)
+    elif v == 4:
+        ch4 = _CHART_H + 0.60
+        h2_pie_chart(slide, left=1.5, top=_LY.CT, width=10.0, height=ch4,
+                     slices=slices, font=font, theme=theme, doughnut=doughnut)
+        _chart_dark_analysis_v4(slide, content, tp, chart_h=ch4)
     return slide
 
 
@@ -6770,7 +6874,7 @@ def layout_waterfall_v4(prs: Presentation, content: dict, tp: dict):
     v2: graphique légèrement réduit + grand bloc analyse proéminent
     """
     slide = _blank_v4(prs, tp)
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
     items = content.get('items', [])
@@ -6791,6 +6895,16 @@ def layout_waterfall_v4(prs: Presentation, content: dict, tp: dict):
         h2_waterfall_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=ch,
                            items=items, font=font, theme=theme)
         _chart_analysis_prominent_v2(slide, content, tp, chart_h=ch)
+    elif v == 3:
+        ch3 = _CHART_H + 0.20
+        h2_waterfall_chart(slide, left=0.5, top=_LY.CT, width=7.50, height=ch3,
+                           items=items, font=font, theme=theme)
+        _chart_kpi_grid_v3(slide, content, tp, panel_x=8.20, chart_h=ch3)
+    elif v == 4:
+        ch4 = _CHART_H + 0.60
+        h2_waterfall_chart(slide, left=0.5, top=_LY.CT, width=12.0, height=ch4,
+                           items=items, font=font, theme=theme)
+        _chart_dark_analysis_v4(slide, content, tp, chart_h=ch4)
     return slide
 
 
@@ -6806,7 +6920,7 @@ def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
     from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 
     slide = _blank_v4(prs, tp)
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
@@ -6822,8 +6936,12 @@ def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
         r_left, r_top, r_w, r_h = 1.5, _LY.CT, 10.0, _CHART_H
     elif v == 1:
         r_left, r_top, r_w, r_h = 0.5, _LY.CT, 7.80, _CHART_H + 0.40
-    else:
+    elif v == 2:
         r_left, r_top, r_w, r_h = 1.5, _LY.CT, 10.0, _CHART_H - 0.50
+    elif v == 3:
+        r_left, r_top, r_w, r_h = 0.5, _LY.CT, 7.50, _CHART_H + 0.20
+    else:
+        r_left, r_top, r_w, r_h = 1.5, _LY.CT, 10.0, _CHART_H + 0.60
 
     chart_data = CategoryChartData()
     chart_data.categories = [str(a) for a in axes]
@@ -6859,6 +6977,10 @@ def layout_radar_v4(prs: Presentation, content: dict, tp: dict):
         _chart_sidebar_v1(slide, content, tp, sidebar_x=8.60)
     elif v == 2:
         _chart_analysis_prominent_v2(slide, content, tp, chart_h=r_h)
+    elif v == 3:
+        _chart_kpi_grid_v3(slide, content, tp, panel_x=8.20, chart_h=r_h)
+    elif v == 4:
+        _chart_dark_analysis_v4(slide, content, tp, chart_h=r_h)
     return slide
 
 
@@ -7531,7 +7653,7 @@ def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
     from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 
     slide = _blank_v4(prs, tp)
-    v = _v4_variant(content, 3, tp.get('seed', 0))
+    v = _v4_variant(content, 5, tp.get('seed', 0))
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
@@ -7544,8 +7666,12 @@ def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
         c_left, c_w, c_h = 0.5, 12.0, _CHART_H
     elif v == 1:
         c_left, c_w, c_h = 0.5, 7.80, _CHART_H + 0.40
-    else:
+    elif v == 2:
         c_left, c_w, c_h = 0.5, 12.0, _CHART_H - 0.50
+    elif v == 3:
+        c_left, c_w, c_h = 0.5, 7.50, _CHART_H + 0.20
+    else:
+        c_left, c_w, c_h = 0.5, 12.0, _CHART_H + 0.60
 
     chart_data = CategoryChartData()
     chart_data.categories = [str(c) for c in categories]
@@ -7584,6 +7710,10 @@ def layout_stackedbar_v4(prs: Presentation, content: dict, tp: dict):
         _chart_sidebar_v1(slide, content, tp, sidebar_x=8.60)
     elif v == 2:
         _chart_analysis_prominent_v2(slide, content, tp, chart_h=c_h)
+    elif v == 3:
+        _chart_kpi_grid_v3(slide, content, tp, panel_x=8.20, chart_h=c_h)
+    elif v == 4:
+        _chart_dark_analysis_v4(slide, content, tp, chart_h=c_h)
     return slide
 
 
