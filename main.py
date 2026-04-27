@@ -3599,7 +3599,7 @@ def _h2_rounded_rect_alpha(slide, left: float, top: float, width: float, height:
 
 
 def _h2_card_bg(slide, left: float, top: float, width: float, height: float,
-                tp: dict, idx: int = 0, radius: float = _LY.R_SM):
+                tp: dict, idx: int = 0, radius: float = 0.04):
     """
     Fond de carte adapté au template.
     - Fond riche (gradient/image) → fond blanc semi-transparent (laisse voir le fond).
