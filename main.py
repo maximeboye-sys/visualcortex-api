@@ -3141,17 +3141,31 @@ def analyze_template_v4(prs: Presentation) -> dict:
     except Exception:
         pass
 
-    # ── Font (première police non-'+' du master) ─────────────────────────────
+    # ── Font — theme font scheme (major/minor), fallback to first non-+ typeface ─
     font = 'Calibri'
     try:
-        import lxml.etree as _etree2
-        master_xml = _etree2.tostring(prs.slide_masters[0]._element).decode('utf-8', errors='ignore')
-        for m in _re2.findall(r'typeface="([^"]+)"', master_xml):
-            if m and not m.startswith('+') and len(m) < 64:
-                font = m
-                break
+        # Priority 1: major font from the theme XML font scheme
+        buf2 = _io2.BytesIO()
+        prs.save(buf2); buf2.seek(0)
+        with _zf2.ZipFile(buf2) as zf2:
+            if theme_files:
+                txml = zf2.read(theme_files[0]).decode('utf-8', errors='ignore')
+                m = _re2.search(r'<a:majorFont[^>]*>.*?<a:latin\s+typeface="([^+][^"]{0,63})"', txml, _re2.S)
+                if m:
+                    font = m.group(1)
     except Exception:
         pass
+    if font == 'Calibri':
+        try:
+            # Priority 2: first non-system typeface in master XML
+            import lxml.etree as _etree2
+            master_xml = _etree2.tostring(prs.slide_masters[0]._element).decode('utf-8', errors='ignore')
+            for m in _re2.findall(r'typeface="([^"]+)"', master_xml):
+                if m and not m.startswith('+') and len(m) < 64:
+                    font = m
+                    break
+        except Exception:
+            pass
 
     W = prs.slide_width  / 914400.0
     H = prs.slide_height / 914400.0
@@ -3651,16 +3665,15 @@ def _blank_v4(prs: Presentation, tp: dict):
     Retourne slide.
     """
     # Prefer a layout that inherits the master background (no own bg override)
-    # Ordre de préférence :
-    # 1. Layout le plus décoré du template (rich_layout_idx) — apporte les éléments visuels du template
-    # 2. Layout "text" standard
-    # 3. Layout "blank"
-    # 4. Dernier layout
-    # Condition : doit hériter du fond maître (pas de fond propre)
+    # Order: text → blank → last layout.
+    # We do NOT use rich_layout_idx here: a "decorated" layout can bring shapes
+    # (bands, lines, zones) that conflict with our custom programmatic shapes and
+    # make every content slide look cluttered or wrong.
+    # Visual identity comes from: master bg (showMasterSp='1') + template colors
+    # applied by layout functions, NOT from inheriting layout decorations.
     lmap          = tp['layout_map']
     n_layouts     = len(prs.slide_layouts)
-    rich_idx      = tp.get('rich_layout_idx')
-    preferred     = [rich_idx, lmap.get('text'), lmap.get('blank'), n_layouts - 1]
+    preferred     = [lmap.get('text'), lmap.get('blank'), n_layouts - 1]
     chosen_idx    = lmap.get('blank', n_layouts - 1)
     for idx in preferred:
         if idx is None:
