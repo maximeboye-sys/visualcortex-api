@@ -3172,18 +3172,22 @@ def analyze_template_v4(prs: Presentation) -> dict:
 
     accent1 = theme.get('accent1', '009CEA')
     accent2 = theme.get('accent2', 'ED0000')
-    accent3 = theme.get('accent3', accent1)   # fallback → accent1, not invented green
-    accent4 = theme.get('accent4', accent2)   # fallback → accent2, not invented orange
+    accent3 = theme.get('accent3', '40A900')   # fallback = green pour variété visuelle
+    accent4 = theme.get('accent4', 'F66A00')   # fallback = orange pour variété visuelle
 
-    # Build accent_cycle from colors ACTUALLY in the template (no invented fallbacks)
-    # Priority: accent1, accent2, then accent3/accent4 only if template defines them
+    # accent_cycle : priorité aux couleurs réelles du template, au moins 4 entrées
     _cycle_raw = []
     for k in ('accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6'):
         if k in theme:
             _cycle_raw.append(theme[k])
     if not _cycle_raw:
         _cycle_raw = [accent1, accent2]
-    # Ensure at least 4 entries (repeat from start so cycling works)
+    # Si seulement 2 couleurs définies dans le template, ajouter accent3/accent4 pour variété
+    if len(_cycle_raw) < 3:
+        for extra in (accent3, accent4):
+            if extra not in _cycle_raw:
+                _cycle_raw.append(extra)
+    # Ensure at least 4 entries
     while len(_cycle_raw) < 4:
         _cycle_raw.append(_cycle_raw[len(_cycle_raw) % max(len(_cycle_raw), 1)])
     accent_cycle = _cycle_raw
@@ -3237,9 +3241,11 @@ def analyze_template_v4(prs: Presentation) -> dict:
         log.warning(f'[V4] bg master analysis: {e}')
 
     # Luminosité du fond → détecter fond sombre
-    _bg_check = bg_colors[0] if bg_colors else theme.get('dk1', '')
-    if _bg_check:
+    # IMPORTANT: pour bg_type='plain' (pas de fond explicite dans le master), on suppose fond clair.
+    # Utiliser dk1 comme proxy serait erroné : dk1 sombre n'implique pas un fond sombre.
+    if bg_type != 'plain' and bg_colors:
         try:
+            _bg_check = bg_colors[0]
             _br, _bg2, _bb = int(_bg_check[0:2], 16), int(_bg_check[2:4], 16), int(_bg_check[4:6], 16)
             bg_is_dark = (0.299 * _br + 0.587 * _bg2 + 0.114 * _bb) / 255 < 0.42
         except Exception:
@@ -3617,20 +3623,16 @@ def _h2_card_bg(slide, left: float, top: float, width: float, height: float,
     """
     Fond de carte adapté au template.
     - Fond riche (gradient/image) → fond blanc semi-transparent (laisse voir le fond).
-    - Fond sombre               → fond clair de la famille du template, semi-transparent.
-    - Fond classique            → fond opaque dans la famille couleur du template.
+    - Tous autres cas             → fond neutre opaque F8F8F8/F0F0F0 (clair, universel).
     """
     if tp.get('bg_rich', False):
         # Gradient ou image derrière → carte blanche semi-transparente (85% opaque)
         return _h2_rounded_rect_alpha(slide, left, top, width, height,
                                       'FFFFFF', radius, alpha_pct=85)
-    elif tp.get('bg_is_dark', False):
-        # Fond uni sombre → carte légère semi-transparente de la famille
-        return _h2_rounded_rect_alpha(slide, left, top, width, height,
-                                      _cbg(tp, idx), radius, alpha_pct=92)
     else:
-        # Fond clair classique → fond opaque dans la famille du template
-        return _h2_rounded_rect(slide, left, top, width, height, _cbg(tp, idx), radius)
+        # Fond uni ou plain → neutre opaque (bon contraste sur fond clair ET sombre)
+        color = 'F8F8F8' if idx % 2 == 0 else 'F0F0F0'
+        return _h2_rounded_rect(slide, left, top, width, height, color, radius)
 
 
 def _darken(hex_color: str, factor: float = 0.75) -> str:
