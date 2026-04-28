@@ -5655,8 +5655,8 @@ def layout_processflow_v4(prs: Presentation, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
@@ -6132,8 +6132,8 @@ def layout_funnel_v4(prs: Presentation, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
@@ -11509,8 +11509,8 @@ def layout_pricing_table_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     title = content.get('title', '')
     tiers = content.get('tiers', [])
@@ -11735,8 +11735,8 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
     import math
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     title  = content.get('title', '')
     center = content.get('center', {})
@@ -11989,8 +11989,8 @@ def layout_competitor_matrix_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     title       = content.get('title', '')
     competitors = content.get('competitors', [])
@@ -12154,8 +12154,8 @@ def layout_pest_analysis_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     title = content.get('title', '')
     items = content.get('items', [])
@@ -12421,8 +12421,8 @@ def layout_diamond_icons_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     title = content.get('title', '')
     items = content.get('items', [])
@@ -12598,8 +12598,8 @@ def layout_market_sizing_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     title    = content.get('title', '')
     segments = content.get('segments', [])
@@ -12810,8 +12810,8 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     title = content.get('title', '')
     steps = content.get('steps', [])
@@ -13046,8 +13046,8 @@ def layout_venn_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     title   = content.get('title', '')
     circles = content.get('circles', [])
@@ -13327,8 +13327,8 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
 
     title = content.get('title', '')
     items = content.get('items', [])
@@ -13538,9 +13538,9 @@ def layout_text_hero_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
-    lt1     = tp['lt1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
+    lt1     = tp['theme'].get('lt1', 'FFFFFF')
 
     title      = content.get('title', '')
     hero       = content.get('hero_word', content.get('value', ''))
@@ -13723,8 +13723,8 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
     """
     slide   = _blank_v4(prs, tp)
     font    = tp['font']
-    accents = tp['accents']
-    dk1     = tp['dk1']
+    accents = tp.get('accent_cycle', [tp['theme'].get('accent1','009CEA'), tp['theme'].get('accent2','ED0000'), tp['theme'].get('accent3','40A900'), tp['theme'].get('accent4','F66A00')])
+    dk1     = tp['theme'].get('dk1', '374649')
     W       = tp.get('W', 13.33)
 
     _add_template_header_and_footer(slide, content.get('title', ''),
