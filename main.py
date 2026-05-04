@@ -3286,6 +3286,57 @@ def analyze_template_v4(prs: Presentation) -> dict:
         _cycle_raw.append(_cycle_raw[len(_cycle_raw) % max(len(_cycle_raw), 1)])
     accent_cycle = _cycle_raw
 
+    # ── Détection thème générique → fallback couleurs chromatiques ───────────
+    # Certains templates ont les couleurs Microsoft par défaut dans le XML du thème
+    # (009CEA / ED0000 / 40A900…) mais appliquent la vraie charte directement sur
+    # les formes du master/layouts. Dans ce cas, on scanne les formes pour extraire
+    # les vraies couleurs chromatiques de la charte.
+    _OFFICE_DEFAULTS = {
+        '009CEA', '4F81BD', '4472C4', 'C0504D', 'ED0000', 'ED7D31',
+        '40A900', '9BBB59', 'F66A00', '8064A2', '4BACC6', 'F79646',
+    }
+    _theme_is_generic = theme.get('accent1', '') in _OFFICE_DEFAULTS
+
+    if _theme_is_generic:
+        try:
+            import lxml.etree as _lxml_et2
+            _clr_count: dict = {}
+
+            def _is_neutral_clr(h: str) -> bool:
+                try:
+                    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                    if r > 235 and g > 235 and b > 235: return True   # near-white
+                    if r < 25  and g < 25  and b < 25:  return True   # near-black
+                    if abs(r-g) < 25 and abs(g-b) < 25: return True   # near-gray
+                    return False
+                except Exception:
+                    return True
+
+            for _src in list(prs.slide_masters) + list(prs.slide_layouts):
+                try:
+                    _xml_str = _lxml_et2.tostring(_src._element).decode('utf-8', errors='ignore')
+                    for _c in _re2.findall(r'srgbClr val="([0-9A-Fa-f]{6})"', _xml_str):
+                        _c = _c.upper()
+                        _clr_count[_c] = _clr_count.get(_c, 0) + 1
+                except Exception:
+                    pass
+
+            _chromatic = [c for c, _ in sorted(_clr_count.items(), key=lambda x: -x[1])
+                          if not _is_neutral_clr(c)]
+
+            if _chromatic:
+                log.info(f'[V4] Thème générique → couleurs chromatiques depuis formes: {_chromatic[:4]}')
+                accent_cycle = _chromatic[:6]
+                # Mettre à jour theme pour que les titres/séparateurs utilisent aussi
+                # les vraies couleurs (accent1 = couleur principale de la charte)
+                for _i, _c in enumerate(_chromatic[:6], 1):
+                    theme[f'accent{_i}'] = _c
+                # Re-lire accent1/accent2 avec les nouvelles valeurs
+                accent1 = theme['accent1']
+                accent2 = theme.get('accent2', accent1)
+        except Exception as _e:
+            log.warning(f'[V4] Chromatic fallback failed: {_e}')
+
     # ── Analyse du fond maître (gradient / image / uni / plain) ─────────────
     bg_type   = 'plain'   # 'plain' | 'solid' | 'gradient' | 'image'
     bg_colors: list = []  # couleurs hex extraites du fond
