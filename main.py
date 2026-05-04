@@ -1189,6 +1189,61 @@ def health_v4():
     }
 
 
+@app.get("/debug-v4-template")
+async def debug_v4_template_form():
+    """Page HTML avec formulaire — ouvre dans le navigateur, uploade le template, lis le résultat."""
+    from fastapi.responses import HTMLResponse
+    html = """<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Debug V4 Template</title>
+<style>
+  body{font-family:sans-serif;max-width:700px;margin:40px auto;padding:20px;background:#f5f5f5}
+  h1{color:#1a1a2e;font-size:1.4rem}
+  input[type=file]{display:block;margin:16px 0;padding:8px;border:2px dashed #aaa;
+    border-radius:8px;width:100%;background:#fff;cursor:pointer}
+  button{background:#009CEA;color:#fff;border:none;padding:12px 28px;border-radius:6px;
+    font-size:1rem;cursor:pointer}
+  button:hover{background:#0080c0}
+  pre{background:#1a1a2e;color:#f0f0f0;padding:20px;border-radius:8px;overflow-x:auto;
+    font-size:.85rem;margin-top:20px;white-space:pre-wrap}
+  .label{font-weight:bold;color:#555;font-size:.9rem;margin-bottom:4px}
+  .ok{color:#40a900}.ko{color:#ed0000}
+</style></head>
+<body>
+<h1>🔍 Diagnostic V4 — Extraction de charte</h1>
+<p>Uploade ton template .pptx pour voir exactement ce que V4 extrait (couleurs, police, type de fond).</p>
+<form id="f" enctype="multipart/form-data">
+  <div class="label">Ton fichier template (.pptx) :</div>
+  <input type="file" name="file" accept=".pptx" required>
+  <button type="submit">Analyser</button>
+</form>
+<pre id="out" style="display:none"></pre>
+<script>
+document.getElementById('f').onsubmit = async e => {
+  e.preventDefault();
+  const out = document.getElementById('out');
+  out.style.display = 'block';
+  out.textContent = 'Analyse en cours…';
+  const fd = new FormData(e.target);
+  try {
+    const r = await fetch('/debug-v4-template', {method:'POST', body:fd});
+    const data = await r.json();
+    out.textContent = JSON.stringify(data, null, 2);
+    // Signaler si les couleurs semblent génériques
+    const cycle = data.accent_cycle || [];
+    const generic = ['009CEA','ED0000','40A900','F66A00'];
+    const allGeneric = cycle.length > 0 && cycle.every(c => generic.includes(c));
+    if(allGeneric) out.textContent += '\\n\\n⚠️  COULEURS GÉNÉRIQUES DÉTECTÉES — l\\'extraction a échoué pour ce template.';
+    else out.textContent += '\\n\\n✅ Couleurs extraites du template.';
+  } catch(err) {
+    out.textContent = 'Erreur : ' + err;
+  }
+};
+</script>
+</body></html>"""
+    return HTMLResponse(html)
+
+
 @app.post("/debug-v4-template")
 async def debug_v4_template(file: UploadFile = File(...)):
     """
