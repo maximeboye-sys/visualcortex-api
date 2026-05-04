@@ -1159,23 +1159,58 @@ def root():
 
 @app.get("/health-v4")
 def health_v4():
-    """Diagnostic : vérifie que V4 est actif et lister les layouts disponibles."""
-    layouts = [
+    """Diagnostic : vérifie que V4 est actif, version déployée, layouts disponibles."""
+    import subprocess as _sp
+    try:
+        _git_hash = _sp.check_output(['git', 'rev-parse', '--short', 'HEAD'],
+                                     stderr=_sp.DEVNULL).decode().strip()
+    except Exception:
+        _git_hash = 'unknown'
+
+    layouts_v4 = [
         'cover','section','closing','full_text','list_numbered','list_cards',
-        'two_col','kpi_grid','stat_hero','bar_chart','line_chart','pie_chart',
-        'stacked_bar','waterfall','radar','timeline','process_flow','funnel',
-        'matrix_2x2','swot','pros_cons','table','pyramid','cycle','roadmap',
-        'quote','before_after','highlight_box','agenda',
+        'two_col','col3','kpi_grid','stat_hero','infographic','timeline',
+        'process_flow','funnel','bar_chart','line_chart','pie_chart','waterfall',
+        'radar','pyramid','cycle','roadmap','stacked_bar','before_after','entity',
+        'conclusion','highlight_box','agenda','matrix_2x2','swot','pros_cons',
+        'table','team_grid','stat_banner','icon_row','section_break','photo_text',
+        'numbered_features','side_panel','circle_stats','mission_vision','photo_grid',
+        'pricing_table','hub_spoke','competitor_matrix','pest_analysis','diamond_icons',
+        'market_sizing','chevron_flow','venn','icon_grid','text_hero','org_chart',
     ]
     return {
         "pipeline":      "V4",
-        "version":       "14.0.0",
+        "version":       "14.1.0",
+        "git_hash":      _git_hash,
         "model":         CLAUDE_MODEL,
         "api_key_set":   bool(ANTHROPIC_API_KEY),
-        "n_layouts":     len(layouts),
-        "layouts":       layouts,
-        "n_variants":    2,
-        "variant_mode":  "deterministic_hash",
+        "n_layouts_v4":  len(layouts_v4),
+        "layouts_v4":    layouts_v4,
+    }
+
+
+@app.post("/debug-v4-template")
+async def debug_v4_template(file: UploadFile = File(...)):
+    """
+    Diagnostic V4 : uploade un template PPTX et retourne le tp dict complet.
+    Permet de vérifier que analyze_template_v4 extrait correctement la charte.
+    """
+    pptx_bytes = await file.read()
+    prs = Presentation(io.BytesIO(pptx_bytes))
+    tp = analyze_template_v4(prs)
+    return {
+        "theme":          tp['theme'],
+        "font":           tp['font'],
+        "accent_cycle":   tp['accent_cycle'],
+        "card_bg_light":  tp['card_bg_light'],
+        "card_bg_mid":    tp['card_bg_mid'],
+        "bg_type":        tp['bg_type'],
+        "bg_colors":      tp['bg_colors'],
+        "bg_is_dark":     tp['bg_is_dark'],
+        "layout_map":     tp['layout_map'],
+        "logo_zone":      tp['logo_zone'],
+        "W":              tp['W'],
+        "H":              tp['H'],
     }
 
 
@@ -1275,11 +1310,13 @@ async def generate_presentation(
 
     import asyncio as _asyncio
     # V4 → V3 → L1
+    _pipeline_used = 'V4'
     try:
         final_bytes, plan, _, _pal = await run_pipeline_v4(pptx_bytes, prompt, n, doc_content)
         log.info('[/generate] Pipeline V4 OK')
     except Exception as e:
         log.warning(f'[/generate] V4 échoué ({e}) → fallback V3')
+        _pipeline_used = 'V3'
         try:
             final_bytes, plan, _, _pal = await _asyncio.to_thread(
                 run_pipeline_v3, pptx_bytes, prompt, n
@@ -1287,6 +1324,7 @@ async def generate_presentation(
             log.info('[/generate] Pipeline V3 OK (fallback)')
         except Exception as e2:
             log.warning(f'[/generate] V3 échoué ({e2}) → fallback L1')
+            _pipeline_used = 'L1'
             final_bytes, plan, _ = await _asyncio.to_thread(
                 run_pipeline, pptx_bytes, prompt, n
             )
@@ -1298,6 +1336,7 @@ async def generate_presentation(
         headers={
             "Content-Disposition": f"attachment; filename={filename}",
             "Content-Length":      str(len(final_bytes)),
+            "X-Pipeline":          _pipeline_used,
         },
     )
 
@@ -3051,33 +3090,36 @@ def analyze_template_v4(prs: Presentation) -> dict:
     Retourne un template profile `tp` utilisé par toutes les fonctions V4.
     Couvre : couleurs thème, layout_map, logo_zone, font, accent_cycle, W, H.
     """
-    import re as _re2, zipfile as _zf2, io as _io2
+    import re as _re2
 
-    # ── Couleurs thème depuis ZIP ────────────────────────────────────────────
-    theme: dict = {}
+    # ── Thème XML — lecture directe depuis les rels du master (sans prs.save()) ─
+    # prs.save() re-sérialisait tout le PPTX en mémoire juste pour lire 1 fichier XML.
+    # Ici on lit le blob du ThemePart directement via les relations OPC du master.
+    _theme_xml = ''
     try:
-        buf = _io2.BytesIO()
-        prs.save(buf)
-        buf.seek(0)
-        with _zf2.ZipFile(buf) as zf:
-            theme_files = sorted([n for n in zf.namelist()
-                                   if _re2.search(r'ppt/theme/theme\d*\.xml$', n, _re2.I)])
-            if theme_files:
-                xml = zf.read(theme_files[0]).decode('utf-8', errors='ignore')
-                for slot in ['dk1', 'lt1', 'dk2', 'lt2',
-                             'accent1', 'accent2', 'accent3',
-                             'accent4', 'accent5', 'accent6']:
-                    m = _re2.search(
-                        rf'<a:{slot}[^>]*>\s*<a:srgbClr val="([0-9A-Fa-f]{{6}})"', xml)
-                    if m:
-                        theme[slot] = m.group(1).upper()
-                        continue
-                    m = _re2.search(
-                        rf'<a:{slot}[^>]*>\s*<a:sysClr[^>]*lastClr="([0-9A-Fa-f]{{6}})"', xml)
-                    if m:
-                        theme[slot] = m.group(1).upper()
-    except Exception as e:
-        log.warning(f'[V4] analyze_template_v4 theme: {e}')
+        _master_part = prs.slide_masters[0].part
+        for _rel in _master_part.rels.values():
+            if 'theme' in _rel.reltype.lower():
+                _theme_xml = _rel.target_part.blob.decode('utf-8', errors='ignore')
+                break
+    except Exception as _e:
+        log.warning(f'[V4] analyze_template_v4 theme rel: {_e}')
+
+    # ── Couleurs thème ───────────────────────────────────────────────────────
+    theme: dict = {}
+    if _theme_xml:
+        for slot in ['dk1', 'lt1', 'dk2', 'lt2',
+                     'accent1', 'accent2', 'accent3',
+                     'accent4', 'accent5', 'accent6']:
+            m = _re2.search(
+                rf'<a:{slot}[^>]*>\s*<a:srgbClr val="([0-9A-Fa-f]{{6}})"', _theme_xml)
+            if m:
+                theme[slot] = m.group(1).upper()
+                continue
+            m = _re2.search(
+                rf'<a:{slot}[^>]*>\s*<a:sysClr[^>]*lastClr="([0-9A-Fa-f]{{6}})"', _theme_xml)
+            if m:
+                theme[slot] = m.group(1).upper()
 
     # ── Layout map ──────────────────────────────────────────────────────────
     layout_map: dict = {}
@@ -3144,15 +3186,12 @@ def analyze_template_v4(prs: Presentation) -> dict:
     # ── Font — theme font scheme (major/minor), fallback to first non-+ typeface ─
     font = 'Calibri'
     try:
-        # Priority 1: major font from the theme XML font scheme
-        buf2 = _io2.BytesIO()
-        prs.save(buf2); buf2.seek(0)
-        with _zf2.ZipFile(buf2) as zf2:
-            if theme_files:
-                txml = zf2.read(theme_files[0]).decode('utf-8', errors='ignore')
-                m = _re2.search(r'<a:majorFont[^>]*>.*?<a:latin\s+typeface="([^+][^"]{0,63})"', txml, _re2.S)
-                if m:
-                    font = m.group(1)
+        # Priority 1: major font depuis le même _theme_xml déjà lu (pas de prs.save())
+        if _theme_xml:
+            m = _re2.search(r'<a:majorFont[^>]*>.*?<a:latin\s+typeface="([^+][^"]{0,63})"',
+                            _theme_xml, _re2.S)
+            if m:
+                font = m.group(1)
     except Exception:
         pass
     if font == 'Calibri':
