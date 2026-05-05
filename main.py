@@ -3147,18 +3147,18 @@ def analyze_template_v4(prs: Presentation) -> dict:
     """
     import re as _re2
 
-    # ── Thème XML — lecture directe depuis les rels du master (sans prs.save()) ─
-    # prs.save() re-sérialisait tout le PPTX en mémoire juste pour lire 1 fichier XML.
-    # Ici on lit le blob du ThemePart directement via les relations OPC du master.
+    # ── Thème XML — lecture via part_with_reltype (API officielle python-pptx) ──
+    _THEME_RT = (
+        'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme'
+    )
     _theme_xml = ''
     try:
         _master_part = prs.slide_masters[0].part
-        for _rel in _master_part.rels.values():
-            if 'theme' in _rel.reltype.lower():
-                _theme_xml = _rel.target_part.blob.decode('utf-8', errors='ignore')
-                break
+        _theme_xml = _master_part.rels.part_with_reltype(_THEME_RT).blob.decode(
+            'utf-8', errors='ignore'
+        )
     except Exception as _e:
-        log.warning(f'[V4] analyze_template_v4 theme rel: {_e}')
+        log.warning(f'[V4] analyze_template_v4 theme: {_e}')
 
     # ── Couleurs thème ───────────────────────────────────────────────────────
     theme: dict = {}
@@ -3295,7 +3295,9 @@ def analyze_template_v4(prs: Presentation) -> dict:
         '009CEA', '4F81BD', '4472C4', 'C0504D', 'ED0000', 'ED7D31',
         '40A900', '9BBB59', 'F66A00', '8064A2', '4BACC6', 'F79646',
     }
-    _theme_is_generic = theme.get('accent1', '') in _OFFICE_DEFAULTS
+    # Also trigger when theme is empty (reading failed) — empty accent1 is not in
+    # _OFFICE_DEFAULTS so without this check the chromatic scan would be skipped.
+    _theme_is_generic = (not theme) or (theme.get('accent1', '') in _OFFICE_DEFAULTS)
 
     if _theme_is_generic:
         try:
@@ -14791,13 +14793,19 @@ async def plan_presentation_v4(
     accent  = theme.get('accent2') or tp.get('accent',  'F0A500')
     font    = tp.get('font') or tp.get('font', 'Calibri')
 
-    user_prompt = _V4_PLANNER_USER.format(
-        prompt    = prompt,
-        nb_slides = nb_slides,
-        primary   = primary,
-        accent    = accent,
-        font      = font,
-    )
+    # Simple substitution instead of .format() to avoid KeyError on literal {curly}
+    # braces like {icon(emoji),name,role} that appear in the layout catalogue.
+    user_prompt = _V4_PLANNER_USER
+    for _ph, _val in [
+        ('{prompt}',    prompt),
+        ('{nb_slides}', str(nb_slides)),
+        ('{primary}',   primary),
+        ('{accent}',    accent),
+        ('{font}',      font),
+    ]:
+        user_prompt = user_prompt.replace(_ph, _val)
+    # Convert {{ / }} back to single braces (they were escaped for .format() compat)
+    user_prompt = user_prompt.replace('{{', '{').replace('}}', '}')
 
     if document_content:
         user_prompt = user_prompt + _V4_DOC_INJECT.format(
