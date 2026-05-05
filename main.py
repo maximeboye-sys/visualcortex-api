@@ -1370,7 +1370,7 @@ async def generate_presentation(
         final_bytes, plan, _, _pal = await run_pipeline_v4(pptx_bytes, prompt, n, doc_content)
         log.info('[/generate] Pipeline V4 OK')
     except Exception as e:
-        log.warning(f'[/generate] V4 échoué ({e}) → fallback V3')
+        log.error(f'[/generate] V4 échoué ({e}) → fallback V3', exc_info=True)
         _pipeline_used = 'V3'
         try:
             final_bytes, plan, _, _pal = await _asyncio.to_thread(
@@ -1482,7 +1482,7 @@ async def generate_stream(
                 )
                 log.info("[/generate-stream] Pipeline V4 OK")
             except Exception as e_v4:
-                log.warning(f"[/generate-stream] V4 échoué ({e_v4}) → fallback V3")
+                log.error(f"[/generate-stream] V4 échoué ({e_v4}) → fallback V3", exc_info=True)
                 final_bytes, _plan, _brand, _pal = await _aio.to_thread(
                     run_pipeline_v3, pptx_bytes, prompt_val, nb_slides
                 )
@@ -15154,7 +15154,7 @@ async def generate_presentation_v2(
         log.info('[/generate-v2] Pipeline V4 OK')
     except Exception as e:
         import asyncio as _asyncio
-        log.warning(f'[/generate-v2] V4 échoué ({e}) → fallback V3')
+        log.error(f'[/generate-v2] V4 échoué ({e}) → fallback V3', exc_info=True)
         try:
             final_bytes, plan, brand, palette = await _asyncio.to_thread(
                 run_pipeline_v3, pptx_bytes, prompt, n
