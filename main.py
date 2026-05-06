@@ -5665,7 +5665,7 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
 
     elif v == 2:
         # Variante 2 : cartes colorées en rangée — grand numéro + date pill + contenu
-        n_cols  = min(n, 4)
+        n_cols  = n if n <= 4 else 3  # n=5 → 3 cols (3+2 balanced), n≥6 → 3 cols
         n_rows  = (n + n_cols - 1) // n_cols
         gap_x   = _LY.GAP_SM
         gap_y   = _LY.GAP_MD
@@ -10861,10 +10861,13 @@ def layout_numbered_features_v4(prs: Presentation, content: dict, tp: dict):
                      font, 56, 'FFFFFF', bold=True, align='center')
             tx  = _LY.CL + panel_w + 0.24
             tw  = _LY.CW - panel_w - 0.30 - (1.30 if sv else 0)
-            _h2_text(slide, title, tx, ry + (row_h - 0.36) * 0.28, tw, 0.36,
+            # Vertically position title: near top if body exists, centered if not
+            title_top = ry + 0.14 if body else ry + (row_h - 0.36) / 2
+            _h2_text(slide, title, tx, title_top, tw, 0.36,
                      font, _LY.T_HEADER, dk1, bold=True, align='left')
             if body:
-                _h2_text(slide, body, tx, ry + 0.46, tw, row_h - 0.54,
+                body_top = title_top + 0.42
+                _h2_text(slide, body, tx, body_top, tw, row_h - (body_top - ry) - 0.10,
                          font, _LY.T_SMALL, '555555', bold=False, align='left',
                          line_spacing=1.2)
             if sv:
@@ -11904,7 +11907,7 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
         hub_r   = 0.72
         hub_cx  = _LY.CL + _LY.CW * 0.42
         hub_cy  = _LY.CT + (_LY.CB - _LY.CT) * 0.50
-        spoke_r = 0.28
+        spoke_r = 0.38
         dist    = 2.10
 
         # Hub circle
@@ -11929,18 +11932,18 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
                              spoke_r * 2, spoke_r * 2, color, spoke_r)
             if icon:
                 _h2_text(slide, icon, ix - spoke_r, iy - spoke_r,
-                         spoke_r * 2, spoke_r * 2, font, 13, 'FFFFFF', bold=False, align='center')
+                         spoke_r * 2, spoke_r * 2, font, 18, 'FFFFFF', bold=False, align='center')
 
             # Label near spoke — offset outward
-            lbl_w = 1.10
-            off   = spoke_r + 0.08
+            lbl_w = 1.30
+            off   = spoke_r + 0.10
             lx    = ix + math.cos(angle) * off - lbl_w / 2
-            ly    = iy + math.sin(angle) * off - 0.02
+            ly    = iy + math.sin(angle) * off - 0.04
             # clamp to slide
             lx = max(_LY.CL, min(lx, _LY.CR - lbl_w))
-            ly = max(_LY.CT, min(ly, _LY.CB - 0.24))
-            _h2_text(slide, label, lx, ly, lbl_w, 0.24,
-                     font, 8, dk1, bold=True, align='center')
+            ly = max(_LY.CT, min(ly, _LY.CB - 0.32))
+            _h2_text(slide, label, lx, ly, lbl_w, 0.32,
+                     font, 10, dk1, bold=True, align='center')
 
     elif v == 1:
         # Hub on left ~25%, items 2-col grid on right
@@ -13002,13 +13005,13 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
 
             y += 0.34
             if icon:
-                _h2_text(slide, icon, text_x, y, text_w, 0.42,
-                         font, 22, 'FFFFFF', bold=False, align='center')
-                y += 0.46
+                _h2_text(slide, icon, text_x, y, text_w, 0.36,
+                         font, 18, 'FFFFFF', bold=False, align='center')
+                y += 0.40
 
-            _h2_text(slide, ttxt, text_x, y, text_w, 0.30,
+            _h2_text(slide, ttxt, text_x, y, text_w, 0.50,
                      font, 10, 'FFFFFF', bold=True, align='center')
-            y += 0.32
+            y += 0.52
             if body:
                 _h2_text(slide, body, text_x, y, text_w, zone_h - (y - _LY.CT) - 0.10,
                          font, 8, 'FFFFFF', bold=False, align='center')
