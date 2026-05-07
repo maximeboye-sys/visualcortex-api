@@ -3357,10 +3357,11 @@ def analyze_template_v4(prs: Presentation) -> dict:
             if _chromatic:
                 log.info(f'[V4] Thème générique → couleurs chromatiques depuis formes: {_chromatic[:4]}')
                 accent_cycle = _chromatic[:4]  # max 4 to avoid rainbow effect
-                for _i, _c in enumerate(_chromatic[:4], 1):
-                    theme[f'accent{_i}'] = _c
-                accent1 = theme['accent1']
-                accent2 = theme.get('accent2', accent1)
+                # Update LOCAL variables only — do NOT overwrite theme dict.
+                # theme['accent1'] stays as the original XML color (used for titles/headers)
+                # so that _add_template_header_and_footer uses the real brand primary color.
+                accent1 = _chromatic[0]
+                accent2 = _chromatic[1] if len(_chromatic) > 1 else accent1
         except Exception as _e:
             log.warning(f'[V4] Chromatic fallback failed: {_e}')
 
@@ -3422,6 +3423,7 @@ def analyze_template_v4(prs: Presentation) -> dict:
         if cSld_m is not None:
             bgEl = cSld_m.find(qn('p:bg'))
             bg_type, bg_colors = _parse_bg_element(bgEl, theme)
+        _master_bg_type = bg_type  # save before layout scan — used for bg_rich
 
         # 2. If master is plain, check slide layouts for gradient/solid backgrounds
         if bg_type == 'plain':
@@ -3517,7 +3519,7 @@ def analyze_template_v4(prs: Presentation) -> dict:
         'bg_type':          bg_type,          # 'plain'|'solid'|'gradient'|'image'
         'bg_colors':        bg_colors,        # couleurs extraites du fond master
         'bg_is_dark':       bg_is_dark,       # fond sombre → adapter rendu
-        'bg_rich':          bg_type in ('gradient', 'image'),
+        'bg_rich':          _master_bg_type in ('gradient', 'image'),
         'rich_layout_idx':  rich_layout_idx,  # layout le plus décoré sans fond propre
         'W':                W,
         'H':                H,
@@ -3773,9 +3775,20 @@ def _trunc(text: str, max_words: int = 12) -> str:
 
 def _cbg(tp: dict, idx: int = 0) -> str:
     """Return a card/row background color from the template palette (neutral, no blue tint)."""
+    _FALLBACK_LIGHT = 'F4F7FA'
+    _FALLBACK_MID   = 'E8ECF0'
     if idx % 2 == 0:
-        return tp.get('card_bg_light', 'F8F8F8')
-    return tp.get('card_bg_mid', 'F0F0F0')
+        c = tp.get('card_bg_light', _FALLBACK_LIGHT)
+    else:
+        c = tp.get('card_bg_mid', _FALLBACK_MID)
+    # Never return pure white — ensure at least minimal contrast with slide background
+    try:
+        lum = (0.299 * int(c[0:2], 16) + 0.587 * int(c[2:4], 16) + 0.114 * int(c[4:6], 16)) / 255
+        if lum > 0.975:
+            return _FALLBACK_LIGHT if idx % 2 == 0 else _FALLBACK_MID
+    except Exception:
+        pass
+    return c
 
 
 def _set_shape_alpha(shape, alpha_pct: int):
@@ -7683,30 +7696,45 @@ def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
     phase_w = band_w / n
 
     if v == 0:
-        # Bande de phases en haut + jalons listés sous chaque phase
-        y_band  = _LY.CT
-        band_h  = _LY.HEAD_H
-        ms_zone = _LY.CB - (y_band + band_h)
-        _h2_rect(slide, left=x_start, top=y_band, width=band_w, height=band_h, color='F0F0F0')
+        # Phase header band + compact milestone rows (fixed height, no floating squares)
+        y_band = _LY.CT
+        band_h = 0.52
+        y_ms   = y_band + band_h + 0.10  # top of milestone zone
+
         for i, phase in enumerate(phases[:n]):
             label      = phase.get('label', '') if isinstance(phase, dict) else str(phase)
             milestones = phase.get('milestones', []) if isinstance(phase, dict) else []
             color      = accents[i % len(accents)]
             px         = x_start + i * phase_w
+
+            # Phase header cell
             _h2_rect(slide, left=px + 0.04, top=y_band, width=phase_w - 0.08, height=band_h, color=color)
             _h2_text(slide, label,
-                     left=px + 0.08, top=y_band + 0.06,
-                     width=phase_w - 0.14, height=band_h - 0.10,
+                     left=px + 0.08, top=y_band + 0.08,
+                     width=phase_w - 0.14, height=band_h - 0.12,
                      font=font, size_pt=11, color='FFFFFF', bold=True, align='center')
-            n_ms    = min(len(milestones), 5)
-            ms_step = ms_zone / max(n_ms, 1)
+
+            # Thin vertical separator between columns
+            if i < n - 1:
+                _h2_rect(slide, left=px + phase_w - 0.005, top=y_ms,
+                         width=0.01, height=_LY.CB - y_ms - 0.10, color='DDDDDD')
+
+            # Compact milestone rows — fixed 0.38" per item, no stretching
+            ms_h  = 0.38
+            dot_r = 0.06
+            n_ms  = min(len(milestones), 5)
             for j, ms in enumerate(milestones[:n_ms]):
-                my = y_band + band_h + j * ms_step + 0.08
-                _h2_rect(slide, left=px + 0.08, top=my + 0.08, width=0.07, height=0.07, color=color)
+                my = y_ms + j * ms_h
+                if my + ms_h > _LY.CB - 0.05:
+                    break
+                _h2_rounded_rect(slide,
+                                 left=px + 0.10, top=my + (ms_h - dot_r * 2) / 2,
+                                 width=dot_r * 2, height=dot_r * 2,
+                                 color=color, radius=dot_r)
                 _h2_text(slide, str(ms),
-                         left=px + 0.22, top=my,
-                         width=phase_w - 0.30, height=ms_step - 0.10,
-                         font=font, size_pt=10, color=dk1,
+                         left=px + 0.26, top=my,
+                         width=phase_w - 0.34, height=ms_h,
+                         font=font, size_pt=9, color=dk1,
                          bold=False, align='left', line_spacing=1.1)
 
     elif v == 1:
@@ -11010,6 +11038,43 @@ def layout_side_panel_v4(prs: Presentation, content: dict, tp: dict):
     items  = content.get('items', [])
     footer = content.get('footer', '')
     v = _v4_variant(content, 5, tp.get('seed', 0))
+
+    _sober = not tp.get('bg_is_dark', False) and not tp.get('bg_rich', False)
+
+    if _sober:
+        # Sober mode: no full-height sidebar — use standard header + card grid
+        _add_template_header_and_footer(slide, main_title, footer, tp, content)
+        n = min(len(items), 6)
+        if n:
+            n_cols = 3 if n > 3 else 2
+            col_w  = (_LY.CW - _LY.GAP_MD * (n_cols - 1)) / n_cols
+            n_rows = (n + n_cols - 1) // n_cols
+            row_h  = (_LY.CB - _LY.CT - _LY.GAP_XS * (n_rows - 1)) / max(n_rows, 1)
+            for i, it in enumerate(items[:n]):
+                col_i = i % n_cols
+                row_i = i // n_cols
+                icon  = it.get('icon', '') if isinstance(it, dict) else ''
+                title = it.get('title', '') if isinstance(it, dict) else str(it)
+                body  = it.get('body', '') if isinstance(it, dict) else ''
+                color = accents[i % len(accents)]
+                ix    = _LY.CL + col_i * (col_w + _LY.GAP_MD)
+                iy    = _LY.CT + row_i * (row_h + _LY.GAP_XS)
+                _h2_rounded_rect(slide, left=ix, top=iy, width=col_w, height=row_h,
+                                 color=_cbg(tp, i), radius=_LY.R_SM)
+                _h2_rect(slide, left=ix, top=iy, width=col_w, height=0.04, color=color)
+                tx = ix + _LY.PAD
+                if icon:
+                    _h2_icon_circle(slide, tx + 0.22, iy + min(0.55, row_h / 2),
+                                    0.20, icon, font, color, 'FFFFFF', 10)
+                    tx += 0.54
+                tw = ix + col_w - tx - _LY.PAD
+                _h2_text(slide, title, tx, iy + 0.10, tw, 0.30,
+                         font, _LY.T_TITLE, dk1, bold=True, align='left')
+                if body:
+                    _h2_text(slide, body, tx, iy + 0.44, tw, row_h - 0.52,
+                             font, _LY.T_SMALL, '666666', bold=False,
+                             align='left', line_spacing=1.15)
+        return slide
 
     panel_w = 1.80
 
