@@ -3288,21 +3288,18 @@ def analyze_template_v4(prs: Presentation) -> dict:
 
     # ── Détection thème générique → fallback couleurs chromatiques ───────────
     # Certains templates ont les couleurs Microsoft par défaut dans le XML du thème
-    # (009CEA / ED0000 / 40A900…) mais appliquent la vraie charte directement sur
-    # les formes du master/layouts. Dans ce cas, on scanne les formes pour extraire
-    # les vraies couleurs chromatiques de la charte.
+    # mais appliquent la vraie charte directement sur les formes du master/layouts/slides.
     _OFFICE_DEFAULTS = {
         '009CEA', '4F81BD', '4472C4', 'C0504D', 'ED0000', 'ED7D31',
         '40A900', '9BBB59', 'F66A00', '8064A2', '4BACC6', 'F79646',
     }
-    # Also trigger when theme is empty (reading failed) — empty accent1 is not in
-    # _OFFICE_DEFAULTS so without this check the chromatic scan would be skipped.
     _theme_is_generic = (not theme) or (theme.get('accent1', '') in _OFFICE_DEFAULTS)
 
     if _theme_is_generic:
         try:
             import lxml.etree as _lxml_et2
-            _clr_count: dict = {}
+            _clr_master: dict = {}   # colors from master/layouts
+            _clr_slides:  dict = {}  # colors from first 6 content slides (higher weight)
 
             def _is_neutral_clr(h: str) -> bool:
                 try:
@@ -3319,21 +3316,49 @@ def analyze_template_v4(prs: Presentation) -> dict:
                     _xml_str = _lxml_et2.tostring(_src._element).decode('utf-8', errors='ignore')
                     for _c in _re2.findall(r'srgbClr val="([0-9A-Fa-f]{6})"', _xml_str):
                         _c = _c.upper()
-                        _clr_count[_c] = _clr_count.get(_c, 0) + 1
+                        _clr_master[_c] = _clr_master.get(_c, 0) + 1
                 except Exception:
                     pass
 
-            _chromatic = [c for c, _ in sorted(_clr_count.items(), key=lambda x: -x[1])
-                          if not _is_neutral_clr(c)]
+            # Also scan the first 6 content slides — brand colors are often applied
+            # directly in slide shapes (column headers, stat boxes, etc.) rather than
+            # in the master. Weight slide colors 3× to prefer them.
+            for _src in list(prs.slides)[:6]:
+                try:
+                    _xml_str = _lxml_et2.tostring(_src._element).decode('utf-8', errors='ignore')
+                    for _c in _re2.findall(r'srgbClr val="([0-9A-Fa-f]{6})"', _xml_str):
+                        _c = _c.upper()
+                        _clr_slides[_c] = _clr_slides.get(_c, 0) + 1
+                except Exception:
+                    pass
+
+            # Merge counts: slide colors weighted 3× vs master/layout colors
+            _clr_combined: dict = {}
+            for c, cnt in _clr_master.items():
+                _clr_combined[c] = _clr_combined.get(c, 0) + cnt
+            for c, cnt in _clr_slides.items():
+                _clr_combined[c] = _clr_combined.get(c, 0) + cnt * 3
+
+            # Prioritise non-Office-default colors (true brand specifics) then defaults
+            _sorted = sorted(_clr_combined.items(), key=lambda x: -x[1])
+            _brand_primary  = [c for c, _ in _sorted if not _is_neutral_clr(c) and c not in _OFFICE_DEFAULTS]
+            _brand_fallback = [c for c, _ in _sorted if not _is_neutral_clr(c) and c in _OFFICE_DEFAULTS]
+
+            # Build chromatic list: up to 4 non-default brand colors,
+            # filled with office-default colors only if not enough brand-specific ones.
+            _chromatic = _brand_primary[:4]
+            if len(_chromatic) < 2:
+                for _c in _brand_fallback:
+                    if _c not in _chromatic:
+                        _chromatic.append(_c)
+                    if len(_chromatic) >= 3:
+                        break
 
             if _chromatic:
                 log.info(f'[V4] Thème générique → couleurs chromatiques depuis formes: {_chromatic[:4]}')
-                accent_cycle = _chromatic[:6]
-                # Mettre à jour theme pour que les titres/séparateurs utilisent aussi
-                # les vraies couleurs (accent1 = couleur principale de la charte)
-                for _i, _c in enumerate(_chromatic[:6], 1):
+                accent_cycle = _chromatic[:4]  # max 4 to avoid rainbow effect
+                for _i, _c in enumerate(_chromatic[:4], 1):
                     theme[f'accent{_i}'] = _c
-                # Re-lire accent1/accent2 avec les nouvelles valeurs
                 accent1 = theme['accent1']
                 accent2 = theme.get('accent2', accent1)
         except Exception as _e:
@@ -3343,47 +3368,76 @@ def analyze_template_v4(prs: Presentation) -> dict:
     bg_type   = 'plain'   # 'plain' | 'solid' | 'gradient' | 'image'
     bg_colors: list = []  # couleurs hex extraites du fond
     bg_is_dark = False    # True si fond sombre (luminosité < 0.42)
+
+    def _parse_bg_element(bgEl, theme_map):
+        """Extract bg_type and bg_colors from a p:bg element."""
+        _type, _colors = 'plain', []
+        if bgEl is None:
+            return _type, _colors
+        bgPr = bgEl.find(qn('p:bgPr'))
+        bgRef = bgEl.find(qn('p:bgRef'))
+        if bgPr is not None:
+            gf = bgPr.find(qn('a:gradFill'))
+            if gf is not None:
+                _type = 'gradient'
+                gsLst = gf.find(qn('a:gsLst'))
+                if gsLst is not None:
+                    for gs in gsLst.findall(qn('a:gs')):
+                        for c_el in list(gs):
+                            tag = c_el.tag.split('}')[-1]
+                            if tag == 'srgbClr':
+                                v = c_el.get('val', '').upper()
+                                if v: _colors.append(v)
+                            elif tag == 'schemeClr':
+                                slot = c_el.get('val', '')
+                                if slot in theme_map: _colors.append(theme_map[slot])
+            elif bgPr.find(qn('a:blipFill')) is not None:
+                _type = 'image'
+            else:
+                sf = bgPr.find(qn('a:solidFill'))
+                if sf is not None:
+                    for c_el in list(sf):
+                        tag = c_el.tag.split('}')[-1]
+                        if tag == 'srgbClr':
+                            v = c_el.get('val', '').upper()
+                            if v: _colors.append(v)
+                        elif tag == 'schemeClr':
+                            slot = c_el.get('val', '')
+                            if slot in theme_map: _colors.append(theme_map[slot])
+                    _type = 'solid' if _colors else 'plain'
+        elif bgRef is not None:
+            # p:bgRef = themed fill style reference — treat as gradient/styled
+            _type = 'gradient'
+            sc = bgRef.find(qn('a:schemeClr'))
+            if sc is not None:
+                slot = sc.get('val', '')
+                if slot in theme_map: _colors.append(theme_map[slot])
+        return _type, _colors
+
     try:
         import lxml.etree as _etxml
+        # 1. Check master background
         master_el = prs.slide_masters[0]._element
         cSld_m    = master_el.find(qn('p:cSld'))
         if cSld_m is not None:
             bgEl = cSld_m.find(qn('p:bg'))
-            if bgEl is not None:
-                bgPr = bgEl.find(qn('p:bgPr'))
-                if bgPr is not None:
-                    gf = bgPr.find(qn('a:gradFill'))
-                    if gf is not None:
-                        bg_type = 'gradient'
-                        gsLst = gf.find(qn('a:gsLst'))
-                        if gsLst is not None:
-                            for gs in gsLst.findall(qn('a:gs')):
-                                for c_el in list(gs):
-                                    tag = c_el.tag.split('}')[-1]
-                                    if tag == 'srgbClr':
-                                        v = c_el.get('val', '').upper()
-                                        if v:
-                                            bg_colors.append(v)
-                                    elif tag == 'schemeClr':
-                                        slot = c_el.get('val', '')
-                                        if slot in theme:
-                                            bg_colors.append(theme[slot])
-                    elif bgPr.find(qn('a:blipFill')) is not None:
-                        bg_type = 'image'
-                    else:
-                        sf = bgPr.find(qn('a:solidFill'))
-                        if sf is not None:
-                            for c_el in list(sf):
-                                tag = c_el.tag.split('}')[-1]
-                                if tag == 'srgbClr':
-                                    v = c_el.get('val', '').upper()
-                                    if v:
-                                        bg_colors.append(v)
-                                elif tag == 'schemeClr':
-                                    slot = c_el.get('val', '')
-                                    if slot in theme:
-                                        bg_colors.append(theme[slot])
-                            bg_type = 'solid' if bg_colors else 'plain'
+            bg_type, bg_colors = _parse_bg_element(bgEl, theme)
+
+        # 2. If master is plain, check slide layouts for gradient/solid backgrounds
+        if bg_type == 'plain':
+            for _lay in prs.slide_layouts:
+                try:
+                    _cSld_l = _lay._element.find(qn('p:cSld'))
+                    if _cSld_l is None:
+                        continue
+                    _bgEl_l = _cSld_l.find(qn('p:bg'))
+                    _ltype, _lcolors = _parse_bg_element(_bgEl_l, theme)
+                    if _ltype in ('gradient', 'solid'):
+                        bg_type   = _ltype
+                        bg_colors = _lcolors
+                        break
+                except Exception:
+                    pass
     except Exception as e:
         log.warning(f'[V4] bg master analysis: {e}')
 
@@ -3847,11 +3901,32 @@ def _blank_v4(prs: Presentation, tp: dict):
     cSld = slide._element.find(qn('p:cSld'))
     if cSld is not None:
         cSld.set('showMasterSp', '1')
-        # Remove any slide-level background override so master gradient shows through
+        # Remove any slide-level background override so master/layout gradient shows through
         bg = cSld.find(qn('p:bg'))
         if bg is not None:
             try:
                 cSld.remove(bg)
+            except Exception:
+                pass
+
+    # If the template uses gradient/styled backgrounds defined in a layout (not master),
+    # copy the background from the first gradient layout to this slide so it appears.
+    # We use the layout's p:bg but NOT its shapes (already stripped via placeholder removal).
+    if tp.get('bg_type') in ('gradient', 'solid') and cSld is not None:
+        # Check if the chosen layout has a bg we can inherit — if not, copy from another
+        chosen_layout = prs.slide_layouts[min(chosen_idx, n_layouts - 1)]
+        if not _layout_has_own_bg(chosen_layout):
+            # Find first layout with its own bg and copy it to the slide
+            try:
+                import copy as _copy
+                for _lay in prs.slide_layouts:
+                    _cSld_l = _lay._element.find(qn('p:cSld'))
+                    if _cSld_l is None:
+                        continue
+                    _bgEl = _cSld_l.find(qn('p:bg'))
+                    if _bgEl is not None:
+                        cSld.insert(0, _copy.deepcopy(_bgEl))
+                        break
             except Exception:
                 pass
 
