@@ -2883,13 +2883,13 @@ kpi_grid                  →  {{"title":"...", "kpis":[{{"value":"47 %","label"
 kpi_row                   →  {{"title":"...", "kpis":[{{"value":"3,2 Md€","label":"CA 2023","sublabel":"vs 2,1 Md€ en 2022"}}], "footer":"..."}}
 timeline_h                →  {{"title":"...", "steps":[{{"date":"2021","title":"Lancement","body":"Déploiement initial dans 3 pays"}}], "footer":"..."}}
 two_col                   →  {{"title":"...", "section_label":"ANALYSE", "col_a":{{"title":"POUR","subtitle":"sous-titre optionnel","items":["Argument 1","Argument 2"]}}, "col_b":{{"title":"CONTRE","subtitle":"sous-titre optionnel","items":["Limite 1","Limite 2"]}}, "footer":"..."}}
-col3                      →  {{"title":"...", "section_label":"STRATÉGIE", "subtitle":"Trois axes prioritaires", "columns":[{{"icon":"⚡","label":"CAPEX","title":"INVESTISSEMENTS","subtitle":"Déficit potentiel","items":["Point 1","Point 2"],"stat_value":"-28%","stat_label":"BAISSE MONDIALE"}}], "footer":"..."}}
-conclusion                →  {{"title":"...", "section_label":"SYNTHÈSE", "subtitle":"...", "cards":[{{"icon":"🌐","title":"AXE 1","body":"..."}}], "sidebar_title":"Vision", "sidebar_quote":"Citation...", "sidebar_cta":"QUESTIONS & ÉCHANGES", "footer":"..."}}
-entity                    →  {{"title":"...", "section_label":"COMPARAISON", "subtitle":"Analyse comparative", "entities":[{{"icon":"🇺🇸","name":"États-Unis","badge":"LEADER","items":["Point 1","Point 2"],"stat_value":"34%","stat_label":"PART MONDIALE"}}], "footer":"..."}}
-infographic               →  {{"title":"...", "section_label":"CHIFFRES CLÉS", "subtitle":"...", "value":"47 %", "label":"Taux de croissance", "context":"Contexte additionnel en 20 mots.", "bars":[{{"label":"Segment A","percent":47}},{{"label":"Segment B","percent":31}},{{"label":"Segment C","percent":22}}], "footer":"..."}}
-quote                     →  {{"section_label":"LE GRAND ENTRETIEN", "category":"LE GRAND ENTRETIEN", "quote":"Citation percutante ≤ 20 mots", "author":"Prénom NOM, Titre — 2024", "source":"Source — Date", "footer":"..."}}
-list_numbered             →  {{"title":"...", "section_label":"ANALYSE", "subtitle":"...", "items":[{{"title":"Levier 1","body":"Explication concise en 15 mots max."}}], "footer":"..."}}
-list_cards                →  {{"title":"...", "section_label":"ANALYSE", "subtitle":"...", "cards":[{{"icon":"📊","label":"KPI","title":"Axe 1","subtitle":"Sous-axe","body":"Description en 20 mots max.","stat_value":"47%","stat_label":"PART DE MARCHÉ"}}], "footer":"..."}}
+col3                      →  {{"title":"...", "subtitle":"Trois axes prioritaires", "columns":[{{"icon":"▲","label":"CAPEX","title":"INVESTISSEMENTS","subtitle":"Déficit potentiel","items":["Point 1","Point 2"],"stat_value":"-28%","stat_label":"BAISSE MONDIALE"}}], "footer":"..."}}
+conclusion                →  {{"title":"...", "subtitle":"...", "cards":[{{"icon":"◆","title":"AXE 1","body":"..."}}], "sidebar_title":"Vision", "sidebar_quote":"Citation...", "sidebar_cta":"QUESTIONS & ÉCHANGES", "footer":"..."}}
+entity                    →  {{"title":"...", "subtitle":"Analyse comparative", "entities":[{{"icon":"US","name":"États-Unis","badge":"LEADER","items":["Point 1","Point 2"],"stat_value":"34%","stat_label":"PART MONDIALE"}}], "footer":"..."}}
+infographic               →  {{"title":"...", "subtitle":"...", "value":"47 %", "label":"Taux de croissance", "context":"Contexte additionnel en 20 mots.", "bars":[{{"label":"Segment A","percent":47}},{{"label":"Segment B","percent":31}},{{"label":"Segment C","percent":22}}], "footer":"..."}}
+quote                     →  {{"category":"LE GRAND ENTRETIEN", "quote":"Citation percutante ≤ 20 mots", "author":"Prénom NOM, Titre — 2024", "source":"Source — Date", "footer":"..."}}
+list_numbered             →  {{"title":"...", "subtitle":"...", "items":[{{"title":"Levier 1","body":"Explication concise en 15 mots max."}}], "footer":"..."}}
+list_cards                →  {{"title":"...", "subtitle":"...", "cards":[{{"icon":"■","label":"KPI","title":"Axe 1","subtitle":"Sous-axe","body":"Description en 20 mots max.","stat_value":"47%","stat_label":"PART DE MARCHÉ"}}], "footer":"..."}}
 image_split               →  {{"title":"...", "points":["Point 1 en 15 mots","Point 2"], "footer":"..."}}
 full_text                 →  {{"title":"...", "paragraphs":["Paragraphe 1 (≤ 40 mots)","Paragraphe 2"], "footer":"..."}}
 stat_hero                 →  {{"value":"€ 2,3 Md", "label":"Montant des pertes évitées", "context":"Estimation sur 5 ans — rapport Ernst & Young 2023", "footer":"..."}}
@@ -14672,13 +14672,13 @@ Transforme toujours le texte en éléments visuels structurés :
 - Argument central → highlight_box ou quote
 
 RICHESSE VISUELLE OBLIGATOIRE :
-- list_cards : TOUJOURS icon (emoji) + title + body (1 phrase) + stat_value/stat_label
+- list_cards : TOUJOURS icon (symbole) + title + body (1 phrase) + stat_value/stat_label
 - col3 : TOUJOURS icon + label (badge) + title + 3-4 items courts + stat_value/stat_label
-- entity : TOUJOURS icon/flag + name + badge + 3-4 items + stat_value/stat_label
+- entity : TOUJOURS icon/symbole + name + badge + 3-4 items + stat_value/stat_label
 - kpi_grid : TOUJOURS value + label + sublabel (source/contexte) pour chaque KPI
 - two_col : TOUJOURS title de colonne + subtitle + 3-4 items courts et percutants
 - highlight_box : TOUJOURS highlight (accroche forte) + body (1-2 phrases) + points (2-3 bullets)
-- Chaque slide DOIT avoir section_label (MAJUSCULES) et subtitle (accroche en 1 ligne)
+- Chaque slide DOIT avoir subtitle (accroche en 1 ligne)
 
 HIÉRARCHIE DES LAYOUTS (du plus riche au moins riche) :
 TIER 1 (préférer) : list_cards, col3, entity, kpi_grid, infographic, stat_hero, conclusion,
@@ -14702,6 +14702,11 @@ COULEUR PRINCIPALE : #{primary}  |  ACCENT : #{accent}  |  POLICE : {font}
 
 CATALOGUE DES LAYOUTS :
 
+SYMBOLES POUR LES CHAMPS "icon" :
+Utiliser uniquement des symboles Unicode minimalistes monochrome. NE PAS utiliser d'emoji couleur.
+Palette recommandée : ● ○ ■ □ ◆ ◇ ▲ △ ▶ → ★ ☆ ✓ ✗ + × ∞ ≈ # ① ② ③
+Pour team_grid : utiliser les initiales (ex: "MD" pour Marie Dupont) plutôt qu'un emoji.
+
 ─── SLIDES STRUCTURELLES ───
 cover          — Couverture (title, subtitle≤12mots)
 section        — Séparateur de section (title, subtitle)
@@ -14710,20 +14715,20 @@ agenda         — Sommaire (title, section_label, items:[{{number,label}}] — 
 
 ─── LAYOUTS VISUELS RICHES [TIER 1 — PRÉFÉRER] ───
 list_cards     — 2-4 cartes visuelles COMPLÈTES
-                 Champs OBLIGATOIRES : icon(emoji) + title(≤6mots) + body(≤12mots) + stat_value + stat_label
+                 Champs OBLIGATOIRES : icon(symbole) + title(≤6mots) + body(≤12mots) + stat_value + stat_label
                  Champs optionnels : label(badge≤3mots), subtitle(≤8mots)
-                 Exemple : {{"icon":"🌍","label":"EXPORT","title":"Marchés émergents","body":"Croissance 18% en Asie du Sud-Est","stat_value":"18%","stat_label":"CROISSANCE"}}
+                 Exemple : {{"icon":"◆","label":"EXPORT","title":"Marchés émergents","body":"Croissance 18% en Asie du Sud-Est","stat_value":"18%","stat_label":"CROISSANCE"}}
 
 col3           — 3 colonnes enrichies COMPLÈTES
-                 Champs OBLIGATOIRES : icon(emoji) + label(≤3mots) + title(≤6mots) + items:[3-4 items≤8mots] + stat_value + stat_label
-                 Exemple : {{"icon":"⚡","label":"ÉNERGIE","title":"Transition verte","subtitle":"2025-2030","items":["Mix 60% renouvelable","Coût -32%","3 pays pilotes"],"stat_value":"60%","stat_label":"RENOUVELABLE"}}
+                 Champs OBLIGATOIRES : icon(symbole) + label(≤3mots) + title(≤6mots) + items:[3-4 items≤8mots] + stat_value + stat_label
+                 Exemple : {{"icon":"▲","label":"ÉNERGIE","title":"Transition verte","subtitle":"2025-2030","items":["Mix 60% renouvelable","Coût -32%","3 pays pilotes"],"stat_value":"60%","stat_label":"RENOUVELABLE"}}
 
 kpi_grid       — Grille de 3-6 KPIs avec chiffres forts
                  Champs OBLIGATOIRES par KPI : value(chiffre+unité) + label(≤5mots) + sublabel(source≤8mots)
                  Optionnel : percent(0-100 pour barre visuelle)
 
 entity         — Comparaison de 2-4 entités (pays, acteurs, marques)
-                 Champs OBLIGATOIRES : icon(drapeau/emoji) + name + badge(≤3mots) + items:[3-4 items≤8mots] + stat_value + stat_label
+                 Champs OBLIGATOIRES : icon(symbole ou 2 lettres) + name + badge(≤3mots) + items:[3-4 items≤8mots] + stat_value + stat_label
 
 infographic    — Grande stat + décomposition visuelle
                  Champs : value + label + context(≤20mots) + bars:[{{label,percent}}]×3-5
@@ -14733,7 +14738,7 @@ stat_hero      — 1-3 statistiques héros centrées
                  Si plusieurs : values:[{{value,label,context}}]×2-3
 
 conclusion     — Synthèse finale grille 2×2 + sidebar
-                 cards:[{{icon,title,body≤10mots}}]×4 + sidebar_title + sidebar_quote(≤20mots) + sidebar_cta
+                 cards:[{{icon(symbole),title,body≤10mots}}]×4 + sidebar_title + sidebar_quote(≤20mots) + sidebar_cta
 
 ─── LAYOUTS ANALYSE [TIER 2] ───
 two_col        — 2 colonnes comparatives
@@ -14764,17 +14769,17 @@ table          — Tableau de données natif PowerPoint
 
 ─── LAYOUTS VISUELS ENRICHIS [TIER 1 — PRÉFÉRER POUR IMPACT VISUEL] ───
 team_grid      — Équipe / personnes avec avatars circulaires
-                 Champs OBLIGATOIRES : members:[{icon(emoji),name,role}] — 3 ou 4 membres
+                 Champs OBLIGATOIRES : members:[{icon(initiales 1-2 lettres ou symbole),name,role}] — 3 ou 4 membres
                  Optionnel : department, stat_value, stat_label, body
-                 Exemple membre : {{"icon":"👩‍💼","name":"Marie Dupont","role":"DG","stat_value":"12 ans","stat_label":"EXP."}}
+                 Exemple membre : {{"icon":"MD","name":"Marie Dupont","role":"DG","stat_value":"12 ans","stat_label":"EXP."}}
 
 stat_banner    — Bandeau de 3-4 grandes statistiques (chiffres premium)
                  Champs OBLIGATOIRES : stats:[{value,label}] — 3 ou 4 stats
-                 Optionnel : sublabel(source), icon(emoji)
-                 Exemple : {{"value":"1 254+","label":"Clients actifs","sublabel":"Depuis 2018","icon":"🌍"}}
+                 Optionnel : sublabel(source), icon(symbole)
+                 Exemple : {{"value":"1 254+","label":"Clients actifs","sublabel":"Depuis 2018","icon":"●"}}
 
 icon_row       — 3-4 features en cercles d'icônes connectés horizontalement
-                 Champs OBLIGATOIRES : items:[{icon(emoji),title,body}] — 3 ou 4 items
+                 Champs OBLIGATOIRES : items:[{icon(symbole),title,body}] — 3 ou 4 items
                  Optionnel : items:[str] pour bullets dans chaque feature
 
 numbered_features — Features avec grands numéros décoratifs (style éditorial)
@@ -14783,7 +14788,7 @@ numbered_features — Features avec grands numéros décoratifs (style éditoria
 
 photo_text     — Zone photo (visuelle) + contenu structuré (3 items)
                  Champs OBLIGATOIRES : items:[{title,body}] — 3 items
-                 Optionnel : icon(emoji dans item), stat_value(dans item)
+                 Optionnel : icon(symbole dans item), stat_value(dans item)
                  Usage : présenter une offre, un projet, un profil avec visuel
 
 side_panel     — Sidebar colorée pleine hauteur + titre vertical + items (style magazine)
@@ -14795,10 +14800,10 @@ circle_stats   — 3 grands anneaux/cercles avec % géant — style éditorial p
                  Optionnel : bullets:[str] dans chaque cercle
                  Exemple : {{"value":"81%","label":"Satisfaction client","description":"Base 2 000 répondants"}}
 
-mission_vision — 2 panneaux couleur plein fond côte-à-côte (Mission | Vision, Avant | Après…)
+mission_vision — 2 panneaux côte-à-côte (Mission | Vision, Avant | Après…)
                  Champs OBLIGATOIRES : panels:[{icon,label,title,body}]×2
                  Optionnel : items:[str] dans chaque panneau
-                 Exemple panneau : {{"icon":"🎯","label":"MISSION","title":"Notre raison d'être","body":"…"}}
+                 Exemple panneau : {{"icon":"◆","label":"MISSION","title":"Notre raison d'être","body":"…"}}
 
 photo_grid     — Grille de 2-3 zones photos avec légendes colorées superposées
                  Champs OBLIGATOIRES : photos:[{title,subtitle?}] — 2 ou 3 photos
@@ -14811,7 +14816,7 @@ market_sizing  — Dimensionnement marché : TAM/SAM/SOM avec indicateurs de ten
                  Usage : sizing marché, KPIs financiers comparatifs, métriques de croissance
 
 diamond_icons  — Rangée de 3-4 icônes en losanges (variante visuelle de icon_row)
-                 Champs OBLIGATOIRES : items:[{{icon(emoji),title}}] — 3 ou 4 items
+                 Champs OBLIGATOIRES : items:[{{icon(symbole),title}}] — 3 ou 4 items
                  Optionnel : body dans chaque item
                  Usage : features produit, étapes clés, valeurs — impact visuel fort
 
@@ -14824,7 +14829,7 @@ text_hero      — Slide typographique : un mot/chiffre géant comme élément d
                  Usage : intro de section forte, chiffre clé isolé, mot-clé de la présentation
 
 icon_grid      — Grille dense de 6-12 icônes — slides "nos capacités", "fonctionnalités", "offre"
-                 Champs OBLIGATOIRES : items:[{{icon(emoji),label}}] — 6 à 12 items
+                 Champs OBLIGATOIRES : items:[{{icon(symbole),label}}] — 6 à 12 items
                  Optionnel : body(≤8mots) par item
                  v0: grille uniforme cercles + label sous chaque icône
                  v1: rangées horizontales avec fond alterné — icône gauche + label/body droite
@@ -14834,12 +14839,12 @@ icon_grid      — Grille dense de 6-12 icônes — slides "nos capacités", "fo
 venn           — Diagramme de Venn : 2-3 cercles semi-transparents qui se chevauchent
                  Champs OBLIGATOIRES : circles:[{{label,icon?,items?:[str]}}] — 2 ou 3 cercles
                  Optionnel : intersection:{{label,icon?}} pour la zone centrale commune
-                 Exemple cercle : {{"label":"Technologie","icon":"💻","items":["IA","Cloud","Data"]}}
+                 Exemple cercle : {{"label":"Technologie","icon":"◇","items":["IA","Cloud","Data"]}}
                  Usage : intersection de concepts, synergies, positionnement, comparaison
 
 chevron_flow   — Flux processus en vraies formes chevrons/flèches MSO — TIER 1 visuel
                  Champs OBLIGATOIRES : steps:[{{title}}] — 3 à 5 étapes
-                 Optionnel : icon(emoji), body, stat_value, stat_label par étape
+                 Optionnel : icon(symbole), body, stat_value, stat_label par étape
                  v0: chevrons pleine hauteur côte-à-côte (horizontal)
                  v1: 2 rangées décalées de chevrons (zigzag)
                  v2: flèches verticales empilées avec numéro/stat sur le côté
@@ -14847,8 +14852,8 @@ chevron_flow   — Flux processus en vraies formes chevrons/flèches MSO — TIE
 
 pest_analysis  — Analyse P.E.S.T (ou tout framework 4 quadrants avec grandes lettres décoratives)
                  Champs OBLIGATOIRES : items:[{{letter,label,body}}] — exactement 4 items
-                 Optionnel : icon(emoji) par item
-                 Exemple : {{"letter":"P","label":"Politique","icon":"🏛️","body":"Stabilité réglementaire, politiques commerciales"}}
+                 Optionnel : icon(symbole) par item
+                 Exemple : {{"letter":"P","label":"Politique","icon":"■","body":"Stabilité réglementaire, politiques commerciales"}}
                  Usage : PEST, PESTEL, tout framework lettré 4 quadrants
 
 competitor_matrix — Matrice de comparaison concurrentielle avec ✓/✗ par fonctionnalité
@@ -14858,8 +14863,8 @@ competitor_matrix — Matrice de comparaison concurrentielle avec ✓/✗ par fo
 
 hub_spoke      — Diagramme hub-and-spoke : cercle central + items rayonnants autour
                  Champs OBLIGATOIRES : center:{{label,icon?}} + items:[{{icon?,label,body?}}] — 4 à 7 items
-                 Exemple centre : {{"label":"Stratégie","icon":"🎯"}}
-                 Exemple item : {{"icon":"📊","label":"Données","body":"Analyse en temps réel"}}
+                 Exemple centre : {{"label":"Stratégie","icon":"◆"}}
+                 Exemple item : {{"icon":"▶","label":"Données","body":"Analyse en temps réel"}}
                  Usage : présenter une stratégie centrale avec ses composantes, une plateforme et ses modules
 
 pricing_table  — Comparaison de 2-4 offres tarifaires (plans, abonnements, formules)
@@ -14875,8 +14880,8 @@ section_break  — Slide de rupture dramatique entre sections majeures
 
 org_chart      — Organigramme hiérarchique : root → enfants → petits-enfants (3 niveaux max)
                  Champs OBLIGATOIRES : root:{{label,icon?}} + children:[{{label,icon?,children?:[{{label,icon?}}]}}]
-                 Exemple root : {{"label":"Direction Générale","icon":"🏢"}}
-                 Exemple enfant : {{"label":"Marketing","icon":"📣","children":[{{"label":"Digital","icon":"💻"}},{{"label":"Brand","icon":"🎨"}}]}}
+                 Exemple root : {{"label":"Direction Générale","icon":"■"}}
+                 Exemple enfant : {{"label":"Marketing","icon":"▶","children":[{{"label":"Digital","icon":"○"}},{{"label":"Brand","icon":"◇"}}]}}
                  v0: arbre top-down centré  |  v1: layout horizontal gauche-droite  |  v2: couleurs par sous-arbre
                  Usage : structure d'entreprise, hiérarchie projet, taxonomie de produits
 
@@ -14922,7 +14927,7 @@ full_text      — UNIQUEMENT pour intro/conclusion narrative
 
 ─── RÈGLES ABSOLUES ───
 1. La première slide est toujours "cover", la dernière "closing".
-2. Chaque slide : section_label (MAJUSCULES ≤4 mots) + subtitle (accroche ≤10 mots).
+2. Chaque slide : subtitle (accroche ≤10 mots). section_label est OPTIONNEL — ne l'inclure que si la slide est clairement rattachée à une section nommée dans la présentation.
 3. "style": alterner 0/1/2 entre les slides pour maximiser la diversité visuelle.
 4. "presentation_seed": entier aléatoire 1-999999 à la racine.
 5. footer_text = baseline société (≤8 mots).
@@ -14957,7 +14962,6 @@ FORMAT DE RÉPONSE :
       "layout": "<nom_du_layout>",
       "content": {{
         "title": "...",
-        "section_label": "RUBRIQUE",
         "subtitle": "Accroche en une ligne",
         "style": 0,
         ... (tous les champs du layout)
