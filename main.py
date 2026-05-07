@@ -11365,6 +11365,7 @@ def layout_mission_vision_v4(prs: Presentation, content: dict, tp: dict):
     panels = content.get('panels', [])
     footer = content.get('footer', '')
     v = _v4_variant(content, 5, tp.get('seed', 0))
+    _sober = not tp.get('bg_is_dark', False) and not tp.get('bg_rich', False)
 
     # Fallback si panels non fourni
     if not panels:
@@ -11374,6 +11375,51 @@ def layout_mission_vision_v4(prs: Presentation, content: dict, tp: dict):
         ]
 
     n = min(len(panels), 2)
+
+    # Sober templates (plain white bg): use template header + card panels within content area
+    if _sober and v < 3:
+        _add_template_header_and_footer(slide, content.get('title', ''), footer, tp, content)
+        gap_c = 0.20
+        pw_c  = (_LY.CW - gap_c) / 2
+        ph_c  = _LY.CB - _LY.CT
+        for i, panel in enumerate(panels[:n]):
+            if not isinstance(panel, dict):
+                panel = {'title': str(panel)}
+            icon     = panel.get('icon', '')
+            label    = panel.get('label', '')
+            title    = panel.get('title', '')
+            body     = panel.get('body', '')
+            items    = panel.get('items', [])
+            body_src = body or ('\n'.join(f'• {x}' for x in items[:5]))
+            color    = accents[i % len(accents)]
+            px_c     = _LY.CL + i * (pw_c + gap_c)
+            _h2_rounded_rect(slide, px_c, _LY.CT, pw_c, ph_c, _cbg(tp, i), _LY.R_SM)
+            _h2_rect(slide, px_c, _LY.CT, pw_c, 0.07, color)
+            cy = _LY.CT + 0.22
+            if icon:
+                r = 0.44
+                ic_cx = px_c + pw_c / 2
+                ic_cy = cy + r
+                _h2_circle(slide, ic_cx, ic_cy, r, color)
+                _h2_text(slide, icon, ic_cx - r, ic_cy - r * 0.55,
+                         r * 2, r * 1.1, font, int(r * 40), 'FFFFFF', bold=True, align='center')
+                cy = ic_cy + r + 0.20
+            if label:
+                _h2_text(slide, label, px_c + 0.30, cy, pw_c - 0.60, 0.26,
+                         font, 10, color, bold=True, align='center')
+                cy += 0.30
+            _h2_rect(slide, px_c + pw_c * 0.25, cy, pw_c * 0.50, 0.03, color)
+            cy += 0.12
+            _h2_text(slide, title, px_c + 0.30, cy, pw_c - 0.60, 0.56,
+                     font, 18, dk1, bold=True, align='center')
+            cy += 0.62
+            if body_src:
+                _h2_text(slide, body_src, px_c + 0.40, cy, pw_c - 0.80,
+                         _LY.CB - cy - 0.12,
+                         font, _LY.T_SMALL, '555555', bold=False, align='center',
+                         line_spacing=1.3)
+        return slide
+
     gap  = 0.0
     pw   = W / n
 
@@ -12974,6 +13020,8 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
 
     v = _v4_variant(content, 5, tp.get('seed', 0))
 
+    _sober_chev = not tp.get('bg_is_dark', False) and not tp.get('bg_rich', False)
+
     if v == 0:
         # Full-width horizontal chevrons, slight overlap
         zone_h  = _LY.CB - _LY.CT
@@ -12991,36 +13039,48 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
             sv    = step.get('stat_value', '') if isinstance(step, dict) else ''
             sl    = step.get('stat_label', '') if isinstance(step, dict) else ''
 
-            _h2_chevron(slide, cx, _LY.CT, chev_w, chev_h, color)
+            if _sober_chev:
+                # Light tint fill: 82% blend toward white, accent used only for highlights
+                r_c, g_c, b_c = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
+                fill_c = (f'{min(255, int(r_c + (255 - r_c) * 0.82)):02X}'
+                          f'{min(255, int(g_c + (255 - g_c) * 0.82)):02X}'
+                          f'{min(255, int(b_c + (255 - b_c) * 0.82)):02X}')
+                txt_c, body_c = dk1, '555555'
+            else:
+                fill_c, txt_c, body_c = color, 'FFFFFF', 'FFFFFF'
+
+            _h2_chevron(slide, cx, _LY.CT, chev_w, chev_h, fill_c)
 
             # Content centred inside chevron (inset from left, less from right due to arrow tip)
             text_x = cx + 0.18
             text_w = chev_w - 0.50
 
             y = _LY.CT + zone_h * 0.12
-            # Step number badge
-            _h2_rounded_rect(slide, text_x, y, 0.28, 0.28, _darken(color, 0.25), 0.14)
+            # Step number badge (always in accent color)
+            _h2_rounded_rect(slide, text_x, y, 0.28, 0.28, color, 0.14)
             _h2_text(slide, str(i + 1), text_x, y, 0.28, 0.28,
                      font, 9, 'FFFFFF', bold=True, align='center')
 
             y += 0.34
             if icon:
                 _h2_text(slide, icon, text_x, y, text_w, 0.36,
-                         font, 18, 'FFFFFF', bold=False, align='center')
+                         font, 18, color if _sober_chev else txt_c,
+                         bold=False, align='center')
                 y += 0.40
 
             _h2_text(slide, ttxt, text_x, y, text_w, 0.50,
-                     font, 10, 'FFFFFF', bold=True, align='center')
+                     font, 10, txt_c, bold=True, align='center')
             y += 0.52
             if body:
                 _h2_text(slide, body, text_x, y, text_w, zone_h - (y - _LY.CT) - 0.10,
-                         font, 8, 'FFFFFF', bold=False, align='center')
+                         font, 8, body_c, bold=False, align='center')
             if sv:
                 _h2_text(slide, sv, text_x, _LY.CB - 0.48, text_w, 0.32,
-                         font, 16, 'FFFFFF', bold=True, align='center')
+                         font, 16, color if _sober_chev else 'FFFFFF',
+                         bold=True, align='center')
                 if sl:
                     _h2_text(slide, sl, text_x, _LY.CB - 0.20, text_w, 0.18,
-                             font, 7, 'FFFFFF', bold=False, align='center')
+                             font, 7, txt_c, bold=False, align='center')
 
     elif v == 1:
         # Two staggered rows (top 3 + bottom 2, or 2+3, offset half-width)
