@@ -14703,9 +14703,26 @@ COULEUR PRINCIPALE : #{primary}  |  ACCENT : #{accent}  |  POLICE : {font}
 CATALOGUE DES LAYOUTS :
 
 SYMBOLES POUR LES CHAMPS "icon" :
-Utiliser uniquement des symboles Unicode minimalistes monochrome. NE PAS utiliser d'emoji couleur.
-Palette recommandée : ● ○ ■ □ ◆ ◇ ▲ △ ▶ → ★ ☆ ✓ ✗ + × ∞ ≈ # ① ② ③
-Pour team_grid : utiliser les initiales (ex: "MD" pour Marie Dupont) plutôt qu'un emoji.
+Utiliser uniquement des symboles Unicode monochrome — NE PAS utiliser d'emoji couleur (pas de 🎯🌍📊etc.).
+Ces symboles s'affichent en blanc sur cercle coloré : choisir selon le sens de la slide.
+
+  Formes géométriques  : ● ○ ◉ ◎ ■ □ ▪ ▫ ◆ ◇ ▲ △ ▼ ▽ ◀ ▶ ⬡ ⬟ ⬠
+  Flèches / direction  : → ← ↑ ↓ ↗ ↘ ↔ ↕ ⇒ ⇐ ⇑ ⇓ ⇔ ↺ ↻ ↩
+  Étoiles / accent     : ★ ☆ ✦ ✧ ✶ ✸ ✹ ✺ ✱ ✲ ❋
+  Validation / statut  : ✓ ✔ ✗ ✘ ✕ ⊕ ⊗ ⊘ ☐ ☑ ☒
+  Chiffres encerclés   : ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩
+  Math / croissance    : + − × ÷ = ≠ < > ≤ ≥ ∞ ≈ ∑ ∆ ∇ √ %
+  Typographie / texte  : § ¶ « » — · | ¦ ‹ › # @
+  Symboles spéciaux    : ⟳ ⟲ ⊞ ⊟ ◈ ◍ ◐ ◑ ◒ ◓ ⬤ ▸ ◂
+
+Exemples par contexte :
+  Processus/étapes  → ① ② ③  ou  → ▶ ⇒
+  Performance/KPI   → ★ ↗ ∆  ou  ✓ ⊕ %
+  Risque/alerte     → ▲ ✗ ⊗  ou  ⬟ ◆ !
+  Identité/valeurs  → ◉ ✦ ★  ou  ◆ ◎ ●
+  Équipe/personnes  → utiliser les initiales (ex: "MD" pour Marie Dupont)
+  Données/analyse   → ■ ≈ ∑  ou  ◈ ▪ #
+  Innovation        → ✸ ⬡ ✶  ou  ⊕ ↗ ✦
 
 ─── SLIDES STRUCTURELLES ───
 cover          — Couverture (title, subtitle≤12mots)
