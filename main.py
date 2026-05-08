@@ -14703,26 +14703,62 @@ COULEUR PRINCIPALE : #{primary}  |  ACCENT : #{accent}  |  POLICE : {font}
 CATALOGUE DES LAYOUTS :
 
 SYMBOLES POUR LES CHAMPS "icon" :
-Utiliser uniquement des symboles Unicode monochrome — NE PAS utiliser d'emoji couleur (pas de 🎯🌍📊etc.).
-Ces symboles s'affichent en blanc sur cercle coloré : choisir selon le sens de la slide.
+Utiliser uniquement des symboles Unicode monochrome. NE PAS utiliser d'emoji couleur (🎯🌍📊 etc. sont interdits).
+Ces glyphes s'affichent en blanc sur cercle coloré : choisir selon le sens du contenu.
 
-  Formes géométriques  : ● ○ ◉ ◎ ■ □ ▪ ▫ ◆ ◇ ▲ △ ▼ ▽ ◀ ▶ ⬡ ⬟ ⬠
-  Flèches / direction  : → ← ↑ ↓ ↗ ↘ ↔ ↕ ⇒ ⇐ ⇑ ⇓ ⇔ ↺ ↻ ↩
-  Étoiles / accent     : ★ ☆ ✦ ✧ ✶ ✸ ✹ ✺ ✱ ✲ ❋
-  Validation / statut  : ✓ ✔ ✗ ✘ ✕ ⊕ ⊗ ⊘ ☐ ☑ ☒
-  Chiffres encerclés   : ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩
-  Math / croissance    : + − × ÷ = ≠ < > ≤ ≥ ∞ ≈ ∑ ∆ ∇ √ %
-  Typographie / texte  : § ¶ « » — · | ¦ ‹ › # @
-  Symboles spéciaux    : ⟳ ⟲ ⊞ ⊟ ◈ ◍ ◐ ◑ ◒ ◓ ⬤ ▸ ◂
+  ── Formes géométriques design ─────────────────────────────────────────────
+  Ronds    : ● ○ ◉ ◎ ◌ ◍ ◐ ◑ ◒ ◓ ◔ ◕ ⬤ ◙
+  Carrés   : ■ □ ▪ ▫ ◼ ◻ ▬ ▭
+  Losanges : ◆ ◇ ◈ ⬧ ⬨ ⬩ ⬪ ⬫ ⬬ ⬭
+  Triangles: ▲ △ ▴ ▵ ▼ ▽ ▾ ▿ ◂ ◃ ▸ ▹
+  Hexagones: ⬡ ⬢ ⬟ ⬠
 
-Exemples par contexte :
-  Processus/étapes  → ① ② ③  ou  → ▶ ⇒
-  Performance/KPI   → ★ ↗ ∆  ou  ✓ ⊕ %
-  Risque/alerte     → ▲ ✗ ⊗  ou  ⬟ ◆ !
-  Identité/valeurs  → ◉ ✦ ★  ou  ◆ ◎ ●
-  Équipe/personnes  → utiliser les initiales (ex: "MD" pour Marie Dupont)
-  Données/analyse   → ■ ≈ ∑  ou  ◈ ▪ #
-  Innovation        → ✸ ⬡ ✶  ou  ⊕ ↗ ✦
+  ── Flèches et directions ──────────────────────────────────────────────────
+  Simple   : → ← ↑ ↓ ↗ ↘ ↙ ↖ ↔ ↕ ↩ ↪
+  Double   : ⇒ ⇐ ⇑ ⇓ ⇔ ⇕ ⇄ ⇆ ⇌ ⇋
+  Cycle    : ↺ ↻ ⟳ ⟲ ⥁ ⥀
+  Design   : ➔ ➜ ➝ ➞ ➡ ➢ ➣ ➤ ➥ ➦ ➧ ➨ ➩ ➪ ➫ ➬ ➭ ➮ ➯ ➲ ➳ ➴ ➵ ➶ ➷ ➸ ➹ ➺ ➻ ➼ ➽
+  Large    : ⬆ ⬇ ⬅ ⬈ ⬉ ⬊ ⬋ ⬌ ⬍
+
+  ── Étoiles et ornements ───────────────────────────────────────────────────
+  Étoiles  : ★ ☆ ✦ ✧ ✩ ✪ ✫ ✬ ✭ ✮ ✯ ✰
+  Astérisq : ✱ ✲ ✳ ✴ ✵ ✶ ✷ ✸ ✹ ✺ ✻ ✼ ✽ ✾
+  Floral   : ✿ ❀ ❁ ❂ ❃ ❄ ❅ ❆ ❇ ❈ ❉ ❊ ❋
+  Croix    : ✚ ✛ ✜ ✝ ✞ ✟ ✠ ✡ ✢ ✣ ✤ ✥
+
+  ── Validation et statut ───────────────────────────────────────────────────
+  Check    : ✓ ✔ ✕ ✖ ✗ ✘ ☑ ☒ ☐
+  Logique  : ⊕ ⊗ ⊘ ⊞ ⊟ ⊠ ⊡ ⊛ ⊜ ⊝
+  Ponctuation forte : ❗ ❕ ❓ ❔ ‼ ⁉
+
+  ── Symbolique métier ─────────────────────────────────────────────────────
+  Crayon/écriture : ✂ ✃ ✄ ✍ ✎ ✏ ✐ ✑ ✒
+  Enveloppe/comm  : ✉ ☎ ☏
+  Doigts/pointing : ☛ ☜ ☝ ☞ ☟
+  Ornements typo  : ❛ ❜ ❝ ❞ ❦ ❧ ☙ ❡
+  Décoratif       : ❯ ❮ ❱ ❰ ❲ ❳ ❴ ❵
+
+  ── Nombres encerclés ─────────────────────────────────────────────────────
+  ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫
+
+  ── Math et données ───────────────────────────────────────────────────────
+  + − × ÷ = ≠ ≈ < > ≤ ≥ ∞ ∑ ∆ ∇ √ ∂ ∫ ∀ ∃ ∈ ∩ ∪ ∧ ∨ %
+
+  ── Blocs / barres visuelles ─────────────────────────────────────────────
+  ▀ ▄ █ ▌ ▐ ░ ▒ ▓ ▁ ▂ ▃ ▅ ▆ ▇
+
+Choix par contexte :
+  Étapes / processus   → ① ② ③  ➔ ▶ ⇒  ➤ ➜
+  Croissance / KPI     → ↗ ∆ ★  ✦ ▲ ✸
+  Qualité / validation → ✓ ✔ ✦  ⊕ ❇ ❉
+  Risque / alerte      → ▲ ✗ ⊗  ❗ ⬟ ◆
+  Innovation / idée    → ✸ ⬡ ❋  ❄ ✦ ⊕
+  Connexion / réseau   → ◎ ⊕ ◈  ⬡ ⬢ ✳
+  Identité / valeurs   → ◉ ★ ❦  ✾ ✿ ❁
+  Données / analyse    → ■ ▒ ≈  ∑ ◼ ▬
+  Communication        → ✉ ☎ ✍  ❛ ❜ ➜
+  Cycle / itération    → ↺ ↻ ⟳  ⟲ ⇌ ⥁
+  Équipe / personnes   → initiales 2 lettres (ex: "MD" pour Marie Dupont)
 
 ─── SLIDES STRUCTURELLES ───
 cover          — Couverture (title, subtitle≤12mots)
