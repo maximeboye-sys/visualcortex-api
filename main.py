@@ -2066,9 +2066,15 @@ def _h2_icon_circle(slide, cx: float, cy: float, r: float,
                     font_size: float = 11):
     """
     Cercle coloré avec un label centré dedans (substitut d'icône).
+    U+FE0E (text presentation selector) forces monochrome rendering for
+    symbols that otherwise default to color emoji presentation.
     """
     _h2_circle(slide, cx, cy, r, color_bg)
-    _h2_text(slide, label, cx - r, cy - r * 0.55, r * 2, r * 1.1,
+    # Force text (monochrome) presentation for single-glyph symbols
+    _lbl = label
+    if label and len(label) == 1 and ord(label) >= 0x2300:
+        _lbl = label + '︎'
+    _h2_text(slide, _lbl, cx - r, cy - r * 0.55, r * 2, r * 1.1,
              font, font_size, color_fg, bold=True, align='center')
 
 
@@ -14706,59 +14712,63 @@ SYMBOLES POUR LES CHAMPS "icon" :
 Utiliser uniquement des symboles Unicode monochrome. NE PAS utiliser d'emoji couleur (🎯🌍📊 etc. sont interdits).
 Ces glyphes s'affichent en blanc sur cercle coloré : choisir selon le sens du contenu.
 
-  ── Formes géométriques design ─────────────────────────────────────────────
+  ══ PICTOS THÉMATIQUES — illustrent le sujet, rendus en couleur du template ══
+
+  Énergie & industrie  : ⚡ ⛽ ⚙ ⚒ ⛏ ⚗ ⚛ ♨ ♻ ⚘
+  Environnement        : ☀ ☁ ☂ ☃ ⛰ ☘ ❄ ⛄ ☄
+  Transport & mobilité : ✈ ⚓ ⛵ ⛴ ⛟ ⚑
+  Finance & économie   : ⚖ ♟ ♔ ♕ ♛ ♚ ♙ ♖ ♗ ♘
+  Communication        : ✉ ☎ ☏ ✍ ✎ ✏ ✒ ☛ ☜ ☝ ☞ ☟
+  Santé & médecine     : ⚕ ☤ ✚ ⚚
+  Sécurité & risque    : ⚠ ⚔ ⛔ ☠ ☢ ☣ ⚐
+  Science & recherche  : ⚗ ⚛ ⌛ ⌚ ⌘ ⌂ ☉ ⊛
+  Musique & culture    : ♩ ♪ ♫ ♬ ✒ ❦ ❧
+  Social & humain      : ☺ ☻ ♀ ♂ ☯ ☮ ☸
+  Pouvoir & stratégie  : ⚜ ☙ ✡ ⛬ ⚝
+  Jeu & compétition    : ♠ ♣ ♥ ♦ ♟ ♔ ♛
+
+  ══ DESIGN GRAPHIQUE — formes, flèches, ornements ════════════════════════
+
   Ronds    : ● ○ ◉ ◎ ◌ ◍ ◐ ◑ ◒ ◓ ◔ ◕ ⬤ ◙
-  Carrés   : ■ □ ▪ ▫ ◼ ◻ ▬ ▭
+  Carrés   : ■ □ ▪ ▫ ◼ ◻ ▬ ▭ ▀ ▄ █ ░ ▒ ▓
   Losanges : ◆ ◇ ◈ ⬧ ⬨ ⬩ ⬪ ⬫ ⬬ ⬭
   Triangles: ▲ △ ▴ ▵ ▼ ▽ ▾ ▿ ◂ ◃ ▸ ▹
   Hexagones: ⬡ ⬢ ⬟ ⬠
 
-  ── Flèches et directions ──────────────────────────────────────────────────
-  Simple   : → ← ↑ ↓ ↗ ↘ ↙ ↖ ↔ ↕ ↩ ↪
-  Double   : ⇒ ⇐ ⇑ ⇓ ⇔ ⇕ ⇄ ⇆ ⇌ ⇋
-  Cycle    : ↺ ↻ ⟳ ⟲ ⥁ ⥀
-  Design   : ➔ ➜ ➝ ➞ ➡ ➢ ➣ ➤ ➥ ➦ ➧ ➨ ➩ ➪ ➫ ➬ ➭ ➮ ➯ ➲ ➳ ➴ ➵ ➶ ➷ ➸ ➹ ➺ ➻ ➼ ➽
-  Large    : ⬆ ⬇ ⬅ ⬈ ⬉ ⬊ ⬋ ⬌ ⬍
+  Flèches simples : → ← ↑ ↓ ↗ ↘ ↙ ↖ ↔ ↕ ↩ ↪
+  Flèches doubles : ⇒ ⇐ ⇑ ⇓ ⇔ ⇕ ⇄ ⇆ ⇌ ⇋
+  Flèches cycle   : ↺ ↻ ⟳ ⟲ ⥁ ⥀
+  Flèches design  : ➔ ➜ ➝ ➞ ➡ ➢ ➣ ➤ ➥ ➦ ➧ ➨ ➩ ➪ ➫ ➬ ➭ ➮ ➯ ➲ ➳ ➴ ➵ ➶ ➷ ➸ ➹ ➺ ➻ ➼ ➽
+  Flèches larges  : ⬆ ⬇ ⬅ ⬈ ⬉ ⬊ ⬋ ⬌ ⬍
 
-  ── Étoiles et ornements ───────────────────────────────────────────────────
   Étoiles  : ★ ☆ ✦ ✧ ✩ ✪ ✫ ✬ ✭ ✮ ✯ ✰
   Astérisq : ✱ ✲ ✳ ✴ ✵ ✶ ✷ ✸ ✹ ✺ ✻ ✼ ✽ ✾
-  Floral   : ✿ ❀ ❁ ❂ ❃ ❄ ❅ ❆ ❇ ❈ ❉ ❊ ❋
+  Floral   : ✿ ❀ ❁ ❂ ❃ ❅ ❆ ❇ ❈ ❉ ❊ ❋
   Croix    : ✚ ✛ ✜ ✝ ✞ ✟ ✠ ✡ ✢ ✣ ✤ ✥
 
-  ── Validation et statut ───────────────────────────────────────────────────
   Check    : ✓ ✔ ✕ ✖ ✗ ✘ ☑ ☒ ☐
   Logique  : ⊕ ⊗ ⊘ ⊞ ⊟ ⊠ ⊡ ⊛ ⊜ ⊝
-  Ponctuation forte : ❗ ❕ ❓ ❔ ‼ ⁉
+  Emphase  : ❗ ❕ ❓ ❔ ‼ ⁉ ❛ ❜ ❝ ❞ ❯ ❮ ❱ ❰
 
-  ── Symbolique métier ─────────────────────────────────────────────────────
-  Crayon/écriture : ✂ ✃ ✄ ✍ ✎ ✏ ✐ ✑ ✒
-  Enveloppe/comm  : ✉ ☎ ☏
-  Doigts/pointing : ☛ ☜ ☝ ☞ ☟
-  Ornements typo  : ❛ ❜ ❝ ❞ ❦ ❧ ☙ ❡
-  Décoratif       : ❯ ❮ ❱ ❰ ❲ ❳ ❴ ❵
+  Nombres  : ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫
+  Math     : + − × ÷ = ≠ ≈ ∞ ∑ ∆ ∇ √ ∂ ∫ ∀ ∃ ∈ ∩ ∪ %
 
-  ── Nombres encerclés ─────────────────────────────────────────────────────
-  ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫
-
-  ── Math et données ───────────────────────────────────────────────────────
-  + − × ÷ = ≠ ≈ < > ≤ ≥ ∞ ∑ ∆ ∇ √ ∂ ∫ ∀ ∃ ∈ ∩ ∪ ∧ ∨ %
-
-  ── Blocs / barres visuelles ─────────────────────────────────────────────
-  ▀ ▄ █ ▌ ▐ ░ ▒ ▓ ▁ ▂ ▃ ▅ ▆ ▇
-
-Choix par contexte :
-  Étapes / processus   → ① ② ③  ➔ ▶ ⇒  ➤ ➜
-  Croissance / KPI     → ↗ ∆ ★  ✦ ▲ ✸
-  Qualité / validation → ✓ ✔ ✦  ⊕ ❇ ❉
-  Risque / alerte      → ▲ ✗ ⊗  ❗ ⬟ ◆
-  Innovation / idée    → ✸ ⬡ ❋  ❄ ✦ ⊕
-  Connexion / réseau   → ◎ ⊕ ◈  ⬡ ⬢ ✳
-  Identité / valeurs   → ◉ ★ ❦  ✾ ✿ ❁
-  Données / analyse    → ■ ▒ ≈  ∑ ◼ ▬
-  Communication        → ✉ ☎ ✍  ❛ ❜ ➜
-  Cycle / itération    → ↺ ↻ ⟳  ⟲ ⇌ ⥁
-  Équipe / personnes   → initiales 2 lettres (ex: "MD" pour Marie Dupont)
+Choix par domaine métier :
+  Énergie / pétrole    → ⚡ ⛽ ⚙ ♨ ⚒ ⛏
+  Gaz / liquide        → ⚗ ♨ ☁ ⚡ ⛵
+  Électricité / green  → ⚡ ♻ ☀ ⚘ ⚛
+  Finance / économie   → ⚖ ♟ ♔ ∑ ∆ ▲
+  Transport / logistiq → ✈ ⚓ ⛵ ⛴ ⛟
+  Tech / digital       → ⚙ ⌘ ⚛ ⊕ ◈ ⬡
+  Santé / médical      → ⚕ ✚ ☤ ◉ ⊕
+  Sécurité / risque    → ⚠ ⚔ ⛔ ☢ ▲ ✗
+  Stratégie / leader   → ♔ ♛ ★ ✦ ⚜ ➤
+  RH / équipe          → initiales 2 lettres (ex: "MD") ou ☺ ♀ ♂ ◉
+  Processus / étapes   → ① ② ③ ➔ ▶ ⇒
+  Croissance / KPI     → ↗ ∆ ★ ✦ ▲ ✸
+  Nature / géographie  → ☀ ☁ ⛰ ☘ ❄ ⚓
+  Créativité / culture → ✒ ♫ ❦ ✿ ❁ ✎
+  Cycle / innovation   → ↺ ↻ ⟳ ⬡ ⚛ ⊕
 
 ─── SLIDES STRUCTURELLES ───
 cover          — Couverture (title, subtitle≤12mots)
