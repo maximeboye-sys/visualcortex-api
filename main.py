@@ -3931,8 +3931,9 @@ def _blank_v4(prs: Presentation, tp: dict):
     # If the template uses gradient/styled backgrounds defined in a layout (not master),
     # copy the background from the first gradient layout to this slide so it appears.
     # We use the layout's p:bg but NOT its shapes (already stripped via placeholder removal).
-    if tp.get('bg_type') in ('gradient', 'solid') and cSld is not None:
-        # Check if the chosen layout has a bg we can inherit — if not, copy from another
+    if tp.get('bg_rich', False) and tp.get('bg_type') in ('gradient', 'solid') and cSld is not None:
+        # Only copy when the MASTER itself carries a gradient (bg_rich=True).
+        # Layout-only gradients (cover/section) must not bleed to content slides.
         chosen_layout = prs.slide_layouts[min(chosen_idx, n_layouts - 1)]
         if not _layout_has_own_bg(chosen_layout):
             # Find first layout with its own bg and copy it to the slide
@@ -10706,13 +10707,19 @@ def layout_photo_text_v4(prs: Presentation, content: dict, tp: dict):
     v      = _v4_variant(content, 5, tp.get('seed', 0))
 
     def _photo_zone(x, y, w, h, color):
-        """Placeholder photo : fond neutre + barre accent + icône."""
+        """Placeholder photo : fond neutre + barre accent + croix repère monochrome."""
         _h2_rounded_rect(slide, left=x, top=y, width=w, height=h,
                          color=_cbg(tp, 1), radius=_LY.R_SM)
         _h2_rect(slide, left=x, top=y, width=w, height=0.04, color=color)
         _h2_rect(slide, left=x, top=y + h - 0.40, width=w, height=0.40, color=color)
-        _h2_text(slide, '🖼', x, y + h / 2 - 0.28, w, 0.56,
-                 font, 28, 'BBBBBB', bold=False, align='center')
+        # Crosshair placeholder — two thin lines forming a + in neutral gray
+        _cx = x + w / 2
+        _cy = y + h / 2 - 0.18
+        _lw = min(w * 0.22, 0.52)
+        _lh = min((h - 0.44) * 0.35, 0.36)
+        _bt = 0.013
+        _h2_rect(slide, left=_cx - _lw / 2, top=_cy - _bt / 2, width=_lw, height=_bt, color='C8C8C8')
+        _h2_rect(slide, left=_cx - _bt / 2, top=_cy - _lh / 2, width=_bt, height=_lh, color='C8C8C8')
 
     def _item_row(it, ix, iy, iw, ih, color):
         if not isinstance(it, dict):
@@ -11751,7 +11758,7 @@ def layout_photo_grid_v4(prs: Presentation, content: dict, tp: dict):
 
     def _photo_box(x, y, w, h, pdata, color):
         """Zone photo : fond neutre + barre accent bas + légende superposée."""
-        icon     = pdata.get('icon', '🖼') if isinstance(pdata, dict) else '🖼'
+        icon     = pdata.get('icon', '') if isinstance(pdata, dict) else ''
         title    = pdata.get('title', '') if isinstance(pdata, dict) else str(pdata)
         subtitle = pdata.get('subtitle', '') if isinstance(pdata, dict) else ''
         body     = pdata.get('body', '') if isinstance(pdata, dict) else ''
@@ -11759,9 +11766,20 @@ def layout_photo_grid_v4(prs: Presentation, content: dict, tp: dict):
         # Fond photo (neutre)
         _h2_rounded_rect(slide, left=x, top=y, width=w, height=h,
                          color=_cbg(tp, 1), radius=_LY.R_SM)
-        # Icône placeholder centré
-        _h2_text(slide, icon, x, y + h / 2 - 0.36, w, 0.56,
-                 font, 30, 'BBBBBB', bold=False, align='center')
+        # Icône en couleur accent si fournie, sinon croix repère monochrome
+        _cx = x + w / 2
+        _cy = y + h / 2 - 0.22
+        if icon:
+            _lbl = icon
+            if len(icon) == 1 and ord(icon) >= 0x2300:
+                _lbl = icon + '︎'
+            _h2_text(slide, _lbl, x, _cy - 0.28, w, 0.56, font, 30, color, bold=False, align='center')
+        else:
+            _lw = min(w * 0.22, 0.52)
+            _lh = min(h * 0.18, 0.38)
+            _bt = 0.013
+            _h2_rect(slide, left=_cx - _lw / 2, top=_cy - _bt / 2, width=_lw, height=_bt, color='C8C8C8')
+            _h2_rect(slide, left=_cx - _bt / 2, top=_cy - _lh / 2, width=_bt, height=_lh, color='C8C8C8')
         # Bande légende en bas (colorée, semi-opaque simulée par fond plein)
         leg_h = 0.52 + (0.24 if subtitle or body else 0.0)
         _h2_rect(slide, left=x, top=y + h - leg_h, width=w, height=leg_h, color=color)
