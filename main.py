@@ -14712,20 +14712,27 @@ SYMBOLES POUR LES CHAMPS "icon" :
 Utiliser uniquement des symboles Unicode monochrome. NE PAS utiliser d'emoji couleur (🎯🌍📊 etc. sont interdits).
 Ces glyphes s'affichent en blanc sur cercle coloré : choisir selon le sens du contenu.
 
-  ══ PICTOS THÉMATIQUES — illustrent le sujet, rendus en couleur du template ══
+  ══ PICTOS THÉMATIQUES (~120 pictos, rendus en couleur unique du template) ══
+  Chaque picto s'affiche en blanc sur cercle coloré — 1 seul symbole par icon.
 
-  Énergie & industrie  : ⚡ ⛽ ⚙ ⚒ ⛏ ⚗ ⚛ ♨ ♻ ⚘
-  Environnement        : ☀ ☁ ☂ ☃ ⛰ ☘ ❄ ⛄ ☄
-  Transport & mobilité : ✈ ⚓ ⛵ ⛴ ⛟ ⚑
-  Finance & économie   : ⚖ ♟ ♔ ♕ ♛ ♚ ♙ ♖ ♗ ♘
-  Communication        : ✉ ☎ ☏ ✍ ✎ ✏ ✒ ☛ ☜ ☝ ☞ ☟
-  Santé & médecine     : ⚕ ☤ ✚ ⚚
-  Sécurité & risque    : ⚠ ⚔ ⛔ ☠ ☢ ☣ ⚐
-  Science & recherche  : ⚗ ⚛ ⌛ ⌚ ⌘ ⌂ ☉ ⊛
-  Musique & culture    : ♩ ♪ ♫ ♬ ✒ ❦ ❧
-  Social & humain      : ☺ ☻ ♀ ♂ ☯ ☮ ☸
-  Pouvoir & stratégie  : ⚜ ☙ ✡ ⛬ ⚝
-  Jeu & compétition    : ♠ ♣ ♥ ♦ ♟ ♔ ♛
+  Énergie & industrie   : ⚡ ⛽ ⚙ ⚒ ⛏ ♨ ♻ ⚗ ⚛ ⚘ ⛬ ⛮ ⛯ ⚞ ⚟ ⛓
+  Environnement & météo : ☀ ☼ ☁ ☂ ☃ ☔ ☄ ☈ ☉ ⛰ ☘ ❄ ⛄ ☽ ☾ ♾
+  Transport & mobilité  : ✈ ⚓ ⛵ ⛴ ⛟ ⚑ ⚐ ⛑
+  Bâtiment & infra      : ⌂ ⚒ ⛏ ⛓ ⚙ ⚞ ⚟ ⛬
+  Finance & économie    : ⚖ ♔ ♕ ♛ ♚ ♙ ♖ ♗ ♘ ♟ ⛁ ⛃
+  Communication & media : ✉ ☎ ☏ ✍ ✎ ✏ ✑ ✒ ☛ ☜ ☝ ☞ ☟
+  Santé & médecine      : ⚕ ☤ ✚ ⚚ ⌚
+  Sécurité & risque     : ⚠ ⚔ ⛔ ☠ ☢ ☣ ⛑ ⚝
+  Science & technologie : ⚗ ⚛ ⚬ ⌛ ⌘ ⌂ ⊛ ⊗ ⊕
+  Écriture & édition    : ✂ ✃ ✄ ✁ ✍ ✎ ✏ ✑ ✒
+  Musique & sons        : ♩ ♪ ♫ ♬ ♭ ♮ ♯
+  Arts & créativité     : ❦ ❧ ☙ ❡ ✿ ❀ ❁ ❂ ❃ ✒
+  Social & humain       : ☺ ☻ ♀ ♂ ⚥ ☯ ☮ ☸
+  Structure & données   : ☰ ☱ ☲ ☳ ☴ ☵ ☶ ☷
+  Stratégie & pouvoir   : ⚜ ✡ ⛤ ⚝ ⚐ ⚑ ☙
+  Jeu & compétition     : ♠ ♣ ♥ ♦ ♔ ♛ ⚀ ⚁ ⚂ ⚃ ⚄ ⚅
+  Astrologie & cycles   : ♈ ♉ ♊ ♋ ♌ ♍ ♎ ♏ ♐ ♑ ♒ ♓
+  Cosmologie            : ☿ ♁ ♃ ♄ ♅ ♆ ♇ ☉ ☽ ☾ ☄
 
   ══ DESIGN GRAPHIQUE — formes, flèches, ornements ════════════════════════
 
@@ -14754,21 +14761,30 @@ Ces glyphes s'affichent en blanc sur cercle coloré : choisir selon le sens du c
   Math     : + − × ÷ = ≠ ≈ ∞ ∑ ∆ ∇ √ ∂ ∫ ∀ ∃ ∈ ∩ ∪ %
 
 Choix par domaine métier :
-  Énergie / pétrole    → ⚡ ⛽ ⚙ ♨ ⚒ ⛏
-  Gaz / liquide        → ⚗ ♨ ☁ ⚡ ⛵
-  Électricité / green  → ⚡ ♻ ☀ ⚘ ⚛
-  Finance / économie   → ⚖ ♟ ♔ ∑ ∆ ▲
-  Transport / logistiq → ✈ ⚓ ⛵ ⛴ ⛟
-  Tech / digital       → ⚙ ⌘ ⚛ ⊕ ◈ ⬡
-  Santé / médical      → ⚕ ✚ ☤ ◉ ⊕
-  Sécurité / risque    → ⚠ ⚔ ⛔ ☢ ▲ ✗
-  Stratégie / leader   → ♔ ♛ ★ ✦ ⚜ ➤
-  RH / équipe          → initiales 2 lettres (ex: "MD") ou ☺ ♀ ♂ ◉
-  Processus / étapes   → ① ② ③ ➔ ▶ ⇒
-  Croissance / KPI     → ↗ ∆ ★ ✦ ▲ ✸
-  Nature / géographie  → ☀ ☁ ⛰ ☘ ❄ ⚓
-  Créativité / culture → ✒ ♫ ❦ ✿ ❁ ✎
-  Cycle / innovation   → ↺ ↻ ⟳ ⬡ ⚛ ⊕
+  Pétrole / gaz         → ⚡ ⛽ ⚗ ♨ ⚒ ⛏
+  Électricité / green   → ⚡ ♻ ☀ ⚛ ⚘
+  Eau / maritime        → ⚓ ⛵ ⛴ ☁ ☂ ☔
+  Industrie / mécanique → ⚙ ⚒ ⛏ ⛬ ⚞ ⚟
+  Bâtiment / infra      → ⌂ ⚒ ⛓ ⚙ ⛏
+  Finance / économie    → ⚖ ♔ ♛ ∑ ∆ ▲
+  Banque / assurance    → ⚖ ♚ ⛃ ⚝ ☰
+  Transport / logistique→ ✈ ⚓ ⛴ ⛟ ⚑
+  Numérique / tech      → ⚙ ⌘ ⚛ ⊕ ◈ ⬡
+  Data / IA             → ☰ ☱ ☲ ⊛ ◈ ⚬
+  Santé / pharma        → ⚕ ✚ ☤ ⚚ ⌚
+  Sécurité / défense    → ⚠ ⚔ ⛔ ☢ ⛑ ⚝
+  Juridique / conformité→ ⚖ ⚐ ⚑ ✚ ⛑
+  RH / social           → ☺ ♀ ♂ ⚥ ☯ ☮ ou initiales "MD"
+  Éducation / formation → ✎ ✏ ✒ ⌛ ☉ ✚
+  Médias / communication→ ✉ ☎ ✍ ☛ ♫ ✒
+  Art / culture         → ✒ ♫ ❦ ✿ ❁ ☙
+  Sport / performance   → ♔ ♛ ★ ✦ ↗ ▲
+  Nature / agriculture  → ☀ ⛰ ☘ ❄ ⚘ ♻
+  Cosmétique / mode     → ✂ ✿ ❀ ♀ ☙ ❦
+  Stratégie / leadership→ ♔ ♛ ⚜ ⚝ ★ ✦
+  Processus / étapes    → ① ② ③ ➔ ▶ ⇒
+  Croissance / KPI      → ↗ ∆ ★ ✦ ▲ ✸
+  Cycle / innovation    → ↺ ↻ ⟳ ⬡ ⚛ ⊕
 
 ─── SLIDES STRUCTURELLES ───
 cover          — Couverture (title, subtitle≤12mots)
