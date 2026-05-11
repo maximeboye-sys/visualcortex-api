@@ -7744,50 +7744,53 @@ def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
                          bold=False, align='left', line_spacing=1.1)
 
     elif v == 1:
-        # Timeline central: ligne horizontale au milieu, labels alternant haut/bas, jalons listés
-        mid_y  = (_LY.CT + _LY.CB) / 2
-        lbl_h  = 0.38
-        dot_r  = 0.14
-        # Ligne de timeline
-        _h2_rect(slide, left=x_start, top=mid_y - 0.03, width=band_w, height=0.06, color='DDDDDD')
+        # v1: colonnes avec en-tête coloré pleine largeur + numéro de phase proéminent
+        # Style "bandes catégories" — même logique que le template TotalEnergies (vert/jaune/bleu)
+        band_h = 0.72
+        y_ms   = _LY.CT + band_h + 0.14
+
         for i, phase in enumerate(phases[:n]):
             label      = phase.get('label', '') if isinstance(phase, dict) else str(phase)
             milestones = phase.get('milestones', []) if isinstance(phase, dict) else []
             color      = accents[i % len(accents)]
-            cx         = x_start + (i + 0.5) * phase_w
-            above      = (i % 2 == 0)
-            # Dot sur la ligne
-            _h2_rect(slide, left=cx - dot_r, top=mid_y - dot_r,
-                     width=dot_r * 2, height=dot_r * 2, color=color)
-            # Tige verticale
-            if above:
-                _h2_rect(slide, left=cx - 0.02, top=mid_y - 1.50, width=0.04, height=1.50, color=color)
-                _h2_text(slide, label,
-                         left=cx - phase_w * 0.46, top=mid_y - 1.50 - lbl_h,
-                         width=phase_w * 0.92, height=lbl_h,
-                         font=font, size_pt=11, color=color, bold=True, align='center')
-                n_ms = min(len(milestones), 3)
-                for j, ms in enumerate(milestones[:n_ms]):
-                    _h2_text(slide, f'• {ms}',
-                             left=cx - phase_w * 0.46,
-                             top=mid_y + dot_r + 0.12 + j * 0.38,
-                             width=phase_w * 0.92, height=0.36,
-                             font=font, size_pt=9, color=dk1,
-                             bold=False, align='center', line_spacing=1.1)
-            else:
-                _h2_rect(slide, left=cx - 0.02, top=mid_y + dot_r, width=0.04, height=1.50, color=color)
-                _h2_text(slide, label,
-                         left=cx - phase_w * 0.46, top=mid_y + dot_r + 1.50,
-                         width=phase_w * 0.92, height=lbl_h,
-                         font=font, size_pt=11, color=color, bold=True, align='center')
-                n_ms = min(len(milestones), 3)
-                for j, ms in enumerate(milestones[:n_ms]):
-                    _h2_text(slide, f'• {ms}',
-                             left=cx - phase_w * 0.46,
-                             top=mid_y - dot_r - (n_ms - j) * 0.38 - 0.10,
-                             width=phase_w * 0.92, height=0.36,
-                             font=font, size_pt=9, color=dk1,
-                             bold=False, align='center', line_spacing=1.1)
+            px         = x_start + i * phase_w
+
+            # En-tête coloré pleine largeur
+            _h2_rect(slide, left=px + 0.04, top=_LY.CT,
+                     width=phase_w - 0.08, height=band_h, color=color)
+            # Numéro de phase (grand, haut droit)
+            _h2_text(slide, f'{i+1:02d}',
+                     left=px + phase_w - 0.68, top=_LY.CT + 0.10,
+                     width=0.58, height=0.52,
+                     font=font, size_pt=26, color='FFFFFF', bold=True, align='right')
+            # Label phase
+            _h2_text(slide, label,
+                     left=px + 0.10, top=_LY.CT + 0.10,
+                     width=phase_w - 0.82, height=0.52,
+                     font=font, size_pt=10, color='FFFFFF', bold=True, align='left')
+
+            # Séparateur vertical entre colonnes
+            if i < n - 1:
+                _h2_rect(slide, left=px + phase_w - 0.005, top=y_ms,
+                         width=0.01, height=_LY.CB - y_ms - 0.10, color='DDDDDD')
+
+            # Jalons compacts — même motif que v0
+            ms_h  = 0.38
+            dot_r = 0.06
+            n_ms  = min(len(milestones), 5)
+            for j, ms in enumerate(milestones[:n_ms]):
+                my = y_ms + j * ms_h
+                if my + ms_h > _LY.CB - 0.05:
+                    break
+                _h2_rounded_rect(slide,
+                                 left=px + 0.10, top=my + (ms_h - dot_r * 2) / 2,
+                                 width=dot_r * 2, height=dot_r * 2,
+                                 color=color, radius=dot_r)
+                _h2_text(slide, str(ms),
+                         left=px + 0.26, top=my,
+                         width=phase_w - 0.34, height=ms_h,
+                         font=font, size_pt=9, color=dk1,
+                         bold=False, align='left', line_spacing=1.1)
 
     elif v == 2:
         # Cartes de phase horizontales + jalons à l'intérieur + flèche entre cartes
@@ -7817,8 +7820,8 @@ def layout_roadmap_v4(prs: Presentation, content: dict, tp: dict):
             n_ms = min(len(milestones), 6)
             for j, ms in enumerate(milestones[:n_ms]):
                 my = _LY.CT + 0.72 + j * 0.46
-                _h2_rect(slide, left=cx + _LY.PAD, top=my + 0.14,
-                         width=0.08, height=0.08, color=color)
+                _h2_rounded_rect(slide, left=cx + _LY.PAD, top=my + 0.18,
+                                 width=0.08, height=0.08, color=color, radius=0.04)
                 _h2_text(slide, str(ms),
                          left=cx + _LY.PAD + 0.16, top=my,
                          width=card_w - _LY.PAD - 0.22, height=0.44,
@@ -14712,26 +14715,28 @@ SYMBOLES POUR LES CHAMPS "icon" :
 Utiliser uniquement des symboles Unicode monochrome. NE PAS utiliser d'emoji couleur (🎯🌍📊 etc. sont interdits).
 Ces glyphes s'affichent en blanc sur cercle coloré : choisir selon le sens du contenu.
 
-  ══ PICTOS THÉMATIQUES (~120 pictos, rendus en couleur unique du template) ══
-  Chaque picto s'affiche en blanc sur cercle coloré — 1 seul symbole par icon.
+  ══ PICTOS THÉMATIQUES (~160 pictos, rendus en couleur unique du template) ══
+  S'affichent en blanc sur cercle coloré — 1 seul symbole par icon.
 
-  Énergie & industrie   : ⚡ ⛽ ⚙ ⚒ ⛏ ♨ ♻ ⚗ ⚛ ⚘ ⛬ ⛮ ⛯ ⚞ ⚟ ⛓
+  Énergie & industrie   : ⚡ ⛽ ⚙ ⚒ ⛏ ♨ ♻ ⚗ ⚛ ⚘ ⛬ ⛮ ⛯ ⚞ ⚟ ⛓ ⌁
   Environnement & météo : ☀ ☼ ☁ ☂ ☃ ☔ ☄ ☈ ☉ ⛰ ☘ ❄ ⛄ ☽ ☾ ♾
-  Transport & mobilité  : ✈ ⚓ ⛵ ⛴ ⛟ ⚑ ⚐ ⛑
-  Bâtiment & infra      : ⌂ ⚒ ⛏ ⛓ ⚙ ⚞ ⚟ ⛬
-  Finance & économie    : ⚖ ♔ ♕ ♛ ♚ ♙ ♖ ♗ ♘ ♟ ⛁ ⛃
+  Transport & mobilité  : ✈ ⚓ ⛵ ⛴ ⛟ ⚑ ⚐ ⛑ ⎈
+  Bâtiment & infra      : ⌂ ⚒ ⛏ ⛓ ⚙ ⚞ ⚟ ⛬ ⌖
+  Finance & monnaie     : ⚖ € $ £ ¥ ₿ ₹ ₽ ₩ ₺ ₱ ¢ № ™
+  Échecs / stratégie    : ♔ ♕ ♛ ♚ ♙ ♖ ♗ ♘ ♟ ⛁ ⛃
   Communication & media : ✉ ☎ ☏ ✍ ✎ ✏ ✑ ✒ ☛ ☜ ☝ ☞ ☟
-  Santé & médecine      : ⚕ ☤ ✚ ⚚ ⌚
-  Sécurité & risque     : ⚠ ⚔ ⛔ ☠ ☢ ☣ ⛑ ⚝
-  Science & technologie : ⚗ ⚛ ⚬ ⌛ ⌘ ⌂ ⊛ ⊗ ⊕
+  Santé & médecine      : ⚕ ☤ ✚ ⚚ ⌚ Ω
+  Sécurité & risque     : ⚠ ⚔ ⛔ ☠ ☢ ☣ ⛑ ⚝ ⌀
+  Science & tech        : ⚗ ⚛ ⌛ ⌘ ⌨ ⌗ ⊛ ⊙ ⊚ ⍟ ⌬ ⌒
+  Précision & logique   : ⊕ ⊗ ⊘ ⊞ ⊟ ⊠ ⊡ ⊜ ⊝ ∴ ∵ ≡ ∀ ∃ ⊂ ⊃
   Écriture & édition    : ✂ ✃ ✄ ✁ ✍ ✎ ✏ ✑ ✒
   Musique & sons        : ♩ ♪ ♫ ♬ ♭ ♮ ♯
-  Arts & créativité     : ❦ ❧ ☙ ❡ ✿ ❀ ❁ ❂ ❃ ✒
+  Arts & créativité     : ❦ ❧ ☙ ❡ ✿ ❀ ❁ ❂ ❃ ❄ ❅ ❆
   Social & humain       : ☺ ☻ ♀ ♂ ⚥ ☯ ☮ ☸
   Structure & données   : ☰ ☱ ☲ ☳ ☴ ☵ ☶ ☷
-  Stratégie & pouvoir   : ⚜ ✡ ⛤ ⚝ ⚐ ⚑ ☙
-  Jeu & compétition     : ♠ ♣ ♥ ♦ ♔ ♛ ⚀ ⚁ ⚂ ⚃ ⚄ ⚅
-  Astrologie & cycles   : ♈ ♉ ♊ ♋ ♌ ♍ ♎ ♏ ♐ ♑ ♒ ♓
+  Pouvoir & symboles    : ⚜ ✡ ⛤ ⚝ ⚐ ⚑ ☙ ⚬
+  Jeu & compétition     : ♠ ♣ ♥ ♦ ⚀ ⚁ ⚂ ⚃ ⚄ ⚅
+  Astrologie / secteurs : ♈ ♉ ♊ ♋ ♌ ♍ ♎ ♏ ♐ ♑ ♒ ♓
   Cosmologie            : ☿ ♁ ♃ ♄ ♅ ♆ ♇ ☉ ☽ ☾ ☄
 
   ══ DESIGN GRAPHIQUE — formes, flèches, ornements ════════════════════════
@@ -14763,28 +14768,31 @@ Ces glyphes s'affichent en blanc sur cercle coloré : choisir selon le sens du c
 Choix par domaine métier :
   Pétrole / gaz         → ⚡ ⛽ ⚗ ♨ ⚒ ⛏
   Électricité / green   → ⚡ ♻ ☀ ⚛ ⚘
-  Eau / maritime        → ⚓ ⛵ ⛴ ☁ ☂ ☔
+  Eau / maritime        → ⚓ ⛵ ⛴ ⎈ ☁ ☔
   Industrie / mécanique → ⚙ ⚒ ⛏ ⛬ ⚞ ⚟
-  Bâtiment / infra      → ⌂ ⚒ ⛓ ⚙ ⛏
-  Finance / économie    → ⚖ ♔ ♛ ∑ ∆ ▲
-  Banque / assurance    → ⚖ ♚ ⛃ ⚝ ☰
-  Transport / logistique→ ✈ ⚓ ⛴ ⛟ ⚑
-  Numérique / tech      → ⚙ ⌘ ⚛ ⊕ ◈ ⬡
-  Data / IA             → ☰ ☱ ☲ ⊛ ◈ ⚬
-  Santé / pharma        → ⚕ ✚ ☤ ⚚ ⌚
+  Bâtiment / infra      → ⌂ ⚒ ⛓ ⌖ ⛏
+  Finance / économie    → ⚖ € $ ∑ ∆ ▲
+  Banque / investissement→ € ₿ ♔ ♛ ⚖ №
+  Monnaies / change     → € $ £ ¥ ₿ ₹ ₽ ₩
+  Transport / logistique→ ✈ ⚓ ⛴ ⛟ ⚑ ⎈
+  Numérique / tech      → ⚙ ⌘ ⌨ ⚛ ⊕ ⬡
+  Data / IA             → ☰ ☱ ☲ ⊛ ⍟ ◈
+  Recherche / science   → ⚗ ⚛ ⌛ ⌗ ⍟ ⌬
+  Précision / qualité   → ⊙ ⊚ ⊛ ⌖ ≡ ∴
+  Santé / pharma        → ⚕ ✚ ☤ ⚚ Ω
   Sécurité / défense    → ⚠ ⚔ ⛔ ☢ ⛑ ⚝
-  Juridique / conformité→ ⚖ ⚐ ⚑ ✚ ⛑
+  Juridique / conformité→ ⚖ ™ № ⚐ ⛑ ✚
   RH / social           → ☺ ♀ ♂ ⚥ ☯ ☮ ou initiales "MD"
-  Éducation / formation → ✎ ✏ ✒ ⌛ ☉ ✚
+  Éducation / formation → ✎ ✏ ✒ ⌛ ☉ ①
   Médias / communication→ ✉ ☎ ✍ ☛ ♫ ✒
   Art / culture         → ✒ ♫ ❦ ✿ ❁ ☙
   Sport / performance   → ♔ ♛ ★ ✦ ↗ ▲
   Nature / agriculture  → ☀ ⛰ ☘ ❄ ⚘ ♻
-  Cosmétique / mode     → ✂ ✿ ❀ ♀ ☙ ❦
-  Stratégie / leadership→ ♔ ♛ ⚜ ⚝ ★ ✦
+  Cosmétique / mode     → ✂ ✿ ❀ ♀ ❦ ☙
+  Stratégie / leadership→ ♔ ♛ ⚜ ⚝ ★ ⍟
   Processus / étapes    → ① ② ③ ➔ ▶ ⇒
   Croissance / KPI      → ↗ ∆ ★ ✦ ▲ ✸
-  Cycle / innovation    → ↺ ↻ ⟳ ⬡ ⚛ ⊕
+  Cycle / innovation    → ↺ ↻ ⟳ ⬡ ⊙ ⊕
 
 ─── SLIDES STRUCTURELLES ───
 cover          — Couverture (title, subtitle≤12mots)
