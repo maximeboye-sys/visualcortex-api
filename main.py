@@ -8886,7 +8886,7 @@ def layout_highlight_v4(prs: Presentation, content: dict, tp: dict):
     H       = tp.get('H', 7.50)
     v       = _v4_variant(content, 5, tp.get('seed', 0))
 
-    highlight = content.get('highlight', '')
+    highlight = content.get('highlight', content.get('message', ''))
     body      = content.get('body', '')
     points    = content.get('points', [])
 
@@ -9069,7 +9069,9 @@ def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
 
     def _item_data(item, idx):
         if isinstance(item, dict):
-            return item.get('number', idx + 1), item.get('label', ''), item.get('sublabel', '')
+            label    = item.get('label', item.get('title', ''))
+            sublabel = item.get('sublabel', item.get('duration', item.get('time', '')))
+            return item.get('number', idx + 1), label, sublabel
         return idx + 1, str(item), ''
 
     if v == 2:
@@ -9100,7 +9102,7 @@ def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
                          left=x_col + 0.62, top=iy + (row_h - 0.40) / 2,
                          width=_LY.COL_W - 0.68, height=0.40,
                          font=font, size_pt=14, color=dk1, bold=False, align='left')
-    else:
+    elif v in (0, 1):
         _zone  = _LY.CB - _LY.CT
         step_h = min(_zone / n, 1.10)
         _y0    = _LY.CT + (_zone - step_h * n) / 2
@@ -9157,7 +9159,7 @@ def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
                              font=font, size_pt=_LY.T_SMALL, color='777777',
                              bold=False, align='left')
 
-    if v == 3:
+    elif v == 3:
         # Timeline verticale: ligne centrale + cercles numérotés + labels alternés
         line_x  = _LY.CL + 0.40
         step_h  = (_LY.CB - _LY.CT) / n
@@ -9274,6 +9276,38 @@ def layout_matrix_v4(prs: Presentation, content: dict, tp: dict):
         (grid_x,               grid_y + cell_h + gap),
         (grid_x + cell_w + gap, grid_y + cell_h + gap),
     ]
+
+    # Scatter mode: items with x/y 0-1 positions instead of quadrant content
+    scatter_items = content.get('items', [])
+    if not quadrants and scatter_items and isinstance(scatter_items[0], dict) and 'x' in scatter_items[0]:
+        mid_x = grid_x + grid_w / 2
+        mid_y = grid_y + grid_h / 2
+        _h2_rect(slide, mid_x - 0.015, grid_y, 0.03, grid_h, '999999')
+        _h2_rect(slide, grid_x, mid_y - 0.015, grid_w, 0.03, '999999')
+        y_axis = axes.get('y', '')
+        x_axis = axes.get('x', '')
+        if y_axis:
+            _h2_text(slide, y_axis, left=_LY.CL, top=grid_y + grid_h / 2 - 0.25,
+                     width=ax_lbl_w - 0.10, height=0.50,
+                     font=font, size_pt=10, color=dk1, bold=False, align='right')
+        if x_axis:
+            _h2_text(slide, x_axis, left=grid_x + grid_w / 4, top=_LY.CB - ax_lbl_h,
+                     width=grid_w / 2, height=ax_lbl_h,
+                     font=font, size_pt=10, color=dk1, bold=False, align='center')
+        for i, it in enumerate(scatter_items):
+            ix = float(it.get('x', 0.5))
+            iy = float(it.get('y', 0.5))
+            px = grid_x + ix * grid_w
+            py = grid_y + (1.0 - iy) * grid_h
+            color = accents[i % len(accents)]
+            _h2_circle(slide, cx=px, cy=py, r=0.16, color=color)
+            lbl = it.get('label', '')
+            if lbl:
+                lbl_x = min(px + 0.20, grid_x + grid_w - 1.20)
+                _h2_text(slide, lbl, left=lbl_x, top=py - 0.18,
+                         width=1.10, height=0.36,
+                         font=font, size_pt=10, color=color, bold=True, align='left')
+        return slide
 
     # Axis labels (all variants)
     y_axis = axes.get('y', '')
@@ -11113,7 +11147,9 @@ def layout_side_panel_v4(prs: Presentation, content: dict, tp: dict):
 
     panel_title = content.get('panel_title', content.get('title', ''))
     main_title  = content.get('title', '')
-    items  = content.get('items', [])
+    _raw_items  = content.get('items', content.get('panel_items', []))
+    items = [it if isinstance(it, dict) else {'title': str(it)} for it in _raw_items]
+    body_text = content.get('body', '')
     footer = content.get('footer', '')
     v = _v4_variant(content, 5, tp.get('seed', 0))
 
@@ -11123,6 +11159,10 @@ def layout_side_panel_v4(prs: Presentation, content: dict, tp: dict):
         # Sober mode: no full-height sidebar — use standard header + card grid
         _add_template_header_and_footer(slide, main_title, footer, tp, content)
         n = min(len(items), 6)
+        if not n and body_text:
+            _h2_text(slide, body_text, _LY.CL, _LY.CT, _LY.CW, _LY.CB - _LY.CT,
+                     font, _LY.T_BODY, dk1, bold=False, align='left', line_spacing=1.4)
+            return slide
         if n:
             n_cols = 3 if n > 3 else 2
             col_w  = (_LY.CW - _LY.GAP_MD * (n_cols - 1)) / n_cols
