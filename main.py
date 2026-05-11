@@ -4519,6 +4519,7 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
                              left=cx + 0.18, top=cy + card_h - 0.22,
                              width=_LY.COL_W - 0.26, height=0.20,
                              font=font, size_pt=8, color='888888', bold=True, align='left')
+        return slide
     elif v == 1:
         # Variante 1 : colonnes verticales (2 ou 3 cartes pleine hauteur)
         card_h = _LY.CB - _LY.CT
@@ -4575,11 +4576,27 @@ def layout_list_cards_v4(prs: Presentation, content: dict, tp: dict):
                              left=cx + _LY.PAD, top=_LY.CB - 0.26,
                              width=card_w - _LY.PAD * 2, height=0.20,
                              font=font, size_pt=8, color='888888', bold=True, align='left')
-    else:
+        return slide
+    elif v == 2:
         # Variante 2 : bandeaux horizontaux — rayure accent à gauche + fond palette alternée
         stripe_w = 0.38
         gap      = _LY.GAP_SM
-        card_h   = (_LY.CB - _LY.CT - gap * (n - 1)) / max(n, 1)
+
+        def _v2_card_h_est(card):
+            ic, lb, tt, sub, bt, its, sv, sl = _card_data(card)
+            h = 0.22
+            if ic: h += 0.42
+            h += 0.42
+            if sub: h += 0.32
+            body = bt or ('\n'.join(f'• {x}' for x in its[:4]) if its else '')
+            if body: h += max(0.30, len(body.split('\n')) * 0.28)
+            if sv: h += 0.68
+            return h
+
+        fill_h = (_LY.CB - _LY.CT - gap * (n - 1)) / max(n, 1)
+        max_est = max((_v2_card_h_est(cards[i]) for i in range(n)), default=0.90)
+        card_h  = min(fill_h, max(max_est, fill_h * 0.35))
+
         for i in range(n):
             cy     = _LY.CT + i * (card_h + gap)
             color  = accents[i % len(accents)]
@@ -8050,6 +8067,14 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
     n_rows = min(max(len(before_items), len(after_items)),
                  int((col_h - head_h - 0.10) / item_h))
 
+    # Vertical alignment: shrink panel to content height and place in upper-center of content area
+    if v in (0, 1):
+        content_h = head_h + 0.10 + max(n_rows, 1) * item_h + 0.22
+        if content_h < col_h * 0.62:
+            full_h = col_h
+            col_h  = max(content_h, full_h * 0.36)
+            y_top  = y_top + (full_h - col_h) * 0.28
+
     if v == 0:
         # Variante 0 : header coloré + fond palette + flèches ↔ par ligne
         for cx, col, hdr_color, bg_color, lbl in [
@@ -9647,6 +9672,22 @@ def layout_proscons_v4(prs: Presentation, content: dict, tp: dict):
     head_h = _LY.HEAD_H
     item_h = _LY.ITEM_H
 
+    # Vertical centering: shrink card to content height for card-based variants
+    _n_items_max = max(len(pros), len(cons), 1)
+    _col_h_total = _LY.CB - _LY.CT
+    if v in (0, 2, 3):
+        _item_rows = min(_n_items_max, int((_col_h_total - head_h - 0.10) / item_h))
+        _content_h = head_h + 0.10 + _item_rows * item_h + 0.22
+        if _content_h < _col_h_total * 0.62:
+            _panel_h = max(_content_h, _col_h_total * 0.36)
+            _y_ct = _LY.CT + (_col_h_total - _panel_h) * 0.28
+        else:
+            _panel_h = _col_h_total
+            _y_ct = _LY.CT
+    else:
+        _panel_h = _col_h_total
+        _y_ct = _LY.CT
+
     col_defs = [
         (pros, accent3, 'EAFAF1', '✓  POUR',  '✓'),
         (cons, accent2, 'FDEDEC', '✗  CONTRE', '✗'),
@@ -9656,16 +9697,16 @@ def layout_proscons_v4(prs: Presentation, content: dict, tp: dict):
         cx = _LY.CL + col_idx * (col_w + gap)
 
         if v == 0:
-            _h2_rect(slide, left=cx, top=_LY.CT, width=col_w, height=head_h, color=color)
+            _h2_rect(slide, left=cx, top=_y_ct, width=col_w, height=head_h, color=color)
             _h2_text(slide, label,
-                     left=cx + _LY.PAD, top=_LY.CT + 0.08,
+                     left=cx + _LY.PAD, top=_y_ct + 0.08,
                      width=col_w - _LY.PAD * 2, height=head_h - 0.10,
                      font=font, size_pt=_LY.T_TITLE, color='FFFFFF',
                      bold=True, align='left')
-            available_h = _LY.CB - (_LY.CT + head_h) - 0.05
+            available_h = _y_ct + _panel_h - (_y_ct + head_h) - 0.05
             n = min(len(items), int(available_h / item_h))
             for j, item in enumerate(items[:n]):
-                iy     = _LY.CT + head_h + j * item_h
+                iy     = _y_ct + head_h + j * item_h
                 bg_row = bg if j % 2 == 0 else 'FFFFFF'
                 _h2_rect(slide, left=cx, top=iy, width=col_w, height=item_h - 0.04, color=bg_row)
                 _h2_rect(slide, left=cx, top=iy, width=0.07, height=item_h - 0.04, color=color)
@@ -9703,24 +9744,24 @@ def layout_proscons_v4(prs: Presentation, content: dict, tp: dict):
 
         elif v == 2:
             # Minimaliste: bande top + icône colorée + bullets épurés sur fond neutre
-            _h2_rect(slide, left=cx, top=_LY.CT, width=col_w, height=0.06, color=color)
-            _h2_card_bg(slide, cx, _LY.CT + 0.06, col_w, _LY.CB - _LY.CT - 0.06, tp, col_idx)
+            _h2_rect(slide, left=cx, top=_y_ct, width=col_w, height=0.06, color=color)
+            _h2_card_bg(slide, cx, _y_ct + 0.06, col_w, _panel_h - 0.06, tp, col_idx)
             _h2_text(slide, sym,
-                     left=cx + _LY.PAD, top=_LY.CT + 0.16,
+                     left=cx + _LY.PAD, top=_y_ct + 0.16,
                      width=0.46, height=0.42,
                      font=font, size_pt=24, color=color, bold=True, align='left')
             lbl_text = label.replace('✓  ', '').replace('✗  ', '')
             _h2_text(slide, lbl_text,
-                     left=cx + _LY.PAD + 0.48, top=_LY.CT + 0.22,
+                     left=cx + _LY.PAD + 0.48, top=_y_ct + 0.22,
                      width=col_w - _LY.PAD - 0.54, height=0.32,
                      font=font, size_pt=_LY.T_TITLE, color=dk1,
                      bold=True, align='left')
-            _h2_rect(slide, left=cx + _LY.PAD, top=_LY.CT + 0.64,
+            _h2_rect(slide, left=cx + _LY.PAD, top=_y_ct + 0.64,
                      width=col_w - _LY.PAD * 2, height=0.025, color='DDDDDD')
-            available_h = _LY.CB - (_LY.CT + 0.74) - 0.05
+            available_h = _y_ct + _panel_h - (_y_ct + 0.74) - 0.05
             n = min(len(items), int(available_h / item_h))
             for j, item in enumerate(items[:n]):
-                iy = _LY.CT + 0.74 + j * item_h
+                iy = _y_ct + 0.74 + j * item_h
                 _h2_text(slide, str(item),
                          left=cx + _LY.PAD + 0.22, top=iy + 0.04,
                          width=col_w - _LY.PAD - 0.28, height=item_h - 0.08,
@@ -9732,25 +9773,25 @@ def layout_proscons_v4(prs: Presentation, content: dict, tp: dict):
         elif v == 3:
             # v3: côte-à-côte card avec accent top + checkmark/cross circle + items
             hdr3 = 0.58
-            _h2_rounded_rect(slide, cx, _LY.CT, col_w, _LY.CB - _LY.CT, 'F4F7FA', _LY.R_SM)
-            _h2_rounded_rect(slide, cx, _LY.CT, col_w, hdr3, color, _LY.R_SM)
-            _h2_rect(slide, cx, _LY.CT + _LY.R_SM, col_w, hdr3 - _LY.R_SM, color)
+            _h2_rounded_rect(slide, cx, _y_ct, col_w, _panel_h, 'F4F7FA', _LY.R_SM)
+            _h2_rounded_rect(slide, cx, _y_ct, col_w, hdr3, color, _LY.R_SM)
+            _h2_rect(slide, cx, _y_ct + _LY.R_SM, col_w, hdr3 - _LY.R_SM, color)
             badge_r3 = 0.24
-            _h2_rounded_rect(slide, cx + _LY.PAD, _LY.CT + (hdr3 - badge_r3 * 2) / 2,
+            _h2_rounded_rect(slide, cx + _LY.PAD, _y_ct + (hdr3 - badge_r3 * 2) / 2,
                              badge_r3 * 2, badge_r3 * 2, 'FFFFFF', badge_r3)
-            _h2_text(slide, sym, left=cx + _LY.PAD, top=_LY.CT + (hdr3 - badge_r3 * 2) / 2,
+            _h2_text(slide, sym, left=cx + _LY.PAD, top=_y_ct + (hdr3 - badge_r3 * 2) / 2,
                      width=badge_r3 * 2, height=badge_r3 * 2,
                      font=font, size_pt=14, color=color, bold=True, align='center')
             lbl3 = label.replace('✓  ', '').replace('✗  ', '')
             _h2_text(slide, lbl3,
                      left=cx + _LY.PAD + badge_r3 * 2 + 0.12,
-                     top=_LY.CT + (hdr3 - 0.34) / 2,
+                     top=_y_ct + (hdr3 - 0.34) / 2,
                      width=col_w - _LY.PAD - badge_r3 * 2 - 0.18, height=0.34,
                      font=font, size_pt=_LY.T_TITLE, color='FFFFFF', bold=True, align='left')
-            available_h3 = _LY.CB - (_LY.CT + hdr3 + 0.10) - 0.05
+            available_h3 = _y_ct + _panel_h - (_y_ct + hdr3 + 0.10) - 0.05
             n3 = min(len(items), int(available_h3 / item_h))
             for j, item in enumerate(items[:n3]):
-                iy3 = _LY.CT + hdr3 + 0.10 + j * item_h
+                iy3 = _y_ct + hdr3 + 0.10 + j * item_h
                 _h2_rounded_rect(slide, cx + 0.14, iy3 + 0.08,
                                  0.12, 0.12, color, 0.06)
                 _h2_text(slide, str(item),
@@ -11547,14 +11588,14 @@ def layout_mission_vision_v4(prs: Presentation, content: dict, tp: dict):
     # Fallback si panels non fourni
     if not panels:
         panels = [
-            {'label': 'MISSION', 'title': content.get('title', ''), 'body': ''},
-            {'label': 'VISION',  'title': content.get('subtitle', ''), 'body': ''},
+            {'label': 'MISSION', 'title': content.get('mission', content.get('title', '')), 'body': ''},
+            {'label': 'VISION',  'title': content.get('vision', content.get('subtitle', '')), 'body': ''},
         ]
 
     n = min(len(panels), 2)
 
     # Sober templates (plain white bg): use template header + card panels within content area
-    if _sober and v < 3:
+    if _sober:
         _add_template_header_and_footer(slide, content.get('title', ''), footer, tp, content)
         gap_c = 0.20
         pw_c  = (_LY.CW - gap_c) / 2
