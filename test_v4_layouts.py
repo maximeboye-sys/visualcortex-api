@@ -56,8 +56,8 @@ TP = {
     'bg_is_dark':      False,
     'bg_rich':         False,
     'rich_layout_idx': 1,
-    'W':               Inches(13.33),
-    'H':               Inches(7.5),
+    'W':               13.33,
+    'H':               7.5,
     'seed':            42,
 }
 
