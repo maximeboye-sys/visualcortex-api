@@ -4249,12 +4249,14 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
         n_col  = 2
         n_rows = (n + 1) // 2
         col_w  = (_LY.CW - _LY.COL_GAP) / 2
-        row_h  = (_LY.CB - _LY.CT) / max(n_rows, 1)
+        _zone  = _LY.CB - _LY.CT
+        row_h  = min(_zone / max(n_rows, 1), 2.50)
+        _y0    = _LY.CT + (_zone - row_h * n_rows) / 2
         for i in range(n):
             color     = accents[i % len(accents)]
             title_txt, body_txt = _item_txt(items[i])
             cx = _LY.CL + (i % n_col) * (col_w + _LY.COL_GAP)
-            cy = _LY.CT + (i // n_col) * row_h
+            cy = _y0 + (i // n_col) * row_h
             _h2_text(slide, str(i + 1),
                      left=cx, top=cy + 0.05, width=0.65, height=0.62,
                      font=font, size_pt=36, color=color, bold=True, align='left')
@@ -4273,15 +4275,17 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
 
     if v == 3:
         # v3 : timeline verticale — ligne accent gauche + nœuds + contenu
-        n  = min(n, 5)
-        step = (_LY.CB - _LY.CT) / max(n, 1)
-        lx = _LY.CL + 0.55        # x de la ligne
-        _h2_rect(slide, left=lx - 0.015, top=_LY.CT, width=0.03,
-                 height=_LY.CB - _LY.CT, color='DDDDDD')
+        n     = min(n, 5)
+        _zone = _LY.CB - _LY.CT
+        step  = min(_zone / max(n, 1), 1.35)
+        _y0   = _LY.CT + (_zone - step * n) / 2
+        lx = _LY.CL + 0.55
+        _h2_rect(slide, left=lx - 0.015, top=_y0, width=0.03,
+                 height=step * n, color='DDDDDD')
         for i in range(n):
             color     = accents[i % len(accents)]
             title_txt, body_txt = _item_txt(items[i])
-            cy = _LY.CT + i * step + step / 2
+            cy = _y0 + i * step + step / 2
             # Cercle sur la ligne
             _h2_circle(slide, cx=lx, cy=cy, r=0.22, color=color)
             _h2_text(slide, str(i + 1),
@@ -4309,14 +4313,16 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
 
     if v == 4:
         # v4 : cartes horizontales — fond EEEEEE, numéro grand gauche, contenu droite
-        n  = min(n, 5)
-        gap   = _LY.GAP_SM
-        card_h = (_LY.CB - _LY.CT - gap * (n - 1)) / max(n, 1)
+        n      = min(n, 5)
+        gap    = _LY.GAP_SM
+        _zone  = _LY.CB - _LY.CT
+        card_h = min((_zone - gap * (n - 1)) / max(n, 1), 1.30)
+        _y0    = _LY.CT + (_zone - card_h * n - gap * (n - 1)) / 2
         num_w  = 0.72
         for i in range(n):
             color     = accents[i % len(accents)]
             title_txt, body_txt = _item_txt(items[i])
-            cy = _LY.CT + i * (card_h + gap)
+            cy = _y0 + i * (card_h + gap)
             bg = 'EEEEEE' if i % 2 == 0 else 'F0F0F0'
             _h2_rounded_rect(slide, left=_LY.CL, top=cy,
                               width=_LY.CW, height=card_h,
@@ -4346,7 +4352,9 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
 
     # v0 et v1 : boucle commune
     n    = min(n, 5)
-    step = (_LY.CB - _LY.CT) / max(n, 1)
+    _zone = _LY.CB - _LY.CT
+    step  = min(_zone / max(n, 1), 1.20)  # cap: jamais plus de 1.2" par rangée
+    _y0   = _LY.CT + (_zone - step * n) / 2  # centrage vertical du groupe
 
     for i in range(n):
         color     = accents[i % len(accents)]
@@ -4355,7 +4363,7 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
         if v == 0:
             # v0 : cercles numérotés
             x_circ = _LY.CL + 0.4
-            cy     = _LY.CT + i * step + _LY.R_CIRC
+            cy     = _y0 + i * step + _LY.R_CIRC
             x_text = x_circ + _LY.R_CIRC + 0.28
             _h2_circle(slide, cx=x_circ, cy=cy, r=_LY.R_CIRC, color=color)
             _h2_text(slide, str(i + 1),
@@ -4374,7 +4382,7 @@ def layout_list_numbered_v4(prs: Presentation, content: dict, tp: dict):
                          bold=False, align='left', line_spacing=1.1)
         else:
             # v1 : badge rectangle + fond alternée + bordure gauche
-            row_y   = _LY.CT + i * step
+            row_y   = _y0 + i * step
             row_h   = step - _LY.GAP_XS
             bg_row  = 'F0F0F0' if i % 2 == 0 else 'F4F4F4'
             badge_h, badge_w = 0.38, 0.46
@@ -5212,9 +5220,9 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
     W       = tp.get('W', 13.33)
     v       = _v4_variant(content, 5, tp.get('seed', 0))
 
-    value   = str(content.get('value', ''))
+    value   = str(content.get('value', content.get('stat_value', content.get('val', ''))))
     label   = content.get('label', '')
-    context = content.get('context', '')
+    context = content.get('context', content.get('sublabel', content.get('sub', '')))
     y_center = (_LY.CT + _LY.CB) / 2
     val_h    = 1.1
     val_y    = y_center - val_h / 2 - (0.4 if label else 0)
@@ -5709,14 +5717,16 @@ def layout_timeline_v4(prs: Presentation, content: dict, tp: dict):
         axis_x  = _LY.CL + 0.50
         blk_x   = axis_x + 0.55
         blk_w   = _LY.CR - blk_x - 0.05
-        step_h  = (_LY.CB - _LY.CT) / n
+        _zone   = _LY.CB - _LY.CT
+        step_h  = min(_zone / n, 1.30)
+        _y0     = _LY.CT + (_zone - step_h * n) / 2
         r_circ  = _LY.R_CIRC - 0.05
-        # Ligne verticale pleine hauteur
-        _h2_rect(slide, left=axis_x - 0.020, top=_LY.CT,
-                 width=0.040, height=_LY.CB - _LY.CT, color=accent1)
+        # Ligne verticale centrée sur le groupe
+        _h2_rect(slide, left=axis_x - 0.020, top=_y0,
+                 width=0.040, height=step_h * n, color=accent1)
 
         for i, step in enumerate(steps[:n]):
-            sy    = _LY.CT + (i + 0.5) * step_h
+            sy    = _y0 + (i + 0.5) * step_h
             color = accents[i % len(accents)]
             date  = step.get('date', '') if isinstance(step, dict) else ''
             title = step.get('title', '') if isinstance(step, dict) else str(step)
@@ -6147,8 +6157,13 @@ def layout_kpi_grid_v4(prs: Presentation, content: dict, tp: dict):
     if n == 0:
         return slide
 
-    n_cols  = min(n, 3)
-    n_rows  = (n + n_cols - 1) // n_cols
+    # Grille équilibrée : n=4 → 2×2, n≤3 → 1 rangée, n≥5 → 3 colonnes
+    if n <= 3:
+        n_cols = n;  n_rows = 1
+    elif n == 4:
+        n_cols = 2;  n_rows = 2
+    else:
+        n_cols = 3;  n_rows = (n + 2) // 3
     x_start = _LY.CL
     x_end   = W - 0.45
     y_start = _LY.CT
@@ -6227,9 +6242,11 @@ def layout_kpi_grid_v4(prs: Presentation, content: dict, tp: dict):
     # v4 : barres de progression horizontales sous chaque valeur
     if v == 4:
         for i, kpi in enumerate(kpis[:n]):
-            col_i = i % n_cols
-            row_i = i // n_cols
-            cx  = x_start + col_i * cell_w
+            col_i    = i % n_cols
+            row_i    = i // n_cols
+            n_in_row = min(n - row_i * n_cols, n_cols)
+            x_off    = (n_cols - n_in_row) * cell_w / 2 if n_in_row < n_cols else 0.0
+            cx  = x_start + col_i * cell_w + x_off
             cy  = y_start + row_i * cell_h
             val      = str(kpi.get('value', '')) if isinstance(kpi, dict) else str(kpi)
             label    = kpi.get('label', '') if isinstance(kpi, dict) else ''
@@ -6275,9 +6292,11 @@ def layout_kpi_grid_v4(prs: Presentation, content: dict, tp: dict):
 
     # v0, v1, v2 : boucle commune
     for i, kpi in enumerate(kpis[:n]):
-        col_i = i % n_cols
-        row_i = i // n_cols
-        cx  = x_start + col_i * cell_w
+        col_i    = i % n_cols
+        row_i    = i // n_cols
+        n_in_row = min(n - row_i * n_cols, n_cols)
+        x_off    = (n_cols - n_in_row) * cell_w / 2 if n_in_row < n_cols else 0.0
+        cx  = x_start + col_i * cell_w + x_off
         cy  = y_start + row_i * cell_h
         val      = str(kpi.get('value', '')) if isinstance(kpi, dict) else str(kpi)
         label    = kpi.get('label', '') if isinstance(kpi, dict) else ''
@@ -9057,11 +9076,13 @@ def layout_agenda_v4(prs: Presentation, content: dict, tp: dict):
                          width=_LY.COL_W - 0.68, height=0.40,
                          font=font, size_pt=14, color=dk1, bold=False, align='left')
     else:
-        step_h = (_LY.CB - _LY.CT) / n
+        _zone  = _LY.CB - _LY.CT
+        step_h = min(_zone / n, 1.10)
+        _y0    = _LY.CT + (_zone - step_h * n) / 2
         for i in range(n):
             number, label, sublabel = _item_data(items[i], i)
             color = accents[i % len(accents)]
-            iy    = _LY.CT + i * step_h
+            iy    = _y0 + i * step_h
 
             if v == 0:
                 # Variante 0 : cercle + label + séparateur
@@ -9441,10 +9462,10 @@ def layout_swot_v4(prs: Presentation, content: dict, tp: dict):
     v = _v4_variant(content, 5, tp.get('seed', 0))
 
     quadrant_defs = [
-        ('Forces',       'S', 'strengths',    '40A900', '💪'),
-        ('Faiblesses',   'W', 'weaknesses',   'ED0000', '⚠️'),
-        ('Opportunités', 'O', 'opportunities','009CEA', '🚀'),
-        ('Menaces',      'T', 'threats',      'F66A00', '🛡️'),
+        ('Forces',       'S', 'strengths',    '40A900', '⊕'),
+        ('Faiblesses',   'W', 'weaknesses',   'ED0000', '⊖'),
+        ('Opportunités', 'O', 'opportunities','009CEA', '↑'),
+        ('Menaces',      'T', 'threats',      'F66A00', '⚡'),
     ]
 
     gap    = _LY.GAP_SM
@@ -12107,7 +12128,7 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
     n      = min(len(items), 8)
     items  = items[:n]
 
-    clabel = center.get('label', '') if isinstance(center, dict) else str(center)
+    clabel = center.get('label', center.get('title', center.get('name', ''))) if isinstance(center, dict) else str(center)
     cicon  = center.get('icon',  '') if isinstance(center, dict) else ''
 
     _add_template_header_and_footer(slide, content.get('title', ''),
@@ -12139,7 +12160,7 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
             iy     = hub_cy + math.sin(angle) * dist
             color  = accents[(i + 1) % len(accents)]
             icon   = item.get('icon', '')  if isinstance(item, dict) else ''
-            label  = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label  = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
 
             _h2_rounded_rect(slide, ix - spoke_r, iy - spoke_r,
                              spoke_r * 2, spoke_r * 2, color, spoke_r)
@@ -12186,7 +12207,7 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
             iy    = _LY.CT + row_i * (ih + _LY.GAP_SM)
             color = accents[(i + 1) % len(accents)]
             icon  = item.get('icon', '')  if isinstance(item, dict) else ''
-            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
             body  = item.get('body', '')  if isinstance(item, dict) else ''
 
             _h2_card_bg(slide, ix, iy, iw, ih - 0.04, tp, i)
@@ -12234,7 +12255,7 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
             iy    = by + row_i * ch
             color = accents[(i + 1) % len(accents)]
             icon  = item.get('icon', '')  if isinstance(item, dict) else ''
-            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
             body  = item.get('body', '')  if isinstance(item, dict) else ''
             w     = cw - _LY.GAP_SM * 2
             h     = ch - _LY.GAP_SM
@@ -12280,7 +12301,7 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
             iy    = _LY.CT + row_i * (ih + _LY.GAP_SM)
             color = accents[(i + 1) % len(accents)]
             icon  = item.get('icon', '')  if isinstance(item, dict) else ''
-            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
             body  = item.get('body', '')  if isinstance(item, dict) else ''
             _h2_card_bg(slide, ix, iy, iw, ih - 0.04, tp, i)
             _h2_rect(slide, ix, iy, 0.04, ih - 0.04, color)
@@ -12320,7 +12341,7 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
             ry    = _LY.CT + hub_h + _LY.GAP_SM + i * (row_h + _LY.GAP_SM)
             color = accents[(i + 1) % len(accents)]
             icon  = item.get('icon', '')  if isinstance(item, dict) else ''
-            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
             body  = item.get('body', '')  if isinstance(item, dict) else ''
             _h2_rounded_rect(slide, _LY.CL + 0.56, ry, _LY.CW - 0.56, row_h, 'F4F7FA', _LY.R_SM)
             _h2_circle(slide, dot_x, ry + row_h / 2, 0.09, color)
@@ -12358,6 +12379,17 @@ def layout_competitor_matrix_v4(prs, content: dict, tp: dict):
     title       = content.get('title', '')
     competitors = content.get('competitors', [])
     features    = content.get('features', [])
+    # Normalize criteria+scores → features format
+    if not features and 'criteria' in content:
+        criteria = content.get('criteria', [])
+        scores   = content.get('scores', {})
+        for i, crit in enumerate(criteria):
+            vals = []
+            for comp in competitors:
+                sl = scores.get(comp, [])
+                v  = sl[i] if i < len(sl) else False
+                vals.append(str(int(v)) if isinstance(v, (int, float)) and v == int(v) else (str(round(v, 1)) if isinstance(v, float) else bool(v)))
+            features.append({'name': crit, 'values': vals})
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
@@ -13735,7 +13767,7 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
             cy     = _LY.CT + row_i * (cell_h + gap_y)
             color  = accents[i % len(accents)]
             icon   = item.get('icon',  '') if isinstance(item, dict) else ''
-            label  = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label  = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
             body   = item.get('body',  '') if isinstance(item, dict) else ''
 
             # Subtle card bg
@@ -13767,7 +13799,7 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
             ry    = _LY.CT + i * row_h
             color = accents[i % len(accents)]
             icon  = item.get('icon',  '') if isinstance(item, dict) else ''
-            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
             body  = item.get('body',  '') if isinstance(item, dict) else ''
 
             if i % 2 == 0:
@@ -13811,7 +13843,7 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
             cy     = _LY.CT + row_i * (cell_h + gap_y)
             color  = accents[i % len(accents)]
             icon   = item.get('icon',  '') if isinstance(item, dict) else ''
-            label  = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label  = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
             body   = item.get('body',  '') if isinstance(item, dict) else ''
 
             # Hexagon icon shape
@@ -13846,7 +13878,7 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
             cy    = _LY.CT + row_i * (cell_h + gap_y)
             color = accents[i % len(accents)]
             icon  = item.get('icon',  '') if isinstance(item, dict) else ''
-            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
             body  = item.get('body',  '') if isinstance(item, dict) else ''
 
             _h2_rounded_rect(slide, cx, cy, cell_w, cell_h, 'F4F7FA', _LY.R_SM)
@@ -13884,7 +13916,7 @@ def layout_icon_grid_v4(prs, content: dict, tp: dict):
             cy    = _LY.CT + row_i * (cell_h + gap_y)
             color = accents[i % len(accents)]
             icon  = item.get('icon',  '') if isinstance(item, dict) else ''
-            label = item.get('label', str(item)) if isinstance(item, dict) else str(item)
+            label = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
             body  = item.get('body',  '') if isinstance(item, dict) else ''
 
             _h2_rounded_rect(slide, cx, cy, cell_w, cell_h, color, _LY.R_MD)
@@ -14135,7 +14167,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
         lx = min(x1, x2)
         _h2_rect(slide, lx, y - 0.012, abs(x2 - x1), 0.024, color)
 
-    root_label = root.get('label', '') if isinstance(root, dict) else str(root)
+    root_label = root.get('label', root.get('name', root.get('title', ''))) if isinstance(root, dict) else str(root)
     root_icon  = root.get('icon',  '') if isinstance(root, dict) else ''
     root_color = accents[0] if accents else '009CEA'
     l1_color   = accents[1 % len(accents)] if len(accents) > 1 else accents[0]
@@ -14143,7 +14175,13 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
 
     if v == 0:
         root_cx = W / 2
-        root_cy = _LY.CT + BOX_H / 2 + 0.10
+        # Vertically center the chart based on depth
+        has_l2 = any(len((child.get('children', []) if isinstance(child, dict) else [])) > 0 for child in children)
+        gap_v  = 0.52
+        n_lvls = 3 if has_l2 else (2 if nc > 0 else 1)
+        chart_h = BOX_H * n_lvls + gap_v * (n_lvls - 1)
+        zone_h  = _LY.CB - _LY.CT
+        root_cy = _LY.CT + (zone_h - chart_h) / 2 + BOX_H / 2
         _box(root_cx, root_cy, root_label, root_icon, root_color)
 
         if nc == 0:
@@ -14151,17 +14189,17 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
 
         l1_gap   = min(2.10, _LY.CW / max(nc, 1))
         l1_total = l1_gap * (nc - 1)
-        l1_y     = root_cy + BOX_H / 2 + 0.60
+        l1_y     = root_cy + BOX_H / 2 + gap_v
         l1_xs    = [W / 2 - l1_total / 2 + i * l1_gap for i in range(nc)]
 
-        bus_y = root_cy + BOX_H / 2 + 0.30
+        bus_y = root_cy + BOX_H / 2 + gap_v * 0.50
         _vline(root_cx, root_cy + BOX_H / 2, bus_y)
         if nc > 1:
             _hline(l1_xs[0], l1_xs[-1], bus_y)
 
         for i, child in enumerate(children):
             cx_     = l1_xs[i]
-            c_label = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_label = child.get('label', child.get('name', child.get('title', ''))) if isinstance(child, dict) else str(child)
             c_icon  = child.get('icon',  '') if isinstance(child, dict) else ''
             _vline(cx_, bus_y, l1_y - BOX_H / 2)
             _box(cx_, l1_y, c_label, c_icon, l1_color)
@@ -14170,16 +14208,16 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
             ng  = min(len(gcs), 3)
             if ng == 0:
                 continue
-            l2_y    = l1_y + BOX_H / 2 + 0.48
+            l2_y    = l1_y + BOX_H / 2 + gap_v
             gc_gap  = min(1.60, l1_gap * 0.90 / max(ng, 1))
             gc_xs   = [cx_ - gc_gap * (ng - 1) / 2 + j * gc_gap for j in range(ng)]
-            gc_bus  = l1_y + BOX_H / 2 + 0.22
+            gc_bus  = l1_y + BOX_H / 2 + gap_v * 0.50
             _vline(cx_, l1_y + BOX_H / 2, gc_bus)
             if ng > 1:
                 _hline(gc_xs[0], gc_xs[-1], gc_bus)
             for j, gc_cx in enumerate(gc_xs):
                 gc = gcs[j]
-                gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                gl = gc.get('label', gc.get('name', gc.get('title', ''))) if isinstance(gc, dict) else str(gc)
                 gi = gc.get('icon',  '') if isinstance(gc, dict) else ''
                 _vline(gc_cx, gc_bus, l2_y - BOX_H / 2)
                 _box(gc_cx, l2_y, gl, gi, l2_color, pt=9)
@@ -14203,7 +14241,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
 
         for i, child in enumerate(children):
             cy_     = l1_ys[i]
-            c_label = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_label = child.get('label', child.get('name', child.get('title', ''))) if isinstance(child, dict) else str(child)
             c_icon  = child.get('icon',  '') if isinstance(child, dict) else ''
             _hline(bus_x, l1_x - BOX_W / 2, cy_)
             _box(l1_x, cy_, c_label, c_icon, l1_color)
@@ -14221,7 +14259,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
             _hline(l1_x + BOX_W / 2, gc_bus, cy_)
             for j, gc_cy in enumerate(gc_ys):
                 gc = gcs[j]
-                gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                gl = gc.get('label', gc.get('name', gc.get('title', ''))) if isinstance(gc, dict) else str(gc)
                 gi = gc.get('icon',  '') if isinstance(gc, dict) else ''
                 _hline(gc_bus, l2_x - BOX_W / 2, gc_cy)
                 _box(l2_x, gc_cy, gl, gi, l2_color, pt=9)
@@ -14248,7 +14286,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
         for i, child in enumerate(children):
             tree_col = accents[i % len(accents)]
             cx_      = l1_xs[i]
-            c_label  = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_label  = child.get('label', child.get('name', child.get('title', ''))) if isinstance(child, dict) else str(child)
             c_icon   = child.get('icon',  '') if isinstance(child, dict) else ''
             _vline(cx_, bus_y, l1_y - BOX_H / 2, tree_col)
             _box(cx_, l1_y, c_label, c_icon, tree_col)
@@ -14266,7 +14304,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
                 _hline(gc_xs[0], gc_xs[-1], gc_bus, tree_col)
             for j, gc_cx in enumerate(gc_xs):
                 gc = gcs[j]
-                gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                gl = gc.get('label', gc.get('name', gc.get('title', ''))) if isinstance(gc, dict) else str(gc)
                 gi = gc.get('icon',  '') if isinstance(gc, dict) else ''
                 tr = int(tree_col[0:2], 16)
                 tg = int(tree_col[2:4], 16)
@@ -14300,7 +14338,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
 
         for i, child in enumerate(children):
             cx_     = l1_xs[i]
-            c_label = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_label = child.get('label', child.get('name', child.get('title', ''))) if isinstance(child, dict) else str(child)
             c_icon  = child.get('icon',  '') if isinstance(child, dict) else ''
             color_i = accents[i % len(accents)]
             _vline(cx_, bus_y3, l1_y - CARD_H / 2)
@@ -14321,7 +14359,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
                 gc_h = (CARD_H - HDRH - 0.08) / ng
                 for j in range(ng):
                     gc = gcs[j]
-                    gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                    gl = gc.get('label', gc.get('name', gc.get('title', ''))) if isinstance(gc, dict) else str(gc)
                     _h2_text(slide, f'· {gl}', bx + 0.10, by + HDRH + 0.04 + j * gc_h,
                              CARD_W - 0.20, gc_h - 0.02, font, 8, dk1, bold=False, align='left')
 
@@ -14343,7 +14381,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
         for i, child in enumerate(children):
             tx      = x0 + i * (TILE_W + _LY.GAP_SM)
             color_i = accents[i % len(accents)]
-            c_label = child.get('label', '') if isinstance(child, dict) else str(child)
+            c_label = child.get('label', child.get('name', child.get('title', ''))) if isinstance(child, dict) else str(child)
             c_icon  = child.get('icon',  '') if isinstance(child, dict) else ''
             _h2_rounded_rect(slide, tx, tile_y, TILE_W, TILE_H, color_i, _LY.R_MD)
             icx = tx + TILE_W / 2 - R_TILE
@@ -14365,7 +14403,7 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
             gc_y = tile_y + TILE_H * 0.60
             for j in range(ng):
                 gc = gcs[j]
-                gl = gc.get('label', '') if isinstance(gc, dict) else str(gc)
+                gl = gc.get('label', gc.get('name', gc.get('title', ''))) if isinstance(gc, dict) else str(gc)
                 _h2_text(slide, f'· {gl}', tx + 0.08, gc_y + j * 0.26, TILE_W - 0.16, 0.24,
                          font, 8, 'EEEEEE', bold=False, align='center')
 
