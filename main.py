@@ -12390,11 +12390,13 @@ def layout_hub_spoke_v4(prs, content: dict, tp: dict):
         n_rows = (n3 + 1) // 2
         iw     = (rw - _LY.GAP_SM) / 2
         ih     = min((hub_h - _LY.GAP_SM * (n_rows - 1)) / max(n_rows, 1), 1.10)
+        _v3_h  = n_rows * ih + _LY.GAP_SM * (n_rows - 1)
+        _v3_yo = max(0.0, (hub_h - _v3_h) * 0.30)
         for i, item in enumerate(items[:n3]):
             col_i = i % n_cols
             row_i = i // n_cols
             ix    = rx + col_i * (iw + _LY.GAP_SM)
-            iy    = _LY.CT + row_i * (ih + _LY.GAP_SM)
+            iy    = _LY.CT + _v3_yo + row_i * (ih + _LY.GAP_SM)
             color = accents[(i + 1) % len(accents)]
             icon  = item.get('icon', '')  if isinstance(item, dict) else ''
             label = item.get('title', item.get('label', str(item))) if isinstance(item, dict) else str(item)
@@ -13111,6 +13113,8 @@ def layout_market_sizing_v4(prs, content: dict, tp: dict):
         # Staircase: decreasing-width rows, centered, largest at top
         bar_h  = min((_LY.CB - _LY.CT - _LY.GAP_SM * (n - 1)) / max(n, 1), 1.20)
         max_w  = _LY.CW * 0.82
+        _v0_tot = n * bar_h + (n - 1) * _LY.GAP_SM
+        _v0_yo  = (_LY.CB - _LY.CT - _v0_tot) * 0.35
 
         for i, seg in enumerate(segments):
             label  = seg.get('label',  f'Segment {i+1}') if isinstance(seg, dict) else str(seg)
@@ -13121,7 +13125,7 @@ def layout_market_sizing_v4(prs, content: dict, tp: dict):
             color  = accents[i % len(accents)]
             bar_w  = max_w * (1.0 - i * 0.15)
             bx     = _LY.CL + (_LY.CW - bar_w) / 2
-            by     = _LY.CT + i * (bar_h + _LY.GAP_SM)
+            by     = _LY.CT + _v0_yo + i * (bar_h + _LY.GAP_SM)
 
             _h2_rounded_rect(slide, bx, by, bar_w, bar_h - 0.04, color, _LY.R_SM)
 
@@ -14420,8 +14424,10 @@ def layout_org_chart_v4(prs, content: dict, tp: dict):
         CARD_W = min(2.20, (_LY.CW - _LY.GAP_SM * max(nc - 1, 0)) / max(nc, 1))
         CARD_H = 0.90
         HDRH   = 0.34
+        _chart_h3 = BOX_H + 0.70 + CARD_H
+        _y_off3   = max(0.0, (_LY.CB - _LY.CT - _chart_h3) * 0.45)
         root_cx = W / 2
-        root_cy = _LY.CT + BOX_H / 2 + 0.10
+        root_cy = _LY.CT + _y_off3 + BOX_H / 2 + 0.10
         _box(root_cx, root_cy, root_label, root_icon, root_color)
 
         if nc == 0:
