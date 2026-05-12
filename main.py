@@ -8779,7 +8779,12 @@ def layout_conclusion_v4(prs: Presentation, content: dict, tp: dict):
 
     elif v == 3:
         # v3: plein fond dk1 + grille de cartes lumineuses
-        _h2_rect(slide, 0, 0, 13.33, 7.50, dk1)
+        W3 = tp.get('W', 13.33)
+        _h2_rect(slide, 0, 0, W3, 7.50, dk1)
+        # Redraw title/separator in white — standard header is buried under dark bg
+        _h2_text(slide, content.get('title', ''), 0.60, 0.20, 10.20, 0.80,
+                 font, 28, 'FFFFFF', bold=True, align='left')
+        _h2_rect(slide, 0.60, 1.05, 10.40, 0.04, '444444')
         n3     = max(len(cards), 1)
         cols3  = min(n3, 4)
         rows3  = (n3 + cols3 - 1) // cols3

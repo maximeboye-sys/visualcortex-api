@@ -159,7 +159,14 @@ CONTENT = {
         {'name': 'Entité A', 'attributes': ['Attr 1', 'Attr 2']},
         {'name': 'Entité B', 'attributes': ['Attr 3', 'Attr 4']},
     ], 'footer': 'VC'},
-    'conclusion':        {'title': 'Conclusion', 'points': ['Point 1', 'Point 2', 'Point 3'], 'footer': 'VC'},
+    'conclusion':        {'title': 'Conclusion',
+                          'cards': [
+                              {'icon': '✓', 'title': 'Résultat 1', 'body': 'Bénéfice clé atteint.'},
+                              {'icon': '✓', 'title': 'Résultat 2', 'body': 'Objectif validé.'},
+                          ],
+                          'sidebar_title': 'À retenir',
+                          'sidebar_quote': 'Un message fort pour conclure.',
+                          'sidebar_cta': 'Prochaine étape', 'footer': 'VC'},
     'highlight':         {'title': 'Highlight', 'message': 'Message clé', 'body': 'Détails.', 'footer': 'VC'},
     'agenda':            {'title': 'Agenda', 'items': [
         {'number': '01', 'title': 'Sujet A', 'duration': '15 min'},
