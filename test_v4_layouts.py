@@ -89,11 +89,13 @@ CONTENT = {
                           'col_a': {'title': 'Gauche', 'items': ['G1', 'G2']},
                           'col_b': {'title': 'Droite',  'items': ['D1', 'D2']}, 'footer': 'VC'},
     'stathero':          {'value': '98 %', 'label': 'Satisfaction client', 'context': 'Enquête 2024', 'footer': 'VC'},
-    'infographic':       {'title': 'Infographie', 'items': [
-        {'value': '1', 'label': 'Un'},
-        {'value': '2', 'label': 'Deux'},
-        {'value': '3', 'label': 'Trois'},
-    ], 'footer': 'VC'},
+    'infographic':       {'title': 'Infographie',
+                          'value': '78 %', 'label': 'Adoption rate', 'context': 'Source 2024',
+                          'bars': [
+                              {'label': 'Segment A', 'percent': 78},
+                              {'label': 'Segment B', 'percent': 52},
+                              {'label': 'Segment C', 'percent': 34},
+                          ], 'footer': 'VC'},
     'timeline':          {'title': 'Chronologie', 'steps': [
         {'date': '2022', 'title': 'Étape 1', 'body': 'Desc'},
         {'date': '2023', 'title': 'Étape 2', 'body': 'Desc'},
@@ -142,10 +144,10 @@ CONTENT = {
         {'title': 'Phase 3', 'body': 'Desc'},
         {'title': 'Phase 4', 'body': 'Desc'},
     ], 'footer': 'VC'},
-    'roadmap':           {'title': 'Roadmap', 'quarters': [
-        {'label': 'Q1', 'items': ['T1', 'T2']},
-        {'label': 'Q2', 'items': ['T3']},
-        {'label': 'Q3', 'items': ['T4', 'T5']},
+    'roadmap':           {'title': 'Roadmap', 'phases': [
+        {'label': 'Q1', 'milestones': ['T1', 'T2']},
+        {'label': 'Q2', 'milestones': ['T3']},
+        {'label': 'Q3', 'milestones': ['T4', 'T5']},
     ], 'footer': 'VC'},
     'stackedbar':        {'title': 'Stacked Bar', 'categories': ['A', 'B', 'C'],
                           'series': [

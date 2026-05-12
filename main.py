@@ -7537,7 +7537,8 @@ def layout_cycle_v4(prs: Presentation, content: dict, tp: dict):
     elif v == 1:
         # Linear chevrons + bottom return arrow (loop visual)
         chev_h  = (_LY.CB - _LY.CT) * 0.54
-        chev_y  = _LY.CT + (_LY.CB - _LY.CT) * 0.07
+        _cy_tot = chev_h + 0.16 + 0.22
+        chev_y  = _LY.CT + ((_LY.CB - _LY.CT) - _cy_tot) / 2
         overlap = 0.17
         chev_w  = (_LY.CW + overlap * (n - 1)) / n
 
@@ -12593,6 +12594,10 @@ def layout_competitor_matrix_v4(prs, content: dict, tp: dict):
             counts.append(cnt)
         highlight_col = counts.index(max(counts)) if counts else 0
 
+    # Vertical centering: table is capped at row_h=0.54, may be much smaller than zone
+    _table_h = hdr_h + _LY.GAP_SM + nf * row_h
+    _tbl_top = _LY.CT + max(0.0, (_LY.CB - _LY.CT - _table_h) * 0.45)
+
     # Header row
     for i, comp in enumerate(competitors):
         cx    = _LY.CL + name_w + i * col_w
@@ -12601,18 +12606,18 @@ def layout_competitor_matrix_v4(prs, content: dict, tp: dict):
         if v == 1 and i == highlight_col:
             # Tall highlight column spanning entire matrix
             total_h = hdr_h + _LY.GAP_SM + nf * row_h
-            _h2_rounded_rect(slide, cx + 0.03, _LY.CT,
+            _h2_rounded_rect(slide, cx + 0.03, _tbl_top,
                              col_w - 0.06, total_h, color, _LY.R_SM)
-            _h2_text(slide, comp, cx, _LY.CT + 0.08, col_w, hdr_h - 0.10,
+            _h2_text(slide, comp, cx, _tbl_top + 0.08, col_w, hdr_h - 0.10,
                      font, 9, 'FFFFFF', bold=True, align='center')
         else:
-            _h2_rounded_rect(slide, cx + 0.03, _LY.CT, col_w - 0.06, hdr_h, color, _LY.R_SM)
-            _h2_text(slide, comp, cx, _LY.CT + 0.08, col_w, hdr_h - 0.10,
+            _h2_rounded_rect(slide, cx + 0.03, _tbl_top, col_w - 0.06, hdr_h, color, _LY.R_SM)
+            _h2_text(slide, comp, cx, _tbl_top + 0.08, col_w, hdr_h - 0.10,
                      font, 9, 'FFFFFF', bold=True, align='center')
 
     # Feature rows
     for fi, feat in enumerate(features):
-        fy        = _LY.CT + hdr_h + _LY.GAP_SM + fi * row_h
+        fy        = _tbl_top + hdr_h + _LY.GAP_SM + fi * row_h
         feat_name = feat.get('name', str(feat)) if isinstance(feat, dict) else str(feat)
         values    = feat.get('values', []) if isinstance(feat, dict) else []
 
