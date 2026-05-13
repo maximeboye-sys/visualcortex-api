@@ -5244,6 +5244,14 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
     val_h    = 1.1
     val_y    = y_center - val_h / 2 - (0.4 if label else 0)
 
+    # Draw full-slide backgrounds BEFORE header so template title/footer render on top
+    band_w  = 1.80
+    split_x = W * 0.45
+    if v == 1:
+        _h2_rect(slide, left=0, top=0, width=band_w, height=7.5, color=accent1)
+    elif v == 3:
+        _h2_rect(slide, left=0, top=0, width=split_x, height=7.5, color=dk1)
+
     _add_template_header_and_footer(slide, content.get('title', ''),
                                     content.get('footer', ''), tp, content)
 
@@ -5267,8 +5275,7 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
                      bold=False, align='center', line_spacing=1.2)
     elif v == 1:
         # Variante 1 : bande verticale accent1 à gauche + valeur à droite
-        band_w = 1.80
-        _h2_rect(slide, left=0, top=0, width=band_w, height=7.5, color=accent1)
+        # (background band already drawn above header)
         rx = band_w + 0.5
         rw = W - band_w - 0.8
         _h2_text(slide, value,
@@ -5313,8 +5320,7 @@ def layout_stathero_v4(prs: Presentation, content: dict, tp: dict):
 
     elif v == 3:
         # Variante 3 : split screen — panneau dk1 gauche + contexte droite
-        split_x = W * 0.45
-        _h2_rect(slide, left=0, top=0, width=split_x, height=7.5, color=dk1)
+        # (background panel already drawn above header)
         _h2_text(slide, value,
                  left=0.3, top=val_y, width=split_x - 0.4, height=val_h,
                  font=font, size_pt=_LY.T_HERO, color=accent1, bold=True, align='center')
@@ -9860,8 +9866,9 @@ def layout_proscons_v4(prs: Presentation, content: dict, tp: dict):
             line_x4 = cx + _LY.PAD + 0.12
             available_h4 = _LY.CB - (_LY.CT + 0.64) - 0.05
             n4 = min(len(items), int(available_h4 / item_h))
-            _h2_rect(slide, line_x4 - 0.012, _LY.CT + 0.64,
-                     0.024, n4 * item_h - item_h / 2, 'CCCCCC')
+            if n4 > 0:
+                _h2_rect(slide, line_x4 - 0.012, _LY.CT + 0.64,
+                         0.024, n4 * item_h - item_h / 2, 'CCCCCC')
             for j, item in enumerate(items[:n4]):
                 iy4 = _LY.CT + 0.64 + j * item_h
                 _h2_circle(slide, cx=line_x4, cy=iy4 + item_h / 2 - 0.06, r=0.10, color=color)
@@ -13590,8 +13597,8 @@ def layout_venn_v4(prs, content: dict, tp: dict):
 
     v = _v4_variant(content, 5, tp.get('seed', 0))
 
-    if v == 0 or n == 2:
-        # 2-circle horizontal Venn
+    if v == 0 or (n < 3 and v == 1):
+        # 2-circle horizontal Venn (also fallback when v==1 but only 2 circles given)
         zone_h  = _LY.CB - _LY.CT
         r       = min(zone_h / 2, _LY.CW * 0.32)
         overlap = r * 0.55
@@ -14097,10 +14104,12 @@ def layout_text_hero_v4(prs, content: dict, tp: dict):
                          circle_r * 2, circle_r * 2, color, circle_r)
         _set_shape_alpha(slide.shapes[-1], 18)
 
-        # Accent word inside circle
+        # Accent word inside circle — clamp width so text box stays within slide
         if accent_w:
-            _h2_text(slide, accent_w, _LY.CR - circle_r * 0.85,
-                     _LY.CT + zone_h / 2 - 0.20, circle_r * 2, 0.40,
+            aw_x = _LY.CR - circle_r * 0.85
+            aw_w = min(circle_r * 2, tp.get('W', 13.33) - aw_x - 0.05)
+            _h2_text(slide, accent_w, aw_x,
+                     _LY.CT + zone_h / 2 - 0.20, aw_w, 0.40,
                      font, 14, 'FFFFFF', bold=True, align='center')
 
         # Subtitle + body below hero word
