@@ -8074,7 +8074,7 @@ def layout_beforeafter_v4(prs: Presentation, content: dict, tp: dict):
         if content_h < col_h * 0.62:
             full_h = col_h
             col_h  = max(content_h, full_h * 0.36)
-            y_top  = y_top + (full_h - col_h) * 0.28
+            y_top  = y_top + (full_h - col_h) * 0.42
 
     if v == 0:
         # Variante 0 : header coloré + fond palette + flèches ↔ par ligne
@@ -13710,7 +13710,7 @@ def layout_venn_v4(prs, content: dict, tp: dict):
     elif v == 2:
         # v2: 2 circles vertical + highlighted intersection band
         zone_h  = _LY.CB - _LY.CT
-        r       = min(_LY.CW * 0.30, zone_h * 0.32)
+        r       = min(_LY.CW * 0.30, zone_h / 3.50)
         overlap = r * 0.52
         total_h = r * 2 * 2 - overlap
         cy1     = _LY.CT + (zone_h - total_h) / 2 + r
