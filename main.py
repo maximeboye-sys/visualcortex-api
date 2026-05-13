@@ -10734,8 +10734,9 @@ def layout_section_break_v4(prs: Presentation, content: dict, tp: dict):
         _h2_rect(slide, left=0, top=0, width=W, height=H, color=dk1)
         # Cercle décoratif haut-gauche (semi-transparent via couleur atténuée)
         _h2_circle(slide, 0.40, H * 0.18, 1.50, _darken(accent1, 0.55))
-        # Cercle décoratif bas-droit
-        _h2_circle(slide, W - 0.40, H * 0.82, 1.90, _darken(dk1, 0.78))
+        # Cercle décoratif bas-droit — darkened dk1 on dk1 bg, nearly invisible; mark alpha<30%
+        _h2_circle(slide, W - 0.40, H * 0.78, 1.70, _darken(dk1, 0.78))
+        _set_shape_alpha(slide.shapes[-1], 22)
         # Ligne accent centrée
         _h2_rect(slide, left=W * 0.30, top=H * 0.36, width=W * 0.40, height=0.04, color=accent1)
         if number:
@@ -13402,8 +13403,10 @@ def layout_chevron_flow_v4(prs, content: dict, tp: dict):
         zone_h   = (_LY.CB - _LY.CT - _LY.GAP_SM) / 2
         overlap  = 0.18
         chev_w_t = (_LY.CW + overlap * (n_top - 1)) / max(n_top, 1)
-        chev_w_b = (_LY.CW + overlap * (n_bot - 1)) / max(n_bot, 1) if n_bot > 0 else 0
         offset_b = chev_w_t / 2  # stagger bottom row
+        # Bottom row spans CW - offset_b; must not overflow right edge
+        avail_b  = _LY.CW - offset_b
+        chev_w_b = (avail_b + overlap * (n_bot - 1)) / max(n_bot, 1) if n_bot > 0 else 0
 
         for i, step in enumerate(steps):
             is_top = i < n_top
@@ -13656,7 +13659,7 @@ def layout_venn_v4(prs, content: dict, tp: dict):
         # 3-circle triangular Venn
         import math
         zone_h = _LY.CB - _LY.CT
-        r      = min(zone_h * 0.38, _LY.CW * 0.24)
+        r      = min(zone_h * 0.37, _LY.CW * 0.24)
         sep    = r * 1.05  # distance between centres
         # Top circle centred, bottom-left, bottom-right
         centres = [
